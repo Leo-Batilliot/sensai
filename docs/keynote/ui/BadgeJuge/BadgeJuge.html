@@ -62,6 +62,14 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <span class="chip ok">✓ Vérifiée · 6/6</span>
     <span class="chip warn">! À vérifier · 1 non vérifiable</span>
     <span class="chip bad">✗ Contredite · 1 affirmation</span>
+    <span class="chip off">⊘ Vérification indisponible</span>
+  </div>
+  <div class="row rel" style="align-items:flex-start;gap:10px"><span class="pin in">4</span>
+    <div class="box small" style="padding:10px 12px;max-width:520px;border-style:dashed">
+      <div class="row"><span class="chip off">⊘ Vérification indisponible</span><span class="muted">au survol :</span></div>
+      <div style="margin-top:6px">Le juge n'a pas pu vérifier cette réponse. <b>Les chiffres n'ont pas été contrôlés.</b></div>
+      <div class="muted" style="margin-top:2px">Cause : rapport invalide après réparation · délai dépassé · modèle injoignable</div>
+    </div>
   </div>
   <div class="box rel" style="padding:16px;display:flex;flex-direction:column;gap:10px">
     <span class="pin" style="left:-8px;top:-8px">2</span>
@@ -86,5 +94,5 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 <style>.legend{margin-top:20px;border-top:1.5px dashed var(--annot);padding-top:12px;max-width:1248px}
 .legend .items{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:8px 20px;margin-top:8px}
 .legend .it{display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:17px}
-.legend .it .pin{margin-top:-1px}.legend .k{font-weight:700}</style><div class="legend"><div class="label" style="color:var(--annot)">Légende des pastilles</div><div class="items"><div class="it"><span class="pin in">1</span><span><b>Quatre états</b> : en cours, ✓ Vérifiée, ! À vérifier, ✗ Contredite. Le symbole est toujours présent : la couleur seule ne suffit pas.</span></div><div class="it"><span class="pin in">2</span><span><b>Surlignage</b> : affirmation contredite soulignée en rouge ; au survol, la vraie valeur et sa colonne source. Affirmation vérifiée soulignée en vert discret.</span></div><div class="it"><span class="pin in">3</span><span><b>Détail</b> : liste des affirmations avec leur verdict, pertinence, fidélité, contrôle numérique.</span></div></div></div>
+.legend .it .pin{margin-top:-1px}.legend .k{font-weight:700}</style><div class="legend"><div class="label" style="color:var(--annot)">Légende des pastilles</div><div class="items"><div class="it"><span class="pin in">1</span><span><b>Cinq états</b> : en cours, ✓ Vérifiée, ! À vérifier, ✗ Contredite, ⊘ Vérification indisponible. Le symbole est toujours présent : la couleur seule ne suffit pas.</span></div><div class="it"><span class="pin in">2</span><span><b>Surlignage</b> : affirmation contredite soulignée en rouge ; au survol, la vraie valeur et sa colonne source. Affirmation vérifiée soulignée en vert discret.</span></div><div class="it"><span class="pin in">3</span><span><b>Détail</b> : liste des affirmations avec leur verdict, pertinence, fidélité, contrôle numérique.</span></div><div class="it"><span class="pin in">4</span><span><b>Vérification indisponible</b> : le juge a échoué (rapport invalide après une réparation, délai dépassé, modèle injoignable). Badge neutre en pointillés ; au survol, la cause et la mention « les chiffres n'ont pas été contrôlés ». La réponse reste affichée.</span></div></div></div>
 </body></html>
