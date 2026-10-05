@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| **Statut** | 🟡 Brouillon (lun 05/10, réponses de P1 intégrées) — gel prévu le **mar 06/10 à 12 h** |
+| **Statut** | 🟡 Brouillon (lun 05/10, réponses de P1 et P3 intégrées) — gel prévu le **mar 06/10 à 12 h** |
 | **Propriétaire** | P4 (Web & Produit) |
 | **Consommateurs** | P1 (moteur, événements), P3 (mémoire) |
 | **Tâche** | WEB-01 (PLANNING §7, sprint 1) |
-| **Dépend de** | `events.md` (P1), `tools.md` (P1, P2), `judge_report.v1.json` (P3), schéma mémoire (P3, MEM-01) |
+| **Dépend de** | `events.md` (P1), `tools.md` (P1, P2), `judge.md` + `schemas/judge_report.v1.json` (P3, EVAL-01), `memory.md` (P3, MEM-01) |
 
 Ce document définit tout ce qui circule entre le front web et le serveur FastAPI : la connexion, les messages du client, les messages du serveur, l'ordre dans lequel ils arrivent et les erreurs. Il reprend PROJECT.md §7.2 et le complète avec ce qu'exigent les maquettes (WEB-03) et le catalogue X1.
 
@@ -100,16 +100,25 @@ Si une seconde connexion s'ouvre avec le même `session_id`, la première est fe
 Permet à l'interface de déclencher un outil sans passer par le modèle : modifier ou supprimer une entrée depuis le panneau Mémoire (US-M3-03).
 
 ```json
-{"type": "ui_action", "id": "c-31", "tool": "memory_delete", "arguments": {"kind": "fact", "id": 17}}
+{"type": "ui_action", "id": "c-31", "tool": "memory_delete", "arguments": {"kind": "fact", "ref": "17"}}
 ```
 
 - **Liste blanche** : seuls `memory_update` et `memory_delete` sont appelables. **Jamais `execute_write`** ni aucun autre outil. Un autre nom donne l'erreur `UI_ACTION_FORBIDDEN`. Le moteur applique la même liste blanche (défense en profondeur).
-- `arguments` suit l'`inputSchema` de l'outil, défini par P3 dans `tools.md` (PROJECT §6.4 : `memory_update(kind, id, patch)`, `memory_delete(kind, id)`). Le champ `id` de `arguments` est l'identifiant de l'entrée mémoire. Il ne faut pas le confondre avec le champ `id` du message, qui sert à la corrélation (§3).
+- `arguments` sont **exactement ceux des outils mémoire** (`memory.md`, P3) :
+
+| Outil | Arguments | Confirmation |
+|---|---|---|
+| `memory_update` | `{kind, ref, patch}` | Non |
+| `memory_delete` | `{kind, ref}` | **Oui** (l'outil déclare `destructiveHint: true`) |
+
+- `kind` : `"glossary"`, `"entity"`, `"relation"` ou `"fact"`.
+- `ref` : **toujours une chaîne**. C'est le terme pour le glossaire, et l'`id` en texte pour les autres.
+- `patch` : les champs modifiables de chaque table sont listés dans `memory.md` §2.
 - Côté serveur, le message appelle `Engine.run_ui_action(tool, arguments)`. C'est un générateur asynchrone, comme `run_turn` : **le serveur le traite exactement comme un tour**.
-- L'action passe par la **politique HITL et le broker de la session**. `memory_delete` étant destructif, il déclenche une confirmation.
-- L'audit l'enregistre avec `actor = "user"`.
+- L'action passe par la **politique HITL et le broker de la session**. L'aperçu d'une suppression indique les **cascades** : supprimer une entité supprime aussi ses relations et ses faits (`impact.per_table`).
+- L'audit enregistre `actor = "user"` et le `session_id`.
 - **Rien n'est ajouté à l'historique de conversation** : la mémoire est de toute façon réinjectée à chaque tour.
-- Les erreurs d'exécution (entrée introuvable, arguments invalides) arrivent comme dans n'importe quel tour : un `tool_result` avec `ok: false`.
+- Les erreurs d'exécution arrivent comme dans n'importe quel tour : un `tool_result` avec `ok: false`. Un `ref` inconnu donne `ok: false` avec le code `not_found`.
 
 ```text
 client                                   serveur
@@ -211,8 +220,10 @@ Leur définition fait foi dans `events.md` (propriétaire P1). Ce contrat n'en r
 | Événement | Ce que le front doit savoir |
 |---|---|
 | `turn_started` | `origin` : `"user"` ou `"ui"`. Pour un tour lancé par `ui_action`, `user_message` vaut `null` et le front n'affiche pas de bulle utilisateur. |
-| `context_injected` | `refs: [{kind, ref, label}]`, émis juste après `turn_started`, **seulement s'il y a des entrées**. `kind` prend les valeurs de P-8. Il dit ce qui a été **fourni** au modèle, pas ce qu'il a appliqué : le libellé de l'interface est **« Contexte mémoire fourni »**, jamais « appliqué ». |
+| `context_injected` | `refs: [{kind, ref, label}]`, émis juste après `turn_started`, **seulement s'il y a des entrées**. `kind` et `ref` comme pour les outils mémoire (§4.2). `label` : le terme pour le glossaire, le nom pour une entité, le début du contenu pour un fait. Les entrées sont choisies par MEM-04 (au plus 5 définitions et 5 faits). Il dit ce qui a été **fourni** au modèle, pas ce qu'il a appliqué : le libellé de l'interface est **« Contexte mémoire fourni »**, jamais « appliqué ». |
 | `tool_result` (`run_select`) | `data = {columns, rows, row_count, truncated}`. `row_count` est le nombre de lignes **présentes dans `rows`**, pas le total. `truncated: true` signifie qu'il y avait d'autres lignes. Les valeurs sont des scalaires JSON (nombre, chaîne, `null`). Le front affiche « 200 lignes affichées · résultat tronqué », jamais un total. |
+| `memory_updated` | Identifie l'entrée par `kind` et `ref`, comme les outils mémoire (renommage de `id` en `ref` demandé par P3 à P1, point ouvert P-14). |
+| `judge_report` | Schéma `judge_report.v1.json` (P3). `key_figures[]` (0 à 5 : `label`, `value`, `unit`, `source_column`) → cartes KPI. `assumptions[]` (3 au maximum, toujours présent, `[]` si aucune) → hypothèses. `followups[]` (3 au maximum) → boutons de relance. `claims[].text` est un **extrait copié mot pour mot** de la réponse : le front le cherche pour le surligner, et s'il est introuvable, l'affirmation reste listée sous le badge sans surlignage. Le badge et les scores sont **calculés par le code**, jamais par le modèle. Quatre états : Vérifiée, À vérifier, Contredite, **Vérification indisponible** (rapport invalide après réparation, ou juge sans réponse : voir P-13). Si `truncated: true`, un nombre absent des lignes reçues est classé « à vérifier », pas « contredit ». |
 | `confirmation_resolved` | `decision` : `"approve"`, `"reject"` ou `"timeout"` (ALL-02, question 6). `reason` facultatif : `"user"`, `"cancelled"` ou `"disconnected"`. |
 | `message_done` | `interrupted: true` après un `cancel`, avec `content` = le texte partiel. |
 | `error` | `turn_id` vaut `null` pour une erreur hors tour. `code` fait partie de la liste fermée d'`events.md`. |
@@ -396,14 +407,14 @@ Les erreurs du moteur (Ollama injoignable, modèle absent, serveur MCP arrêté,
 La fin de ce tour (`message_done` avec `content` vide et `usage` à `null`) est une **proposition** (point ouvert P-10).
 
 ```jsonl
-{"type":"ui_action","id":"c-31","tool":"memory_delete","arguments":{"kind":"fact","id":17}}
+{"type":"ui_action","id":"c-31","tool":"memory_delete","arguments":{"kind":"fact","ref":"17"}}
 {"type":"turn_started","session_id":"s-1","turn_id":"t-5","ts":1760433150.0,"origin":"ui","user_message":null}
-{"type":"tool_call","session_id":"s-1","turn_id":"t-5","ts":1760433150.0,"call_id":"k-9","server":null,"tool":"memory_delete","arguments":{"kind":"fact","id":17}}
-{"type":"confirmation_required","session_id":"s-1","turn_id":"t-5","ts":1760433150.1,"action_id":"a-4","tool":"memory_delete","impact":{"operation":"DELETE","rows_affected":1,"sample":[{"id":17,"content":"Claire veut les montants en k€"}]},"expires_in_s":120}
+{"type":"tool_call","session_id":"s-1","turn_id":"t-5","ts":1760433150.0,"call_id":"k-9","server":null,"tool":"memory_delete","arguments":{"kind":"fact","ref":"17"}}
+{"type":"confirmation_required","session_id":"s-1","turn_id":"t-5","ts":1760433150.1,"action_id":"a-4","tool":"memory_delete","impact":{"operation":"DELETE","rows_affected":1,"per_table":{"facts":-1},"sample":[{"id":17,"content":"Claire veut les montants en k€"}]},"expires_in_s":120}
 {"type":"confirm","action_id":"a-4","decision":"approve"}
 {"type":"confirmation_resolved","session_id":"s-1","turn_id":"t-5","ts":1760433153.2,"action_id":"a-4","decision":"approve"}
 {"type":"tool_result","session_id":"s-1","turn_id":"t-5","ts":1760433153.3,"call_id":"k-9","ok":true,"summary":"Fait n°17 supprimé","duration_ms":12}
-{"type":"memory_updated","session_id":"s-1","turn_id":"t-5","ts":1760433153.3,"op":"delete","kind":"fact","id":"17","summary":"Claire veut les montants en k€"}
+{"type":"memory_updated","session_id":"s-1","turn_id":"t-5","ts":1760433153.3,"op":"delete","kind":"fact","ref":"17","summary":"Claire veut les montants en k€"}
 {"type":"message_done","session_id":"s-1","turn_id":"t-5","ts":1760433153.3,"content":"","interrupted":false,"usage":null,"duration_ms":3300}
 ```
 
@@ -455,16 +466,18 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 
 ## 10. Décisions et points ouverts
 
-### 10.1 Décidé avec P1 (05/10)
+### 10.1 Décidé avec P1 et P3 (05/10)
 
-| # | Décision | Reporté dans |
-|---|---|---|
-| P-2 | Événement `context_injected {refs: [{kind, ref, label}]}`, émis après `turn_started` seulement s'il y a des entrées. Libellé de l'interface : « Contexte mémoire fourni ». Servira aussi au harness (ablation avec / sans mémoire). | §5.1, §6.2 — `events.md` (P1) |
-| P-3 | `tool_result.data` de `run_select` = `{columns, rows, row_count, truncated}` (c'est le `structuredContent` de l'outil). `row_count` = lignes présentes, pas le total. | §5.1 — `tools.md` (P2 à confirmer) |
-| P-4 | `message_done.interrupted`, avec `content` = texte partiel ; tour hors historique, pas de juge. Annulation par drapeau `engine.cancel()`. | §4.4, §6.2 — `events.md` (P1) |
-| P-5 | `turn_id` nullable pour les erreurs hors tour. Pas de préfixe `ui-` (identifiants opaques) : un tour lancé par l'interface commence par `turn_started {origin: "ui", user_message: null}`. | §3, §5.1 — `events.md` (P1) |
-| P-6 | `Engine.run_ui_action(tool, arguments)`, générateur traité comme un tour, liste blanche `memory_update` / `memory_delete`, HITL et audit `actor = "user"`, refus `BUSY`, hors historique. Message client `ui_action`. | §4.2 — `tools.md` (P1) |
-| P-7 | Réglages de session modifiables : `temperature`, `num_ctx`, `judge_enabled`, `judge_model`. Le modèle de l'agent passe uniquement par `set_model`. Jamais `[hitl]`, `[database]`, `[mcp]`, `ollama.host`, `[web]`. | §4.7 |
+| # | Décision | Avec | Reporté dans |
+|---|---|---|---|
+| P-1 | `assumptions: string[]` (3 au maximum, obligatoire, `[]` si aucune) ajouté à `judge_report.v1`. Badge à quatre états, dont « Vérification indisponible ». `claims[].text` copié mot pour mot pour le surlignage. | P3 | §5.1 — `judge.md` (PR EVAL-01) |
+| P-2 | Événement `context_injected {refs: [{kind, ref, label}]}`, émis après `turn_started` seulement s'il y a des entrées choisies par MEM-04. Libellé de l'interface : « Contexte mémoire fourni ». Sert aussi au harness (ablation avec / sans mémoire). | P1, P3 | §5.1, §6.2 — `events.md` |
+| P-3 | `tool_result.data` de `run_select` = `{columns, rows, row_count, truncated}` (c'est le `structuredContent` de l'outil). `row_count` = lignes présentes, pas le total. Avec `truncated`, le juge classe un nombre absent « à vérifier ». | P1, P3 | §5.1 — `tools.md` (P2 à confirmer) |
+| P-4 | `message_done.interrupted`, avec `content` = texte partiel ; tour hors historique, pas de juge. Annulation par drapeau `engine.cancel()`. | P1, P3 | §4.4, §6.2 — `events.md` |
+| P-5 | `turn_id` nullable pour les erreurs hors tour. Pas de préfixe `ui-` (identifiants opaques) : un tour lancé par l'interface commence par `turn_started {origin: "ui", user_message: null}`. | P1 | §3, §5.1 — `events.md` |
+| P-6 | `Engine.run_ui_action(tool, arguments)`, générateur traité comme un tour, liste blanche `memory_update {kind, ref, patch}` / `memory_delete {kind, ref}`, HITL (cascades dans l'aperçu) et audit `actor = "user"`, refus `BUSY`, hors historique. Message client `ui_action`. Pas de code WS `memory_not_found` : un `ref` inconnu donne un `tool_result` en échec (`not_found`). | P1, P3 | §4.2 — `tools.md`, `memory.md` |
+| P-7 | Réglages de session modifiables : `temperature`, `num_ctx`, `judge_enabled`, `judge_model`. Copie de la config de session (`model_copy`), jamais écrite dans `config.toml`. Le modèle de l'agent passe uniquement par `set_model`. Jamais `[hitl]`, `[database]`, `[mcp]`, `ollama.host`, `[web]`, ni `eval.numeric_tolerance`. | P1, P3 | §4.7 |
+| P-8 | `kind` : `glossary`, `entity`, `relation`, `fact`. `ref` toujours une chaîne (le terme pour le glossaire, l'id en texte sinon). | P3 | §4.2, §5.1 — `memory.md` |
 
 ### 10.2 Aligné sur TASKS.md (fiches ALL-02, WEB-01, WEB-04, WEB-07, CORE-11)
 
@@ -482,13 +495,13 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 
 | # | Question | Avec | Proposition |
 |---|---|---|---|
-| P-1 | La fiche d'indicateurs affiche des **hypothèses**, mais `judge_report.v1` n'a pas de champ pour elles | P3 | Ajouter `assumptions: string[]` (3 au maximum) |
-| P-3 bis | Confirmer la forme de `data` dans `tools.md` | P2 | Telle que décidée avec P1 |
-| P-8 | Valeurs de `kind` pour la mémoire (utilisées par `context_injected`, `memory_updated` et les outils mémoire) | P3 | `glossary`, `entity`, `relation`, `fact` |
+| P-3 bis | Confirmer la forme de `data` dans `tools.md` | P2 | Telle que décidée avec P1 et P3 |
 | P-9 | « Basic agent switching » (catalogue X1) : le changement de modèle suffit-il ? | Suivi | Question à poser au suivi ; `set_model` en attendant |
 | P-10 | Comment se termine un tour d'origine `ui` ? | P1 | `message_done` avec `content: ""`, `interrupted: false`, `usage: null` (aucun appel au modèle), pas de juge |
 | P-11 | Ajouter à la liste fermée des codes d'`events.md` : `BUSY`, `UNKNOWN_ACTION`, `INVALID_CONFIG`, `UI_ACTION_FORBIDDEN` | P1 | Les 4 codes du §7.1 marqués ➕ |
 | P-12 | Ajouter `reason` (`user`, `cancelled`, `disconnected`) à `confirmation_resolved` | P1 | Facultatif, pour distinguer les refus dans l'interface et l'audit |
+| P-13 | Par quel événement le front apprend-il que la vérification est **indisponible** (rapport invalide après réparation, juge sans réponse) ? | P1, P3 | Un `judge_report` avec un champ `status: "unavailable"` et sans `claims`, pour que le badge suive toujours `judge_started` → `judge_report` |
+| P-14 | Renommer `memory_updated.id` en `ref` dans `events.md` (demandé par P3) | P1 | Même nom partout : outils mémoire, `context_injected`, `memory_updated` |
 
 ---
 
