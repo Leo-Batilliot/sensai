@@ -1,0 +1,60 @@
+# SENSAI configuration (contract CORE-03, PROJECT.md §7.3).
+#
+# Copy to config.toml (git-ignored) and adjust. Every key is optional: a missing
+# key keeps the default value shown here. Unknown keys are rejected, so a typo
+# fails loudly instead of being silently ignored.
+#
+# Priority, highest first:
+#   1. CLI arguments          --model, --host, --config
+#   2. Environment variables  SENSAI_<SECTION>_<KEY>, e.g. SENSAI_OLLAMA_MODEL=qwen3:8b
+#                             (lists are comma-separated: SENSAI_HITL_DENY=a,b)
+#                             SENSAI_CONFIG=path/to/config.toml selects the file
+#   3. This file              ./config.toml by default
+#   4. Built-in defaults      identical to the values below
+
+[ollama]
+host = "http://localhost:11434"
+model = "qwen3:8b"            # indicative, chosen by benchmark (CORE-12)
+judge_model = ""               # empty = same model as the agent
+timeout_s = 120
+keep_alive = "30m"
+num_ctx = 8192                 # 2048 to 32768
+
+[agent]
+temperature = 0.1              # 0 to 1
+max_tool_iterations = 6
+max_sql_retries = 2
+language = "fr"
+
+[database]
+business_path = "data/business.db"
+memory_path = "data/memory.db"
+row_limit = 200
+query_timeout_ms = 5000
+
+[hitl]
+confirmation_timeout_s = 120
+always_confirm = []            # tool names that always require confirmation
+deny = []                      # tool names that are always refused
+
+[eval]
+judge_enabled = true
+numeric_tolerance = 0.01       # 1 %
+
+# MCP servers started at launch. Adding a [mcp.servers.<name>] table is enough to
+# plug in a new server; <name> prefixes its tools on collision (time__get_current_time).
+[mcp.servers.sql_toolbox]
+command = "python"
+args = ["-m", "sensai.mcp_servers.sql_toolbox", "--db", "data/business.db"]
+
+[mcp.servers.time]
+command = "uvx"
+args = ["mcp-server-time", "--local-timezone=Europe/Paris"]
+
+# [mcp.servers.filesystem]
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-filesystem", "./reports"]
+
+[web]
+host = "127.0.0.1"
+port = 8000
