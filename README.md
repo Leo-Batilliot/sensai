@@ -27,6 +27,16 @@ make help           # toutes les commandes
 
 Sans `make` : `python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt`.
 
+## Configuration
+
+Tout est optionnel : sans fichier, les valeurs par défaut de [`config.example.toml`](config.example.toml) s'appliquent.
+
+```bash
+cp config.example.toml config.toml   # config.toml n'est pas versionné
+```
+
+Priorité : argument CLI (`--model`, `--host`, `--config`) > variable d'environnement `SENSAI_<SECTION>_<CLÉ>` (ex. `SENSAI_OLLAMA_MODEL`) > `config.toml` > valeurs par défaut.
+
 ## Contribuer
 
 - Une branche par tâche du planning : `feat/<ID>-<slug>` (ex. `feat/CORE-02-ollama-client`)
