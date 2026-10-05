@@ -1,0 +1,8 @@
+# Mixed Windows / WSL team: LF line endings everywhere in the repo
+* text=auto eol=lf
+
+*.db   binary
+*.png  binary
+*.jpg  binary
+*.mp4  binary
+*.pdf  binary

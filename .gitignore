@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local configuration (only config.example.toml is versioned)
+config.toml
+.env
+
+# Generated databases (make seed / make demo-reset)
+/data/
+
+# Exports from the filesystem MCP server
+/reports/
+
+# Frontend: web/dist is force-added at release tags (git add -f web/dist)
+web/node_modules/
+web/dist/
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+/PLANNING.md
+/PROJECT.md

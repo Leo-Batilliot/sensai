@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sensai"
+description = "SENSAI — copilote BI local : questions métier en langage naturel → SQL → réponse vérifiée"
+readme = "README.md"
+requires-python = ">=3.10"
+dynamic = ["version", "dependencies"]
+
+[project.scripts]
+sensai = "sensai.__main__:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "sensai.__version__" }
+# requirements.txt stays the single source of dependencies (required deliverable)
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# versioned prompts (core/prompts/*.md) and DDL (*.sql) shipped with the package
+"*" = ["*.sql", "prompts/*.md"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src", "tests"]
+# code blocks in .md files are illustrative: ruff must not rewrite them
+extend-exclude = ["web", "*.md"]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle
+    "F",     # pyflakes
+    "W",     # pycodestyle warnings
+    "I",     # import sorting
+    "UP",    # modern syntax (capped at 3.10 by target-version)
+    "B",     # bugbear
+    "SIM",   # simplifications
+    "ASYNC", # asyncio pitfalls
+    "T20",   # no print outside the CLI (PROJECT.md §13.2)
+]
+ignore = ["E501"] # line length is handled by the formatter
+
+[tool.ruff.lint.per-file-ignores]
+"src/sensai/__main__.py" = ["T20"]
+"src/sensai/cli/**" = ["T20"]
+"tests/**" = ["T20"]
+"scripts/**" = ["T20"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra --strict-markers --import-mode=importlib"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "ollama: requires a real Ollama server (excluded from CI)",
+    "external: requires an external tool, e.g. uvx mcp-server-time (excluded from CI)",
+]
