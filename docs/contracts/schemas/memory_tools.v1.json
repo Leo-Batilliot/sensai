@@ -1,0 +1,112 @@
+{
+  "$comment": "Outils mémoire natifs (M3), au format d'une réponse MCP tools/list. Contrat : docs/contracts/memory.md. Propriétaire : P3.",
+  "version": 1,
+  "tools": [
+    {
+      "name": "memory_search",
+      "description": "Cherche dans la mémoire de l'agent (glossaire métier, entités, faits) les entrées liées à des mots-clés. À appeler avant d'écrire une requête qui utilise un terme métier ou un nom de client.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string", "minLength": 1, "maxLength": 200, "description": "Mots-clés, par exemple « client rentable » ou « Lemaire »."},
+          "kind": {"type": "string", "enum": ["glossary", "entity", "fact"], "description": "Limiter la recherche à un type d'entrée."},
+          "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5}
+        },
+        "required": ["query"],
+        "additionalProperties": false
+      },
+      "annotations": {"title": "Chercher en mémoire", "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+    },
+    {
+      "name": "glossary_define",
+      "description": "Enregistre ou remplace la définition d'un terme métier de l'entreprise (ex. « client rentable » = marge brute > 25 %). À appeler quand l'utilisateur demande de retenir une définition.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "term": {"type": "string", "minLength": 1, "maxLength": 100, "description": "Le terme, tel que l'utilisateur l'emploie."},
+          "definition": {"type": "string", "minLength": 1, "maxLength": 1000, "description": "La définition en français."},
+          "sql_hint": {"type": "string", "maxLength": 500, "description": "Fragment SQL qui applique la définition sur business.db, si elle est chiffrable."}
+        },
+        "required": ["term", "definition"],
+        "additionalProperties": false
+      },
+      "annotations": {"title": "Définir un terme métier", "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+    },
+    {
+      "name": "memory_upsert_entity",
+      "description": "Crée une entité (client, personne, produit…) ou la complète si elle existe déjà sous ce nom ou cet alias : les alias sont ajoutés, les attributs fusionnés.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {"type": "string", "enum": ["client", "person", "product", "metric", "team", "other"]},
+          "name": {"type": "string", "minLength": 1, "maxLength": 200, "description": "Nom complet, ex. « Brasserie Lemaire »."},
+          "aliases": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 200}, "maxItems": 20, "description": "Autres noms, ex. « Lemaire », « BL »."},
+          "attributes": {"type": "object", "description": "Informations libres, ex. {\"compte_strategique\": true}."},
+          "external_ref": {"type": "string", "pattern": "^[a-z_]+:[0-9]+$", "description": "Ligne correspondante dans business.db, ex. « clients:42 »."}
+        },
+        "required": ["type", "name"],
+        "additionalProperties": false
+      },
+      "annotations": {"title": "Enregistrer une entité", "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+    },
+    {
+      "name": "memory_relate",
+      "description": "Relie deux entités déjà enregistrées, ex. Brasserie Lemaire —managed_by→ Julien.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "src": {"type": "string", "minLength": 1, "description": "Entité source : nom, alias ou ref (id en texte)."},
+          "type": {"type": "string", "pattern": "^[a-z][a-z_]*$", "maxLength": 50, "description": "Verbe en snake_case, ex. managed_by, belongs_to."},
+          "dst": {"type": "string", "minLength": 1, "description": "Entité cible : nom, alias ou ref (id en texte)."}
+        },
+        "required": ["src", "type", "dst"],
+        "additionalProperties": false
+      },
+      "annotations": {"title": "Relier deux entités", "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+    },
+    {
+      "name": "memory_add_fact",
+      "description": "Retient un fait ou une préférence, rattaché ou non à une entité, ex. « Claire veut les montants en k€ ».",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {"type": "string", "minLength": 1, "maxLength": 1000},
+          "category": {"type": "string", "enum": ["preference", "business_rule", "note"]},
+          "entity": {"type": "string", "minLength": 1, "description": "Entité concernée : nom, alias ou ref. Omis pour un fait général."}
+        },
+        "required": ["content", "category"],
+        "additionalProperties": false
+      },
+      "annotations": {"title": "Retenir un fait", "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}
+    },
+    {
+      "name": "memory_update",
+      "description": "Modifie une entrée existante de la mémoire. L'ancienne valeur reste dans le journal d'audit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "kind": {"type": "string", "enum": ["glossary", "entity", "relation", "fact"]},
+          "ref": {"type": "string", "minLength": 1, "description": "Le terme pour le glossaire, l'id en texte pour les autres."},
+          "patch": {"type": "object", "minProperties": 1, "description": "Champs à remplacer (liste par kind dans memory.md §2)."}
+        },
+        "required": ["kind", "ref", "patch"],
+        "additionalProperties": false
+      },
+      "annotations": {"title": "Modifier une entrée", "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+    },
+    {
+      "name": "memory_delete",
+      "description": "Supprime une entrée de la mémoire. Demande une confirmation à l'utilisateur.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "kind": {"type": "string", "enum": ["glossary", "entity", "relation", "fact"]},
+          "ref": {"type": "string", "minLength": 1, "description": "Le terme pour le glossaire, l'id en texte pour les autres."}
+        },
+        "required": ["kind", "ref"],
+        "additionalProperties": false
+      },
+      "annotations": {"title": "Supprimer une entrée", "readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false}
+    }
+  ]
+}
