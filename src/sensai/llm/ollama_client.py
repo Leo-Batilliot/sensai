@@ -148,9 +148,7 @@ class OllamaClient:
                         return
         except httpx.TransportError as exc:
             raise self._transport_error(exc, partial="".join(received)) from exc
-        raise StreamInterrupted(
-            "flux terminé sans message final", partial="".join(received)
-        )
+        raise StreamInterrupted("flux terminé sans message final", partial="".join(received))
 
     async def chat(
         self,
@@ -184,9 +182,7 @@ class OllamaClient:
 
     async def show(self, model: str) -> ModelDetails:
         """Capabilities and context length of a model (POST /api/show)."""
-        data = await self._request_json(
-            "POST", "/api/show", {"model": model}, model=model
-        )
+        data = await self._request_json("POST", "/api/show", {"model": model}, model=model)
         return ModelDetails(
             name=model,
             capabilities=tuple(data.get("capabilities") or ()),
@@ -224,9 +220,7 @@ class OllamaClient:
             "think": think,
             "keep_alive": self.keep_alive,
         }
-        payload.update(
-            {key: value for key, value in optional.items() if value is not None}
-        )
+        payload.update({key: value for key, value in optional.items() if value is not None})
         return payload
 
     async def _request_json(
@@ -246,9 +240,7 @@ class OllamaClient:
         try:
             data = response.json()
         except ValueError as exc:
-            raise OllamaError(
-                "réponse illisible (JSON invalide)", response.status_code
-            ) from exc
+            raise OllamaError("réponse illisible (JSON invalide)", response.status_code) from exc
         if not isinstance(data, dict):
             raise OllamaError("réponse inattendue", response.status_code)
         return data
@@ -290,9 +282,7 @@ def _parse_chunk(data: dict[str, Any]) -> Chunk:
     return Chunk(
         content=message.get("content") or "",
         thinking=message.get("thinking") or "",
-        tool_calls=tuple(
-            _parse_tool_call(call) for call in message.get("tool_calls") or ()
-        ),
+        tool_calls=tuple(_parse_tool_call(call) for call in message.get("tool_calls") or ()),
         done=done,
         done_reason=data.get("done_reason") if done else None,
         usage=_parse_usage(data) if done else None,
