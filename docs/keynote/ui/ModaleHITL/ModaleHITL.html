@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="fr"><head><title>SENSAI · ModaleHITL</title><style>:root{--paper:#ffffff;--surface:#fafafa;--fill-1:#f0f0f0;--fill-2:#d9d9d9;--line:#d0d0d0;--line-strong:#8a8a8a;--ink:#1c1c1c;--ink-muted:#5e5e5e;--annot:#b4530a;--annot-bg:#fdf1e6;--ok:#2f7a3d;--ok-bg:#e8f3ea;--warn:#8a6a00;--warn-bg:#fbf3d9;--bad:#b3261e;--bad-bg:#fbe9e7;--scrim:rgba(0, 0, 0, 0.45);--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-6:24px;--space-8:32px;--radius-sm:4px;--radius-md:8px;--radius-pill:999px;--statusbar-h:48px;--sidepanel-w:360px;--chat-max-w:760px;--modal-w:620px;--font-sans:system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;--font-mono:ui-monospace, "SF Mono", Menlo, Consolas, monospace;}@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--paper:#161616;--surface:#1f1f1f;--fill-1:#2a2a2a;--fill-2:#3d3d3d;--line:#3a3a3a;--line-strong:#7a7a7a;--ink:#ececec;--ink-muted:#a8a8a8;--annot:#f0a35e;--annot-bg:#3a2614;--ok:#7cc48a;--ok-bg:#1d3322;--warn:#e0c050;--warn-bg:#352c10;--bad:#f08a80;--bad-bg:#3d1a17;--scrim:rgba(0, 0, 0, 0.6);}}:root[data-theme="dark"]{--paper:#161616;--surface:#1f1f1f;--fill-1:#2a2a2a;--fill-2:#3d3d3d;--line:#3a3a3a;--line-strong:#7a7a7a;--ink:#ececec;--ink-muted:#a8a8a8;--annot:#f0a35e;--annot-bg:#3a2614;--ok:#7cc48a;--ok-bg:#1d3322;--warn:#e0c050;--warn-bg:#352c10;--bad:#f08a80;--bad-bg:#3d1a17;--scrim:rgba(0, 0, 0, 0.6);}</style><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font:14px/20px var(--font-sans);padding:16px;-webkit-font-smoothing:antialiased}
+.box{border:1.5px solid var(--line-strong);border-radius:var(--radius-md);background:var(--surface)}
+.dash{border:1.5px dashed var(--line-strong);border-radius:var(--radius-md)}
+.row{display:flex;align-items:center;gap:var(--space-2)}
+.col{display:flex;flex-direction:column;gap:var(--space-2)}
+.grow{flex:1;min-width:0}
+.bar{height:8px;border-radius:4px;background:var(--fill-2)}
+.bars{display:flex;flex-direction:column;gap:7px;padding:4px 0}
+.btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border:1.5px solid var(--line-strong);border-radius:var(--radius-sm);font-size:12px;font-weight:600;background:var(--surface);color:var(--ink);white-space:nowrap}
+.btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.danger{background:var(--bad);color:var(--paper);border-color:var(--bad)}
+.btn.ghost{border-style:dashed}
+.btn.sm{height:22px;padding:0 8px;font-size:11px}
+.chip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border:1.5px solid var(--line-strong);border-radius:var(--radius-pill);font-size:11px;font-weight:600;color:var(--ink);background:var(--surface);white-space:nowrap}
+.chip.ok{color:var(--ok);border-color:var(--ok);background:var(--ok-bg)}
+.chip.warn{color:var(--warn);border-color:var(--warn);background:var(--warn-bg)}
+.chip.bad{color:var(--bad);border-color:var(--bad);background:var(--bad-bg)}
+.chip.off{color:var(--ink-muted);border-style:dashed}
+.dot{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block}
+.dot.hollow{background:transparent;border:1.5px solid currentColor}
+.label{font-size:11px;line-height:14px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-muted)}
+.muted{color:var(--ink-muted)}
+.small{font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px;line-height:18px}
+.code{font-family:var(--font-mono);font-size:12px;line-height:18px;background:var(--fill-1);border:1.5px solid var(--line);border-radius:var(--radius-sm);padding:10px 12px;white-space:pre;overflow:hidden;color:var(--ink)}
+.code b{font-weight:700}
+.field{height:32px;border:1.5px solid var(--line-strong);border-radius:var(--radius-sm);background:var(--paper);padding:0 10px;display:flex;align-items:center;color:var(--ink-muted);font-size:13px}
+.rel{position:relative}
+.pin{position:absolute;z-index:5;width:20px;height:20px;border-radius:50%;background:var(--annot);color:var(--paper);font:700 11px/20px var(--font-sans);text-align:center;box-shadow:0 0 0 2px var(--paper)}
+.pin.in{position:static;display:inline-block;flex:none}
+.note{border:1.5px dashed var(--annot);background:var(--annot-bg);color:var(--ink);border-radius:var(--radius-sm);padding:8px 10px;font-size:12px;line-height:16px}
+.note b{color:var(--annot)}
+.hr{height:1.5px;background:var(--line)}
+table{border-collapse:collapse;width:100%}
+th{background:var(--fill-1);text-align:left;font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-muted);padding:7px 10px;border-bottom:1.5px solid var(--line-strong)}
+td{padding:7px 10px;border-bottom:1.5px solid var(--line);font-size:13px}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.caret{font-size:10px;color:var(--ink-muted)}
+.hl-bad{background:var(--bad-bg);color:var(--bad);text-decoration:underline wavy var(--bad);text-underline-offset:3px;font-weight:600;padding:0 2px;border-radius:2px}
+.hl-ok{background:var(--ok-bg);border-bottom:1.5px solid var(--ok);padding:0 2px;border-radius:2px}
+.cursor{display:inline-block;width:8px;height:16px;background:var(--ink);vertical-align:-3px}
+.bubble-user{align-self:flex-end;max-width:70%;background:var(--fill-1);border:1.5px solid var(--line-strong);border-radius:var(--radius-md) var(--radius-md) 2px var(--radius-md);padding:10px 14px}
+.avatar{width:24px;height:24px;border-radius:var(--radius-sm);border:1.5px solid var(--line-strong);background:var(--fill-1);font:700 11px/21px var(--font-sans);text-align:center;color:var(--ink);flex:none}
+.kpi{border:1.5px solid var(--line-strong);border-radius:var(--radius-md);background:var(--surface);padding:12px 14px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.kpi .v{font-size:24px;line-height:28px;font-weight:600;font-variant-numeric:tabular-nums}
+.tabs{display:flex;border-bottom:1.5px solid var(--line-strong)}
+.tab{padding:8px 14px;font-size:12px;font-weight:600;color:var(--ink-muted);border-bottom:3px solid transparent;margin-bottom:-1.5px}
+.tab.on{color:var(--ink);border-bottom-color:var(--ink)}
+.gauge{width:96px;height:8px;border-radius:4px;background:var(--fill-2);overflow:hidden}
+.gauge i{display:block;height:100%;background:var(--ink)}
+</style></head>
+<body>
+
+<div class="rel" style="height:720px;border-radius:var(--radius-md);overflow:hidden;border:1.5px solid var(--line-strong);background:var(--surface)">
+  <div style="padding:16px;opacity:.55"><div class="bars"><div class="bar" style="width:40%"></div><div class="bar" style="width:70%"></div><div class="bar" style="width:55%"></div></div><div class="bars"><div class="bar" style="width:90%"></div><div class="bar" style="width:80%"></div><div class="bar" style="width:60%"></div><div class="bar" style="width:85%"></div><div class="bar" style="width:30%"></div></div></div>
+  <div style="position:absolute;inset:0;background:var(--scrim)"></div>
+  <div class="box" style="position:absolute;left:24px;top:28px;width:600px;background:var(--paper);overflow:hidden">
+    <div class="rel" style="padding:14px 20px;background:var(--warn-bg);border-bottom:1.5px solid var(--warn)">
+      <span class="pin" style="left:-1px;top:-1px">1</span>
+      <div class="row"><b style="color:var(--warn);font-size:18px;line-height:24px">! Confirmation requise</b><div class="grow"></div><span class="pin in">2</span><span class="chip warn mono">⏱ 1:47</span></div>
+      <div class="small" style="margin-top:2px">L'agent veut exécuter une <b>action irréversible</b> via <span class="mono">sql_toolbox__execute_write</span></div>
+      <div style="height:4px;background:var(--fill-2);border-radius:2px;margin-top:10px;overflow:hidden"><div style="width:89%;height:100%;background:var(--warn)"></div></div>
+    </div>
+    <div style="padding:16px 20px;display:flex;flex-direction:column;gap:14px">
+      <div class="rel"><div class="label row" style="margin-bottom:6px;gap:6px"><span class="pin in">3</span>Requête</div><div class="code" style="white-space:pre-wrap"><b>DELETE FROM</b> clients <b>WHERE</b> status = 'inactive'
+  <b>AND</b> id <b>NOT IN</b> (<b>SELECT</b> client_id <b>FROM</b> invoices)</div></div>
+      <div class="rel"><div class="label row" style="margin-bottom:6px;gap:6px"><span class="pin in">4</span>Impact (simulé puis annulé)</div>
+        <div class="row" style="gap:10px;align-items:stretch">
+          <div class="kpi" style="padding:8px 12px"><span class="small muted">clients</span><b style="font-size:20px;color:var(--bad)">−27</b></div>
+          <div class="kpi" style="padding:8px 12px"><span class="small muted">contacts (cascade)</span><b style="font-size:20px;color:var(--bad)">−41</b></div>
+          <div class="kpi grow rel" style="padding:8px 12px;border-style:dashed"><span class="pin" style="right:-8px;top:-8px">5</span><span class="small muted">Protégés, non supprimés</span><b class="small">14 clients · factures à conserver</b></div>
+        </div></div>
+      <div class="rel"><div class="label row" style="margin-bottom:6px;gap:6px"><span class="pin in">6</span>Échantillon · 5 sur 27</div>
+        <div class="box" style="overflow:hidden"><table><thead><tr><th>id</th><th>name</th><th>dernière commande</th></tr></thead><tbody><tr><td class='mono'>12</td><td>Atelier Morel</td><td class='mono'>2024-01-10</td></tr><tr><td class='mono'>19</td><td>Quincaillerie Besson</td><td class='mono'>2024-02-11</td></tr><tr><td class='mono'>26</td><td>SARL Pottier & fils</td><td class='mono'>2024-03-12</td></tr><tr><td class='mono'>33</td><td>Boulangerie Caron</td><td class='mono'>2024-04-13</td></tr><tr><td class='mono'>40</td><td>Studio Leclerc</td><td class='mono'>2024-05-14</td></tr></tbody></table></div></div>
+      <div class="field" style="height:32px">Commentaire (facultatif, journalisé)…</div>
+      <div class="row rel"><span class="pin in">7</span><span class="small muted grow">Sans réponse avant la fin du délai : <b>refus automatique</b></span>
+        <span class="btn" style="height:34px;outline:3px solid var(--ink);outline-offset:2px">Refuser</span><span class="btn danger" style="height:34px">Confirmer la suppression de 27 clients</span></div>
+    </div>
+  </div>
+  <div class="col" style="position:absolute;right:20px;top:28px;width:250px;gap:10px">
+    <span class="label" style="color:var(--paper)">Après décision (toasts)</span>
+    <div class="box small" style="padding:10px 12px;background:var(--paper)"><b>Action refusée</b><br><span class="muted">Base intacte. L'agent en tient compte.</span></div>
+    <div class="box small" style="padding:10px 12px;background:var(--paper);border-color:var(--warn)"><b style="color:var(--warn)">! Délai dépassé</b><br><span class="muted">Action annulée automatiquement · journalisée.</span></div>
+    <div class="box small" style="padding:10px 12px;background:var(--paper);border-color:var(--ok)"><b style="color:var(--ok)">✓ 27 lignes supprimées</b><br><span class="muted">Entrée ajoutée à <span class="mono">write_audit</span>.</span></div>
+  </div>
+</div>
+<style>.legend{margin-top:20px;border-top:1.5px dashed var(--annot);padding-top:12px;max-width:1248px}
+.legend .items{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:8px 20px;margin-top:8px}
+.legend .it{display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:17px}
+.legend .it .pin{margin-top:-1px}.legend .k{font-weight:700}</style><div class="legend"><div class="label" style="color:var(--annot)">Légende des pastilles</div><div class="items"><div class="it"><span class="pin in">1</span><span><b>En-tête</b> : alerte, outil appelé, mention « irréversible ».</span></div><div class="it"><span class="pin in">2</span><span><b>Compte à rebours</b> : <span class="mono">expires_in_s</span> ; à zéro, refus automatique (US-A3-03).</span></div><div class="it"><span class="pin in">3</span><span><b>Requête</b> : le SQL exact qui sera exécuté.</span></div><div class="it"><span class="pin in">4</span><span><b>Impact</b> : lignes touchées par table, cascades comprises (<span class="mono">impact.per_table</span>).</span></div><div class="it"><span class="pin in">5</span><span><b>Protégés</b> : éléments bloqués et pourquoi (<span class="mono">impact.blocked</span>).</span></div><div class="it"><span class="pin in">6</span><span><b>Échantillon</b> : 5 lignes visées (<span class="mono">impact.sample</span>).</span></div><div class="it"><span class="pin in">7</span><span><b>Boutons</b> : « Refuser » à gauche, focus par défaut ; « Confirmer » rouge, libellé qui répète le nombre de lignes. Échap = refuser.</span></div></div></div>
+</body></html>

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="fr"><head><title>SENSAI · Reglages</title><style>:root{--paper:#ffffff;--surface:#fafafa;--fill-1:#f0f0f0;--fill-2:#d9d9d9;--line:#d0d0d0;--line-strong:#8a8a8a;--ink:#1c1c1c;--ink-muted:#5e5e5e;--annot:#b4530a;--annot-bg:#fdf1e6;--ok:#2f7a3d;--ok-bg:#e8f3ea;--warn:#8a6a00;--warn-bg:#fbf3d9;--bad:#b3261e;--bad-bg:#fbe9e7;--scrim:rgba(0, 0, 0, 0.45);--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-6:24px;--space-8:32px;--radius-sm:4px;--radius-md:8px;--radius-pill:999px;--statusbar-h:48px;--sidepanel-w:360px;--chat-max-w:760px;--modal-w:620px;--font-sans:system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;--font-mono:ui-monospace, "SF Mono", Menlo, Consolas, monospace;}@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--paper:#161616;--surface:#1f1f1f;--fill-1:#2a2a2a;--fill-2:#3d3d3d;--line:#3a3a3a;--line-strong:#7a7a7a;--ink:#ececec;--ink-muted:#a8a8a8;--annot:#f0a35e;--annot-bg:#3a2614;--ok:#7cc48a;--ok-bg:#1d3322;--warn:#e0c050;--warn-bg:#352c10;--bad:#f08a80;--bad-bg:#3d1a17;--scrim:rgba(0, 0, 0, 0.6);}}:root[data-theme="dark"]{--paper:#161616;--surface:#1f1f1f;--fill-1:#2a2a2a;--fill-2:#3d3d3d;--line:#3a3a3a;--line-strong:#7a7a7a;--ink:#ececec;--ink-muted:#a8a8a8;--annot:#f0a35e;--annot-bg:#3a2614;--ok:#7cc48a;--ok-bg:#1d3322;--warn:#e0c050;--warn-bg:#352c10;--bad:#f08a80;--bad-bg:#3d1a17;--scrim:rgba(0, 0, 0, 0.6);}</style><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font:14px/20px var(--font-sans);padding:16px;-webkit-font-smoothing:antialiased}
+.box{border:1.5px solid var(--line-strong);border-radius:var(--radius-md);background:var(--surface)}
+.dash{border:1.5px dashed var(--line-strong);border-radius:var(--radius-md)}
+.row{display:flex;align-items:center;gap:var(--space-2)}
+.col{display:flex;flex-direction:column;gap:var(--space-2)}
+.grow{flex:1;min-width:0}
+.bar{height:8px;border-radius:4px;background:var(--fill-2)}
+.bars{display:flex;flex-direction:column;gap:7px;padding:4px 0}
+.btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border:1.5px solid var(--line-strong);border-radius:var(--radius-sm);font-size:12px;font-weight:600;background:var(--surface);color:var(--ink);white-space:nowrap}
+.btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.danger{background:var(--bad);color:var(--paper);border-color:var(--bad)}
+.btn.ghost{border-style:dashed}
+.btn.sm{height:22px;padding:0 8px;font-size:11px}
+.chip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border:1.5px solid var(--line-strong);border-radius:var(--radius-pill);font-size:11px;font-weight:600;color:var(--ink);background:var(--surface);white-space:nowrap}
+.chip.ok{color:var(--ok);border-color:var(--ok);background:var(--ok-bg)}
+.chip.warn{color:var(--warn);border-color:var(--warn);background:var(--warn-bg)}
+.chip.bad{color:var(--bad);border-color:var(--bad);background:var(--bad-bg)}
+.chip.off{color:var(--ink-muted);border-style:dashed}
+.dot{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block}
+.dot.hollow{background:transparent;border:1.5px solid currentColor}
+.label{font-size:11px;line-height:14px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-muted)}
+.muted{color:var(--ink-muted)}
+.small{font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px;line-height:18px}
+.code{font-family:var(--font-mono);font-size:12px;line-height:18px;background:var(--fill-1);border:1.5px solid var(--line);border-radius:var(--radius-sm);padding:10px 12px;white-space:pre;overflow:hidden;color:var(--ink)}
+.code b{font-weight:700}
+.field{height:32px;border:1.5px solid var(--line-strong);border-radius:var(--radius-sm);background:var(--paper);padding:0 10px;display:flex;align-items:center;color:var(--ink-muted);font-size:13px}
+.rel{position:relative}
+.pin{position:absolute;z-index:5;width:20px;height:20px;border-radius:50%;background:var(--annot);color:var(--paper);font:700 11px/20px var(--font-sans);text-align:center;box-shadow:0 0 0 2px var(--paper)}
+.pin.in{position:static;display:inline-block;flex:none}
+.note{border:1.5px dashed var(--annot);background:var(--annot-bg);color:var(--ink);border-radius:var(--radius-sm);padding:8px 10px;font-size:12px;line-height:16px}
+.note b{color:var(--annot)}
+.hr{height:1.5px;background:var(--line)}
+table{border-collapse:collapse;width:100%}
+th{background:var(--fill-1);text-align:left;font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-muted);padding:7px 10px;border-bottom:1.5px solid var(--line-strong)}
+td{padding:7px 10px;border-bottom:1.5px solid var(--line);font-size:13px}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.caret{font-size:10px;color:var(--ink-muted)}
+.hl-bad{background:var(--bad-bg);color:var(--bad);text-decoration:underline wavy var(--bad);text-underline-offset:3px;font-weight:600;padding:0 2px;border-radius:2px}
+.hl-ok{background:var(--ok-bg);border-bottom:1.5px solid var(--ok);padding:0 2px;border-radius:2px}
+.cursor{display:inline-block;width:8px;height:16px;background:var(--ink);vertical-align:-3px}
+.bubble-user{align-self:flex-end;max-width:70%;background:var(--fill-1);border:1.5px solid var(--line-strong);border-radius:var(--radius-md) var(--radius-md) 2px var(--radius-md);padding:10px 14px}
+.avatar{width:24px;height:24px;border-radius:var(--radius-sm);border:1.5px solid var(--line-strong);background:var(--fill-1);font:700 11px/21px var(--font-sans);text-align:center;color:var(--ink);flex:none}
+.kpi{border:1.5px solid var(--line-strong);border-radius:var(--radius-md);background:var(--surface);padding:12px 14px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.kpi .v{font-size:24px;line-height:28px;font-weight:600;font-variant-numeric:tabular-nums}
+.tabs{display:flex;border-bottom:1.5px solid var(--line-strong)}
+.tab{padding:8px 14px;font-size:12px;font-weight:600;color:var(--ink-muted);border-bottom:3px solid transparent;margin-bottom:-1.5px}
+.tab.on{color:var(--ink);border-bottom-color:var(--ink)}
+.gauge{width:96px;height:8px;border-radius:4px;background:var(--fill-2);overflow:hidden}
+.gauge i{display:block;height:100%;background:var(--ink)}
+</style></head>
+<body>
+
+<div class="row" style="align-items:flex-start;gap:20px">
+
+<div class="box rel" style="width:360px;overflow:hidden;background:var(--surface)">
+  <div class="row" style="padding:12px 14px;border-bottom:1.5px solid var(--line-strong)"><b class="grow" style="font-size:18px;line-height:24px">⚙ Réglages</b><span class="btn sm">✕</span></div>
+  <div style="padding:14px;display:flex;flex-direction:column;gap:16px">
+    <div class="rel">
+      <div class="label row" style="margin-bottom:8px;gap:6px"><span class="pin in">1</span>Génération · modifiable</div>
+      <div class="col" style="gap:14px">
+        <div><div class="row"><b class="small grow">Température</b><span class="mono">0,10</span></div><div style="position:relative;height:18px;margin-top:4px"><div style="position:absolute;left:0;right:0;top:7px;height:4px;border-radius:2px;background:var(--fill-2)"></div><div style="position:absolute;left:0;width:10%;top:7px;height:4px;border-radius:2px;background:var(--ink)"></div><div style="position:absolute;left:calc(10% - 8px);top:1px;width:16px;height:16px;border-radius:50%;background:var(--paper);border:2px solid var(--ink)"></div></div><div class="row small muted"><span class="grow">0 · précis</span><span>1 · créatif</span></div><div class="small muted">Conseillé 0 à 0,2 pour le SQL.</div></div>
+        <div class="rel"><span class="pin" style="right:-6px;top:-6px">2</span><div class="row"><b class="small grow">Taille du contexte <span class="mono muted">num_ctx</span></b></div>
+          <div class="field" style="height:30px;margin-top:4px;color:var(--ink);justify-content:space-between"><span class="mono">8 192</span><span class="caret">▼</span></div>
+          <div class="small" style="margin-top:4px;color:var(--warn)">! Changer cette valeur recharge le modèle (premier tour plus lent).</div></div>
+        <div class="row rel"><span class="pin" style="right:-6px;top:-6px">3</span><div class="grow"><b class="small">Vérification par le juge</b><div class="small muted">Badge ✓ ! ✗ après chaque réponse chiffrée</div></div><span style="display:inline-block;width:34px;height:20px;border-radius:10px;position:relative;flex:none;background:var(--ink);border:1.5px solid var(--ink)"><span style="position:absolute;top:1.5px;right:2px;width:14px;height:14px;border-radius:50%;background:var(--paper)"></span></span></div>
+      </div>
+    </div>
+    <div class="row rel" style="justify-content:flex-end"><span class="pin in">4</span><span class="small muted grow">Appliqué au prochain tour</span><span class="btn sm">Réinitialiser</span><span class="btn sm primary">Appliquer</span></div>
+    <div class="hr"></div>
+    <div class="rel">
+      <div class="row" style="margin-bottom:4px;gap:6px"><span class="pin in">5</span><span class="label grow">Configuration serveur · lecture seule</span><span class="small muted">🔒</span></div>
+      <div class="row small" style="padding:5px 0;border-bottom:1.5px solid var(--line)"><span class="muted grow">Hôte Ollama</span><span class="mono">http://localhost:11434</span></div><div class="row small" style="padding:5px 0;border-bottom:1.5px solid var(--line)"><span class="muted grow">Modèle du juge</span><span class="mono">(même que l'agent)</span></div><div class="row small" style="padding:5px 0;border-bottom:1.5px solid var(--line)"><span class="muted grow">keep_alive</span><span class="mono">30m</span></div><div class="row small" style="padding:5px 0;border-bottom:1.5px solid var(--line)"><span class="muted grow">Itérations d'outils max</span><span class="mono">6</span></div><div class="row small" style="padding:5px 0;border-bottom:1.5px solid var(--line)"><span class="muted grow">Relances SQL max</span><span class="mono">2</span></div><div class="row small" style="padding:5px 0;border-bottom:1.5px solid var(--line)"><span class="muted grow">Lignes max par requête</span><span class="mono">200</span></div><div class="row small" style="padding:5px 0;border-bottom:1.5px solid var(--line)"><span class="muted grow">Délai d'une requête</span><span class="mono">5 000 ms</span></div><div class="row small" style="padding:5px 0;border-bottom:1.5px solid var(--line)"><span class="muted grow">Délai de confirmation</span><span class="mono">120 s</span></div><div class="row small" style="padding:5px 0;border-bottom:1.5px solid var(--line)"><span class="muted grow">Tolérance numérique</span><span class="mono">1 %</span></div>
+      <div class="small muted" style="margin-top:6px">Lu dans <span class="mono">GET /api/config</span>. À modifier dans <span class="mono">config.toml</span>, puis redémarrer.</div>
+    </div>
+  </div>
+</div>
+<div class="col" style="width:300px;gap:12px">
+  <div class="note"><b>Ouverture ·</b> bouton ⚙ de la barre d'état. Le panneau prend la place du panneau droit (Timeline / Mémoire) et se ferme avec ✕ ou Échap.</div>
+  <div class="label" style="margin-top:4px">Après « Appliquer »</div>
+  <div class="box small" style="padding:10px 12px;border-color:var(--ok)"><b style="color:var(--ok)">✓ Réglages appliqués</b> <span class="mono muted">config_updated</span><br><span class="muted">Température 0,10 · contexte 8 192 · juge activé. Pris en compte au prochain tour.</span></div>
+  <div class="box small" style="padding:10px 12px;border-color:var(--bad);background:var(--bad-bg)"><b style="color:var(--bad)">✗ Valeur refusée</b> <span class="mono">invalid_config</span><br><span style="color:var(--bad)">num_ctx doit être entre 2 048 et 32 768.</span></div>
+  <div class="label" style="margin-top:4px">Juge désactivé</div>
+  <div class="row"><span class="chip off">Juge désactivé</span><span class="small muted">remplace le badge sous chaque réponse</span></div>
+  <div class="note"><b>Pendant une génération ·</b> « Appliquer » reste possible, la valeur sert au tour suivant.</div>
+</div>
+</div>
+<style>.legend{margin-top:20px;border-top:1.5px dashed var(--annot);padding-top:12px;max-width:1248px}
+.legend .items{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:8px 20px;margin-top:8px}
+.legend .it{display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:17px}
+.legend .it .pin{margin-top:-1px}.legend .k{font-weight:700}</style><div class="legend"><div class="label" style="color:var(--annot)">Légende des pastilles</div><div class="items"><div class="it"><span class="pin in">1</span><span><b>Génération · modifiable</b> : les trois réglages que l'utilisateur peut changer depuis le navigateur.</span></div><div class="it"><span class="pin in">2</span><span><b><span class="mono">num_ctx</span></b> : liste de valeurs (4 096, 8 192, 16 384, 32 768). Avertit que le modèle sera rechargé. La jauge de la barre d'état suit la nouvelle valeur.</span></div><div class="it"><span class="pin in">3</span><span><b>Juge on/off</b> : <span class="mono">judge_enabled</span>. Désactivé, le badge est remplacé par la chip « Juge désactivé ».</span></div><div class="it"><span class="pin in">4</span><span><b>Appliquer</b> : envoie <span class="mono">set_config {patch: {temperature, num_ctx, judge_enabled}}</span> ; le serveur répond <span class="mono">config_updated</span>. Effectif au tour suivant, historique conservé. <b>Réinitialiser</b> envoie un <span class="mono">set_config</span> dont le <span class="mono">patch</span> est <span class="mono">defaults</span> de <span class="mono">GET /api/config</span>.</span></div><div class="it"><span class="pin in">5</span><span><b>Lecture seule</b> : liste lue dans <span class="mono">GET /api/config</span> (<span class="mono">read_only</span>) : hôte Ollama, modèle du juge, <span class="mono">keep_alive</span>, garde-fous de l'agent, limites SQL, délai HITL, tolérance numérique. Modifiables seulement dans <span class="mono">config.toml</span>.</span></div></div></div>
+</body></html>
