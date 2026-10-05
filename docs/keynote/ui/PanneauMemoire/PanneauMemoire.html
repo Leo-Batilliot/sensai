@@ -73,15 +73,26 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
     <div class="box rel" style="padding:10px 12px"><span class="pin" style="left:-10px;top:-10px">4</span><div class="label" style="margin-bottom:6px">Édition</div><div class="field" style="height:28px;color:var(--ink)">montants</div><div class="field" style="height:44px;margin-top:6px;color:var(--ink)">Afficher en k€, arrondis à 1 décimale</div><div class="row" style="margin-top:8px;justify-content:flex-end"><span class="btn sm">Annuler</span><span class="btn sm primary">Enregistrer</span></div></div>
   </div>
 </div>
-<div class="col" style="width:290px;gap:12px">
+<div class="col" style="width:340px;gap:12px">
   <div class="box small rel" style="padding:10px 12px"><span class="pin" style="left:-10px;top:-10px">5</span><b>Mémoire mise à jour</b><br><span class="muted">Glossaire · « client rentable » créé par l'agent</span></div>
   <div class="note"><b>Journal ·</b> liste des opérations create / update / delete, acteur (agent / utilisateur), date.</div>
   <div class="label">Entités (onglet)</div>
-  <div class="box small" style="padding:8px 12px"><b>Brasserie Lemaire</b> <span class="chip">client</span><br><span class="muted">alias : Lemaire, BL · suivi par → Julien</span></div>
+  <div class="box small" style="padding:8px 12px"><div class="row"><b class="grow">Brasserie Lemaire</b><span class="chip">client</span></div><span class="muted">alias : Lemaire, BL · suivi par → Julien</span><div class="row" style="margin-top:6px;justify-content:flex-end"><span class="btn sm" style="color:var(--bad);border-color:var(--bad)">Supprimer</span></div></div>
+  <div class="box rel" style="background:var(--paper);overflow:hidden">
+    <div class="row" style="padding:8px 12px;background:var(--warn-bg);border-bottom:1.5px solid var(--warn)"><span class="pin in">6</span><b class="small grow" style="color:var(--warn)">! Supprimer l'entité « Brasserie Lemaire » ?</b><span class="chip warn mono">⏱ 1:52</span></div>
+    <div class="small" style="padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+      <div><b>Supprimés avec elle</b></div>
+      <div><span class="label">Relations · 2</span><div class="mono" style="margin-top:2px">Brasserie Lemaire → suivi par → Julien<br>Brasserie Lemaire → appartient à → Secteur CHR</div></div>
+      <div><span class="label">Faits · 1</span><div style="margin-top:2px">« Commandes groupées en fin de mois »</div></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap"><span class="chip bad">entités −1</span><span class="chip bad">relations −2</span><span class="chip bad">faits −1</span></div>
+      <div class="muted">La base métier (<span class="mono">business.db</span>) n'est pas touchée.</div>
+      <div class="row" style="justify-content:flex-end"><span class="btn sm" style="outline:2px solid var(--ink);outline-offset:2px">Refuser</span><span class="btn sm danger">Supprimer 4 éléments</span></div>
+    </div>
+  </div>
 </div>
 </div>
 <style>.legend{margin-top:20px;border-top:1.5px dashed var(--annot);padding-top:12px;max-width:1248px}
 .legend .items{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:8px 20px;margin-top:8px}
 .legend .it{display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:17px}
-.legend .it .pin{margin-top:-1px}.legend .k{font-weight:700}</style><div class="legend"><div class="label" style="color:var(--annot)">Légende des pastilles</div><div class="items"><div class="it"><span class="pin in">1</span><span><b>Onglet Mémoire</b> du panneau droit, à côté de Timeline.</span></div><div class="it"><span class="pin in">2</span><span><b>Nouvelle entrée</b> : mise en avant après un <span class="mono">memory_updated</span>.</span></div><div class="it"><span class="pin in">3</span><span><b>Supprimer</b> : ouvre la modale HITL (<span class="mono">memory_delete</span> est destructif).</span></div><div class="it"><span class="pin in">4</span><span><b>Édition</b> : formulaire en place, enregistré via l'agent, audité.</span></div><div class="it"><span class="pin in">5</span><span><b>Toast</b> : signale toute écriture faite par l'agent pendant un tour.</span></div></div></div>
+.legend .it .pin{margin-top:-1px}.legend .k{font-weight:700}</style><div class="legend"><div class="label" style="color:var(--annot)">Légende des pastilles</div><div class="items"><div class="it"><span class="pin in">1</span><span><b>Onglet Mémoire</b> du panneau droit, à côté de Timeline.</span></div><div class="it"><span class="pin in">2</span><span><b>Nouvelle entrée</b> : mise en avant après un <span class="mono">memory_updated</span>.</span></div><div class="it"><span class="pin in">3</span><span><b>Supprimer</b> : ouvre la modale HITL (<span class="mono">memory_delete</span> est destructif).</span></div><div class="it"><span class="pin in">4</span><span><b>Édition</b> : formulaire en place, enregistré via l'agent, audité.</span></div><div class="it"><span class="pin in">5</span><span><b>Toast</b> : signale toute écriture faite par l'agent pendant un tour.</span></div><div class="it"><span class="pin in">6</span><span><b>Aperçu de suppression d'une entité</b> : la modale HITL liste les relations et les faits supprimés avec elle (suppression en cascade), avec le total par table. Le bouton de confirmation répète le nombre d'éléments.</span></div></div></div>
 </body></html>
