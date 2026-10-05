@@ -4,7 +4,7 @@
 |---|---|
 | **Tâche** | MEM-01 (PLANNING §7, sprint 1) |
 | **Propriétaire** | P3 — Mémoire & Évaluation |
-| **Consommateurs** | P1 (registry, injection dans le prompt, événements), P4 (panneau mémoire, `GET /api/memory`, `memory_update` / `memory_delete` WS), P2 (politique HITL) |
+| **Consommateurs** | P1 (registry, injection dans le prompt, événements), P4 (panneau mémoire, `GET /api/memory`, `ui_action` WS), P2 (politique HITL) |
 | **Statut** | Brouillon — gel le **mar 06/10 à 12 h** |
 | **Fait foi** | [`src/sensai/memory/schema.sql`](../../src/sensai/memory/schema.sql) pour le schéma, [`schemas/memory_tools.v1.json`](schemas/memory_tools.v1.json) pour les outils |
 | **Spécification** | PROJECT.md §6.4 (M3) |
@@ -117,7 +117,7 @@ Une erreur d'exécution est un résultat d'outil en erreur (équivalent de `isEr
 
 | `code` | Quand |
 |---|---|
-| `not_found` | `(kind, ref)` inexistant (`memory_update`, `memory_delete`) — correspond à `memory_not_found` côté WS |
+| `not_found` | `(kind, ref)` inexistant (`memory_update`, `memory_delete`), y compris depuis l'interface : pas de code WS séparé, l'erreur arrive dans un `tool_result` en échec |
 | `entity_not_found` | `src`, `dst` ou `entity` ne désigne aucune entité |
 | `ambiguous_entity` | Plusieurs entités correspondent ; le message liste les candidats `(type, name, ref)` |
 | `invalid_patch` | Champ de `patch` inconnu ou non modifiable pour ce `kind` (§2), ou valeur refusée par une contrainte |
@@ -138,8 +138,16 @@ Les arguments mal formés (type, champ requis manquant) sont refusés **avant** 
    "blocked": []}
   ```
 
-- Actions lancées depuis l'interface (`memory_update` / `memory_delete` WS) : mêmes outils, mêmes arguments (`kind`, `ref`, `patch`), passés tels quels par le moteur (point **P-6**), avec `actor = 'user'` dans l'audit.
-- Injection du contexte (MEM-04) : proposition pour le point **P-2**, un événement `context_injected {refs: [{kind, ref, label}]}` émis après `turn_started`, pour que l'interface affiche la mémoire appliquée.
+- **Actions lancées depuis l'interface** (point **P-6**, réponse de P1) : message WS `ui_action {tool, arguments}` → `Engine.run_ui_action`, un générateur asynchrone traité comme un tour.
+  - Liste blanche : seuls `memory_update` et `memory_delete` sont appelables depuis l'interface. Leurs arguments sont ceux du §3 (`kind`, `ref`, `patch`), passés tels quels.
+  - Le tour commence par `turn_started {origin: "ui", user_message: null}` (point **P-5**), avec un `turn_id` normal.
+  - Même politique HITL et même broker que la session : `memory_delete` demande donc une confirmation.
+  - Audit avec `actor = 'user'` et le `session_id`.
+  - Refus avec `BUSY` si un tour est en cours ; rien n'est ajouté à l'historique de conversation.
+- **Injection du contexte** (MEM-04, point **P-2**, accepté par P1) : événement `context_injected {refs: [{kind, ref, label}]}`, émis juste après `turn_started` et seulement s'il y a des entrées.
+  - `label` : le terme pour le glossaire, le nom pour une entité, le début du contenu pour un fait.
+  - Il dit ce qui a été **fourni** au modèle, pas ce qu'il a appliqué : libellé d'interface « contexte mémoire fourni ».
+  - Le harness s'en sert pour la comparaison avec et sans mémoire.
 
 ## 5. `GET /api/memory` (P4)
 
@@ -157,9 +165,9 @@ Renvoie les colonnes du §2, `aliases` et `attributes` décodés en JSON, plus `
 | # | Sujet | Statut |
 |---|---|---|
 | P-8 (WS) | Valeurs de `kind` | ✅ `glossary`, `entity`, `relation`, `fact` |
-| P-6 (WS) | Actions mémoire depuis l'interface | Arguments des outils compatibles tels quels ; méthode moteur à définir par P1 |
+| P-6 (WS) | Actions mémoire depuis l'interface | ✅ `ui_action` → `Engine.run_ui_action`, liste blanche `memory_update` / `memory_delete` (§4) ; `ui_action` à ajouter dans `websocket.md` (P4) |
 | M-1 | `memory_updated.id` → `ref` dans `events.md` | À valider par P1 |
-| M-2 | Événement `context_injected` (P-2) | Proposition, à valider par P1 et P4 |
+| M-2 | Événement `context_injected` (P-2) | ✅ Accepté par P1, forme du §4 |
 | M-3 | Lien depuis `tools.md` vers ce document | À faire par P1 |
 | M-4 | Types nullables (`["string", "null"]`) dans le paramètre `tools` d'Ollama | Évités par précaution : optionnel = omis. Un modèle qui envoie `null` déclenche une réparation (T5) |
 
