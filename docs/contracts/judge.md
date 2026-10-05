@@ -42,6 +42,13 @@ Le modèle classe des affirmations ; les scores et le badge sont **calculés par
 | 3 | ✅ Vérifiée | au moins une affirmation, toutes `supported`, contrôle numérique vert |
 | 4 | ⚠️ À vérifier | tous les autres cas |
 
+Résultats tronqués (`tool_result.data.truncated: true`, point P-3) : un nombre absent des lignes reçues peut se trouver dans les lignes coupées. Il n'est donc **pas** compté comme absent des données (règle 1) et mène au plus à ⚠️ À vérifier.
+
+**Quand le juge ne tourne pas** (ni `judge_started` ni `judge_report`) :
+- réponse sans aucun `run_select` réussi (pas une réponse chiffrée) ;
+- tour interrompu par `cancel` (`message_done.interrupted: true`, point P-4) ;
+- `eval.judge_enabled = false` dans la config ou pour la session (`set_config`, point P-7).
+
 ## 3. Métriques (PROJECT §11.2)
 
 Conditions de reproductibilité : même graine de données, date de référence figée (`--today`), `temperature` 0, une session neuve par question.
