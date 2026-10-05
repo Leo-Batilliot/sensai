@@ -40,8 +40,7 @@ ws://<host>:<port>/ws/{session_id}
 ```text
 client                                  serveur
   | ---- ouverture WS /ws/{id} ---------> |
-  | <--- session_ready -------------------|   toujours en premier
-  | <--- session_replay ------------------|   seulement si resumed = true
+  | <--- session_ready -------------------|   toujours en premier (avec history si resumed = true)
   | ---- user_message, … ---------------> |
 ```
 
@@ -56,7 +55,7 @@ Si une seconde connexion s'ouvre avec le même `session_id`, la première est fe
 - Une session (un `Engine` et son historique) vit **en mémoire du serveur**. Elle est conservée **1 h** après la dernière déconnexion, puis libérée.
 - Un redémarrage du serveur perd les sessions (la mémoire long terme `memory.db` est conservée). Le client reçoit alors `session_ready` avec `resumed: false` et vide son affichage.
 - **Reconnexion côté client** : automatique, avec un délai croissant de 0,5 s, 1 s, 2 s, puis 5 s maximum. Pendant ce temps, la barre d'état affiche « reconnexion en cours ».
-- Un tour en cours **continue côté serveur** pendant une déconnexion. Les événements émis pendant la coupure sont rattrapés par `session_replay`.
+- **Déconnexion pendant un tour** (CORE-11) : le tour est annulé (`engine.cancel()`, comme un `cancel`), et toute confirmation en attente est **refusée** (`decision: "reject"`, `reason: "disconnected"`). Une action destructive n'est donc jamais laissée en suspens sans personne devant l'écran. À la reconnexion, `session_ready.history` contient la fin du tour annulé.
 - Le maintien de la connexion repose sur les pings WebSocket d'uvicorn (`ws_ping_interval` par défaut). Il n'y a pas de message applicatif de type « heartbeat ».
 
 ---
@@ -67,7 +66,7 @@ Si une seconde connexion s'ouvre avec le même `session_id`, la première est fe
 - Chaque message a un champ `type` (chaîne).
 - **Client → serveur** : le champ `id` (chaîne, ≤ 64 caractères) est facultatif. Quand il est présent, le serveur le renvoie dans `reply_to` sur l'erreur ou l'accusé de réception correspondant. Cela permet au front de savoir à quelle action se rapporte une réponse.
 - **Champs inconnus** : ignorés, des deux côtés, pour la compatibilité ascendante.
-- **Type inconnu ou champ obligatoire manquant** : erreur `BAD_MESSAGE` (§7.1). La connexion reste ouverte.
+- **Type inconnu ou champ obligatoire manquant** : erreur `INVALID_MESSAGE` (§7.1). La connexion reste ouverte.
 - Dates et durées : `ts` en secondes epoch (float), durées en millisecondes (`*_ms`) ou en secondes (`*_s`), comme dans `events.md`.
 - Les identifiants (`session_id`, `turn_id`, `call_id`, `action_id`) sont **opaques** : le front ne les découpe jamais pour en tirer un sens.
 
@@ -92,7 +91,7 @@ Si une seconde connexion s'ouvre avec le même `session_id`, la première est fe
 ```
 
 - `content` : obligatoire, **non vide après `strip()`**, 4 000 caractères au maximum.
-- Sinon : `EMPTY_MESSAGE` ou `MESSAGE_TOO_LONG`.
+- Sinon : `INVALID_MESSAGE`, avec un `message` qui précise la cause (vide ou trop long).
 - Refusé si un tour est en cours (y compris en attente de confirmation) : `BUSY`.
 - **Accepté** pendant que le juge du tour précédent tourne encore (le juge n'est pas bloquant, §6.2).
 
@@ -168,7 +167,7 @@ client                                   serveur
 ```
 
 - Seul moyen de changer le modèle de l'agent : `set_config` ne le permet pas.
-- Le modèle doit exister dans Ollama (`/api/tags`). Sinon : erreur `UNKNOWN_MODEL`, le modèle courant reste inchangé.
+- Le modèle doit exister dans Ollama (`/api/tags`). Sinon : erreur `MODEL_NOT_FOUND`, le modèle courant reste inchangé.
 - Le changement prend effet **au tour suivant**, et l'historique est conservé (US-X1-02).
 - Réponse : `model_changed` (§5.2), avec `supports_tools`. Le front affiche un avertissement si le modèle ne gère pas les outils.
 
@@ -214,8 +213,9 @@ Leur définition fait foi dans `events.md` (propriétaire P1). Ce contrat n'en r
 | `turn_started` | `origin` : `"user"` ou `"ui"`. Pour un tour lancé par `ui_action`, `user_message` vaut `null` et le front n'affiche pas de bulle utilisateur. |
 | `context_injected` | `refs: [{kind, ref, label}]`, émis juste après `turn_started`, **seulement s'il y a des entrées**. `kind` prend les valeurs de P-8. Il dit ce qui a été **fourni** au modèle, pas ce qu'il a appliqué : le libellé de l'interface est **« Contexte mémoire fourni »**, jamais « appliqué ». |
 | `tool_result` (`run_select`) | `data = {columns, rows, row_count, truncated}`. `row_count` est le nombre de lignes **présentes dans `rows`**, pas le total. `truncated: true` signifie qu'il y avait d'autres lignes. Les valeurs sont des scalaires JSON (nombre, chaîne, `null`). Le front affiche « 200 lignes affichées · résultat tronqué », jamais un total. |
+| `confirmation_resolved` | `decision` : `"approve"`, `"reject"` ou `"timeout"` (ALL-02, question 6). `reason` facultatif : `"user"`, `"cancelled"` ou `"disconnected"`. |
 | `message_done` | `interrupted: true` après un `cancel`, avec `content` = le texte partiel. |
-| `error` | `turn_id` vaut `null` pour une erreur hors tour. |
+| `error` | `turn_id` vaut `null` pour une erreur hors tour. `code` fait partie de la liste fermée d'`events.md`. |
 
 ### 5.2 Messages propres au WebSocket
 
@@ -230,6 +230,7 @@ Envoyé une fois, juste après l'ouverture.
  "protocol_version": 1,
  "server_version": "0.2.0",
  "resumed": false,
+ "history": [],
  "model": "qwen3:8b",
  "supports_tools": true,
  "ctx_max": 8192,
@@ -247,24 +248,14 @@ Envoyé une fois, juste après l'ouverture.
  ]}
 ```
 
+- `history` : la liste des **événements de la session depuis le dernier `reset`**, dans l'ordre d'émission, y compris ceux des tours d'origine `ui`. Elle est vide quand `resumed: false`. Le front la rejoue dans le même reducer que les événements en direct (principe 4).
+  - Pour alléger le message, **les `token` et `thinking` sont omis**, puisque `message_done.content` porte le texte complet.
+  - Aucun tour n'est en cours à la reconnexion, car une déconnexion annule le tour (§2.4). La liste ne contient donc jamais de confirmation en attente.
 - `config` contient les **valeurs de la session**, uniquement pour les clés du tableau §4.7. Les valeurs de `config.toml` et les réglages en lecture seule sont dans `GET /api/config` (§9).
 - `servers[].status` : `"up"` ou `"down"`. Les chips de la barre d'état en découlent (maquette BarreEtat, annotation 2).
 - `tools[].server` vaut `null` pour les outils natifs (mémoire).
-- `tools[].name` est le nom tel que le modèle le voit, préfixé en cas de collision (PROJECT §6.3).
+- `tools[].name` est le nom tel que le modèle le voit, défini dans `tools.md`. Proposition de l'atelier (ALL-02, question 3) : toujours préfixé par le serveur (`sql_toolbox__run_select`).
 - Le front vérifie `protocol_version`. Si elle diffère de la version attendue, il affiche « Version de l'interface incompatible, rechargez la page ».
-
-#### `session_replay`
-
-Envoyé juste après `session_ready` quand `resumed: true`.
-
-```json
-{"type": "session_replay", "session_id": "3f2b…", "ts": 1760433100.0,
- "events": [ {"type": "turn_started", "…": "…"}, {"type": "message_done", "…": "…"} ]}
-```
-
-- Il contient **tous les événements de la session depuis le dernier `reset`**, dans l'ordre d'émission, y compris ceux des tours d'origine `ui`.
-- Pour alléger le message, **les `token` et `thinking` des tours terminés sont omis**, puisque `message_done.content` porte le texte complet. Pour un tour encore en cours, ils sont tous inclus.
-- **Confirmation en attente** : si le replay contient un `confirmation_required` sans `confirmation_resolved`, et que `ts + expires_in_s` est encore dans le futur, le front rouvre la modale avec le temps restant. Le serveur et le navigateur tournent sur la même machine, donc l'horloge est partagée.
 
 #### `session_reset`
 
@@ -329,9 +320,9 @@ Le juge du tour précédent ne compte pas comme un tour en cours.
 
 ### 6.3 Délai de confirmation
 
-- Le décompte est géré **par le moteur**. Le front affiche un compte à rebours jusqu'à `ts + expires_in_s`, mais ne décide rien.
-- À l'expiration, le moteur émet `confirmation_resolved` avec `decision: "reject"` et `reason: "timeout"` (US-A3-03).
-- Une déconnexion n'arrête pas le décompte.
+- Le décompte est géré **par le moteur**. Le front affiche un compte à rebours de `expires_in_s` secondes **à partir de l'heure de réception** de l'événement (pas de `ts`), mais ne décide rien.
+- À l'expiration, le moteur émet `confirmation_resolved` avec `decision: "timeout"` (US-A3-03). Le front affiche « Délai dépassé, action annulée ».
+- Une déconnexion refuse immédiatement la confirmation (`decision: "reject"`, `reason: "disconnected"`, §2.4).
 
 ---
 
@@ -339,18 +330,16 @@ Le juge du tour précédent ne compte pas comme un tour en cours.
 
 ### 7.1 Erreurs de protocole (émises par la couche web)
 
-Elles utilisent la forme de l'événement `error` d'`events.md` (`code`, `message`, `recoverable`), avec `turn_id: null` et `reply_to` si le message du client avait un `id`. La connexion reste ouverte. Les codes sont en majuscules, comme ceux du moteur.
+Elles utilisent la forme de l'événement `error` d'`events.md` (`code`, `message`, `recoverable`), avec `turn_id: null` et `reply_to` si le message du client avait un `id`. La connexion reste ouverte. Les codes appartiennent à la **liste fermée d'`events.md`** (ALL-02, question 5) ; ceux marqués ➕ sont à y ajouter (point ouvert P-11).
 
 | Code | Quand | `recoverable` |
 |---|---|---|
-| `BAD_MESSAGE` | JSON invalide, `type` inconnu, champ obligatoire manquant ou mal typé | true |
-| `EMPTY_MESSAGE` | `user_message` vide après `strip()` | true |
-| `MESSAGE_TOO_LONG` | `content` > 4 000 caractères | true |
-| `BUSY` | `user_message` ou `ui_action` refusé parce qu'un tour est en cours (§6.1). Même code que le moteur. | true |
-| `UI_ACTION_FORBIDDEN` | `ui_action` sur un outil hors liste blanche | true |
-| `UNKNOWN_ACTION` | `confirm` sur une action inconnue, déjà résolue ou expirée | true |
-| `UNKNOWN_MODEL` | `set_model`, ou `set_config` sur `judge_model`, avec un modèle absent d'Ollama | true |
-| `INVALID_CONFIG` | `set_config` : clé hors du tableau §4.7 ou valeur hors bornes | true |
+| `INVALID_MESSAGE` | JSON invalide, `type` inconnu, champ obligatoire manquant ou mal typé, `user_message` vide ou de plus de 4 000 caractères | true |
+| `BUSY` ➕ | `user_message` ou `ui_action` refusé parce qu'un tour est en cours (§6.1). Même code que le moteur. | true |
+| `MODEL_NOT_FOUND` | `set_model`, ou `set_config` sur `judge_model`, avec un modèle absent d'Ollama | true |
+| `UNKNOWN_ACTION` ➕ | `confirm` sur une action inconnue, déjà résolue ou expirée | true |
+| `INVALID_CONFIG` ➕ | `set_config` : clé hors du tableau §4.7 ou valeur hors bornes | true |
+| `UI_ACTION_FORBIDDEN` ➕ | `ui_action` sur un outil hors liste blanche | true |
 
 ```json
 {"type": "error", "session_id": "3f2b…", "turn_id": null, "ts": 1760433300.0,
@@ -421,8 +410,7 @@ La fin de ce tour (`message_done` avec `content` vide et `usage` à `null`) est 
 ### 8.4 Reconnexion après rechargement de la page
 
 ```jsonl
-{"type":"session_ready","session_id":"s-1","ts":1760433200.0,"protocol_version":1,"resumed":true,"model":"qwen3:8b","…":"…"}
-{"type":"session_replay","session_id":"s-1","ts":1760433200.0,"events":[{"type":"turn_started","turn_id":"t-1","…":"…"},{"type":"message_done","turn_id":"t-1","…":"…"},{"type":"judge_report","turn_id":"t-1","…":"…"}]}
+{"type":"session_ready","session_id":"s-1","ts":1760433200.0,"protocol_version":1,"resumed":true,"history":[{"type":"turn_started","turn_id":"t-1","…":"…"},{"type":"message_done","turn_id":"t-1","…":"…"},{"type":"judge_report","turn_id":"t-1","…":"…"}],"model":"qwen3:8b","…":"…"}
 ```
 
 ---
@@ -441,7 +429,7 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 | `GET /api/config` | Valeurs par défaut, bornes et réglages en lecture seule (voir ci-dessous) | Panneau Réglages |
 
 - `supports_tools` vient de `POST /api/show` (champ `capabilities`) d'Ollama.
-- En cas d'erreur : statut HTTP 5xx et `{"error": {"code", "message"}}`. Par exemple, `GET /api/models` répond 503 avec `OLLAMA_UNREACHABLE` quand Ollama est arrêté.
+- En cas d'erreur : statut HTTP 5xx et `{"error": {"code", "message"}}`, avec les codes d'`events.md`. Par exemple, `GET /api/models` répond 503 avec `OLLAMA_UNAVAILABLE` quand Ollama est arrêté.
 
 **Réponse de `GET /api/config`**
 
@@ -478,7 +466,19 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 | P-6 | `Engine.run_ui_action(tool, arguments)`, générateur traité comme un tour, liste blanche `memory_update` / `memory_delete`, HITL et audit `actor = "user"`, refus `BUSY`, hors historique. Message client `ui_action`. | §4.2 — `tools.md` (P1) |
 | P-7 | Réglages de session modifiables : `temperature`, `num_ctx`, `judge_enabled`, `judge_model`. Le modèle de l'agent passe uniquement par `set_model`. Jamais `[hitl]`, `[database]`, `[mcp]`, `ollama.host`, `[web]`. | §4.7 |
 
-### 10.2 Encore ouverts
+### 10.2 Aligné sur TASKS.md (fiches ALL-02, WEB-01, WEB-04, WEB-07, CORE-11)
+
+| Sujet | Alignement |
+|---|---|
+| Reconnexion (ALL-02, question 8) | L'historique est dans `session_ready.history`, pas dans un message séparé |
+| Déconnexion (CORE-11, WEB-08) | Tour annulé, confirmation en attente refusée |
+| `confirmation_resolved.decision` (ALL-02, question 6) | `approve`, `reject` ou `timeout` |
+| Codes d'erreur (ALL-02, question 5) | Liste fermée d'`events.md` : `INVALID_MESSAGE`, `MODEL_NOT_FOUND`, `OLLAMA_UNAVAILABLE` |
+| Compte à rebours HITL (WEB-07) | Calculé depuis l'heure de réception, pas depuis `ts` |
+| Noms des outils (ALL-02, question 3) | Définis par `tools.md` |
+| Fixtures (WEB-01) | Noms de fichiers de la fiche (§11) |
+
+### 10.3 Encore ouverts
 
 | # | Question | Avec | Proposition |
 |---|---|---|---|
@@ -487,13 +487,15 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 | P-8 | Valeurs de `kind` pour la mémoire (utilisées par `context_injected`, `memory_updated` et les outils mémoire) | P3 | `glossary`, `entity`, `relation`, `fact` |
 | P-9 | « Basic agent switching » (catalogue X1) : le changement de modèle suffit-il ? | Suivi | Question à poser au suivi ; `set_model` en attendant |
 | P-10 | Comment se termine un tour d'origine `ui` ? | P1 | `message_done` avec `content: ""`, `interrupted: false`, `usage: null` (aucun appel au modèle), pas de juge |
+| P-11 | Ajouter à la liste fermée des codes d'`events.md` : `BUSY`, `UNKNOWN_ACTION`, `INVALID_CONFIG`, `UI_ACTION_FORBIDDEN` | P1 | Les 4 codes du §7.1 marqués ➕ |
+| P-12 | Ajouter `reason` (`user`, `cancelled`, `disconnected`) à `confirmation_resolved` | P1 | Facultatif, pour distinguer les refus dans l'interface et l'audit |
 
 ---
 
 ## 11. Suite (WEB-01, mar 06/10)
 
 - Schémas JSON des messages dans `docs/contracts/schemas/` : `ws_client.v1.json` (messages du client) et `ws_server.v1.json` (messages propres au WS).
-- Quatre fixtures dans `tests/fixtures/events/`, validées par P1 : `nominal.jsonl`, `hitl.jsonl`, `contradiction.jsonl`, `error.jsonl`. Elles alimentent le `MockEngine` (WEB-04).
+- Fixtures dans `tests/fixtures/events/`, validées par P1 : `nominal.jsonl`, `hitl_approve.jsonl` et `hitl_reject.jsonl` (les deux branches de l'acte 4), `judge_contradiction.jsonl`, `errors.jsonl`. Elles alimentent le `MockEngine` (WEB-04). Dans chacune, la concaténation des `token` doit être égale à `message_done.content`.
 - Tests de contrat dans `tests/unit/contracts/` : chaque ligne des fixtures est validée contre les schémas.
 
 ## Validation
