@@ -74,3 +74,54 @@ class OllamaError(SensaiError):
         super().__init__(f"{prefix} : {detail}")
         self.detail = detail
         self.status = status
+
+
+class McpCommandNotFound(SensaiError):
+    """The command that starts an MCP server is not installed (uvx, npx, ...)."""
+
+    code = "MCP_COMMAND_NOT_FOUND"
+
+    def __init__(self, server: str, command: str) -> None:
+        super().__init__(
+            f"Serveur MCP « {server} » : la commande `{command}` est introuvable. "
+            "Installez-la ou corrigez [mcp.servers] dans config.toml."
+        )
+        self.server = server
+        self.command = command
+
+
+class McpServerDied(SensaiError):
+    """The MCP server process stopped, or closed its output, while still in use."""
+
+    code = "MCP_SERVER_DIED"
+
+    def __init__(self, server: str, detail: str = "") -> None:
+        suffix = f" ({detail})" if detail else ""
+        super().__init__(f"Le serveur MCP « {server} » s'est arrêté{suffix}.")
+        self.server = server
+        self.detail = detail
+
+
+class McpTimeout(SensaiError):
+    """An MCP request got no answer within its delay."""
+
+    code = "MCP_TIMEOUT"
+
+    def __init__(self, server: str, method: str, timeout_s: float) -> None:
+        super().__init__(
+            f"Le serveur MCP « {server} » n'a pas répondu à `{method}` en {timeout_s:g} s."
+        )
+        self.server = server
+        self.method = method
+        self.timeout_s = timeout_s
+
+
+class McpProtocolError(SensaiError):
+    """The MCP server broke the protocol (unsupported version, malformed answer)."""
+
+    code = "MCP_PROTOCOL_ERROR"
+
+    def __init__(self, server: str, detail: str) -> None:
+        super().__init__(f"Serveur MCP « {server} » : {detail}.")
+        self.server = server
+        self.detail = detail
