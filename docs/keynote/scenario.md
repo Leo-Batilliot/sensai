@@ -5,7 +5,7 @@
 | **Tâche** | KEY-00 (PLANNING §7, sprint 1) |
 | **Propriétaire** | P4 — Web & Produit |
 | **Utilisé par** | KEY-01 (slides et script mid-term), KEY-02 (storyboard final), DATA-02 (P2, données plantées), EVAL-02 (P3, golden set), toute l'équipe pour les répétitions |
-| **Statut** | Brouillon du mar 06/10 — à relire par l'équipe |
+| **Statut** | Décidé par P4 (product owner) le mar 06/10. Relecture de l'équipe pour information : objections avant le **mer 07/10 à 12 h** |
 | **Références** | PROJECT.md §3 (concept), §8 (données), §15 (keynote) ; maquettes dans [`ui/`](ui/README.md) |
 
 Ce document est **le fil rouge unique** de la démo : la mid-term du 14/10 en joue une partie, la keynote du 01/11 le joue en entier. Chaque acte dit ce qu'on tape, ce qui doit apparaître, ce que ça prouve, de quelles données il a besoin et quoi faire s'il échoue.
@@ -37,7 +37,7 @@ Ce document est **le fil rouge unique** de la démo : la mid-term du 14/10 en jo
 | 5 | Inès | Un serveur MCP tiers ajouté par configuration, écriture confirmée | T1, A3 | — | ✅ |
 | 6 | Inès | La preuve chiffrée : évaluation et comparaisons | EV1 | Méthode seulement | ✅ (slides) |
 
-La mid-term suit PLANNING §8.3 : architecture (1 min), acte 1 (3 min), acte 2 raccourci (2 min), acte 4 (2 min), méthode d'évaluation et feuille de route (2 min).
+Les deux passages durent **environ 15 minutes** (réponse du suivi) : minutage détaillé au §8.
 
 ---
 
@@ -97,11 +97,9 @@ Les chiffres cités sont **illustratifs** (ceux des fixtures). Les vrais viennen
 
 **Ce que ça prouve** : le juge ne se contente pas de relire, il confronte chaque affirmation aux lignes renvoyées, et un contrôle numérique déterministe double le juge LLM (EV1).
 
-**⚠️ Décision à prendre (P1, P3, avant KEY-02)** : un modèle qui se trompe à la demande n'existe pas. Deux options :
-- **mode démo** (PROJECT §3.3) : une option de configuration qui altère un chiffre de la réponse **avant** le juge. Fiable, mais à annoncer honnêtement au jury (« pour la démo, on force une erreur ») ;
-- **question piège** trouvée pendant les répétitions, sur laquelle le modèle se trompe de façon reproductible. Plus convaincante, mais fragile.
-
-Recommandation : le mode démo, annoncé, avec la vidéo de secours.
+**Décision (S-1) : mode démo, annoncé au jury.** Un modèle qui se trompe à la demande n'existe pas. Une option de configuration altère donc un chiffre de la réponse **avant** le juge (PROJECT §3.3), et le pilote le dit à voix haute : « pour la démo, on force une erreur ; le juge, lui, n'est pas prévenu ». C'est fiable et honnête. Une question piège trouvée en répétition serait plus convaincante, mais trop fragile pour une démo live.
+- **À implémenter par P1 et P3** avant KEY-02 (mar 20/10) : l'option, désactivée par défaut, et un test qui vérifie que le juge renvoie `contradicted`.
+- **Secours** : la vidéo de l'acte 3.
 
 ### Acte 4 — Action destructive
 
@@ -124,7 +122,7 @@ Recommandation : le mode démo, annoncé, avec la vidéo de secours.
 
 ### Acte 5 — Ouverture (keynote seulement)
 
-**Inès** ouvre `config.toml` devant le jury, décommente le serveur `filesystem` (dossier `reports/`), relance `make web` : une nouvelle chip **filesystem** apparaît dans la barre d'état. Aucune ligne de code modifiée.
+**Inès** montre à l'écran le fichier `config.demo-acte5.toml`, préparé à l'avance : c'est la configuration de démo plus 3 lignes qui déclarent le serveur `filesystem` (dossier `reports/`). Elle relance le serveur avec `make web` et `--config config.demo-acte5.toml` : une nouvelle chip **filesystem** apparaît dans la barre d'état. Aucune ligne de code modifiée. Le fichier est préparé, plutôt qu'édité en direct, pour tenir le minutage (§8) et éviter une faute de frappe devant le jury.
 
 **Elle tape :**
 
@@ -134,7 +132,7 @@ Recommandation : le mode démo, annoncé, avec la vidéo de secours.
 
 **Ce que ça prouve** : notre client MCP parle à des serveurs tiers (exigence explicite du sujet pour T1), et la politique HITL s'applique à tout outil, pas seulement aux nôtres.
 
-**Variante de secours** : préparer un `config.demo-acte5.toml` déjà prêt, à passer avec `--config`.
+**Variante de secours** : si le serveur `filesystem` ne démarre pas (`npx` absent ou hors ligne), passer directement à la vidéo de l'acte 5 : la chip pointillée « indisponible » est d'ailleurs une démonstration en soi (un serveur en panne n'empêche pas les autres de fonctionner).
 
 ### Acte 6 — Preuve chiffrée (slides)
 
@@ -191,11 +189,49 @@ Chaque question de la démo et sa variante entrent dans le golden set, pour que 
 - **Chaque question testée au moins 10 fois** sur la machine de démo avant le jour J.
 - **Plan de secours** : une vidéo par acte (mar 27/10), une vidéo intégrale (mer 28/10), sur clé USB et en ligne. En cas d'échec, on bascule sur la vidéo sans improviser.
 
-## 8. Décisions à prendre
+## 8. Minutage : 15 minutes par passage
 
-| # | Question | Qui | Quand |
+Réponse du suivi : **environ 15 minutes** pour la mid-term comme pour la keynote. Un membre de l'équipe tient le chrono et fait signe à chaque fin de séquence.
+
+### 8.1 Mid-term (mer 14/10)
+
+| Séquence | Durée | Contenu | Qui parle |
+|---|---:|---|---|
+| Accroche et architecture | 2 min | Claire, 8 h 30, comité à 10 h ; une slide d'architecture (moteur headless, adaptateurs, MCP) | P4 |
+| Acte 1 | 4 min | En live, en commentant la timeline pendant que l'agent travaille | P1, P2 |
+| Acte 2 (raccourci) | 2 min 30 | « Retiens-le », Nouvelle conversation, question qui applique la règle | P3 |
+| Acte 4 | 2 min 30 | Refus, vérification, confirmation | P2 |
+| Méthode d'évaluation | 2 min | Golden set, métriques, juge et contrôle numérique ; premier chiffre d'EX si disponible | P3 |
+| Feuille de route | 1 min 30 | Ce qui reste, avec les dates du planning (le jury valorise un plan crédible) | P4 |
+| Marge | 30 s | Latence imprévue | — |
+
+### 8.2 Keynote (dim 01/11)
+
+Proportions de PROJECT §15.1, ramenées à 15 minutes. **La démo des cinq actes ne dispose que de 6 minutes** : chaque acte doit être rapide et répété.
+
+| Séquence | Durée | Contenu |
+|---|---:|---|
+| Accroche | 1 min | Claire, le comité, les données confidentielles |
+| Démo live | 6 min | Acte 1 : 1 min 30 ; acte 2 : 1 min 15 (redémarrage du serveur compris) ; acte 3 : 45 s ; acte 4 : 1 min 30 ; acte 5 : 1 min |
+| Choix techniques | 3 min 30 | Environ 35 s par fonctionnalité (X1, T1, T5, M3, A3, EV1) : considéré, écarté, retenu ; chacun présente la sienne |
+| Preuve chiffrée (acte 6) | 2 min | Tableaux d'`EVALUATION.md` |
+| Bilan honnête | 1 min 30 | Ce qui marche, les limites, ce qu'on referait autrement |
+| Transition vers les questions | 30 s | Évolutions (EV2, transport HTTP, autres SGBD) |
+| Marge | 30 s | Latence imprévue |
+
+### 8.3 Conséquences
+
+- **Latence** : à 1 min 30 pour l'acte 1, la réponse complète (outils, texte et badge) doit tenir en **moins de 45 s** sur la machine de démo. À mesurer dès la mid-term (CORE-18 pour la keynote). Le pilote commente la timeline pendant la génération : un temps d'attente expliqué n'est pas un temps mort.
+- **Règle du chrono** : un acte qui dépasse son temps de plus de 30 s est coupé. On passe à la vidéo de l'acte suivant plutôt que d'attendre.
+- **Slides** : une slide par fonctionnalité pour les choix techniques, pas plus.
+
+## 9. Décisions
+
+Prises par P4 (product owner, responsable final du scénario et de la keynote) le mar 06/10.
+
+| # | Décision | Qui agit | Quand |
 |---|---|---|---|
-| S-1 | Acte 3 : mode démo annoncé ou question piège ? | P1, P3 | Avant KEY-02 (20/10) |
-| S-2 | Acte 4 à la mid-term : on accepte que la modale n'affiche pas les clients protégés (l'agent le dit dans sa réponse) ? | Équipe | Point du 07/10 |
-| S-3 | Valeurs exactes de D5 et D6 (25 et 15 proposés) | P2 | DATA-02 (07/10) |
-| S-4 | Durée de la mid-term et de la keynote (format annoncé) | Suivi | Dès que possible |
+| S-1 | Acte 3 : **mode démo annoncé** au jury (§4, acte 3) | P1, P3 implémentent l'option | Avant KEY-02 (mar 20/10) |
+| S-2 | Mid-term : la modale de l'acte 4 n'affiche pas les clients protégés ; **l'agent le dit dans sa réponse**. Le comptage exact arrive avec HITL-03 pour la keynote | P2 (HITL-03) | Sprint 3 |
+| S-3 | **25** clients supprimables et **15** protégés, avec les contraintes D5 et D6 (§5) | P2 (DATA-02) | Mer 07/10 |
+| S-4 | **Environ 15 minutes** par passage (réponse du suivi), minutage au §8 | P4 (KEY-01, KEY-02) | — |
