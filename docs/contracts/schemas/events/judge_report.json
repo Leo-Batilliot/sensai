@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "events/judge_report.v1",
+  "title": "Événement judge_report",
+  "description": "Enveloppe calculée par le code autour du rapport du juge. Fait foi : docs/contracts/events.md §3.11. Propriétaire : P1.",
+  "type": "object",
+  "required": [
+    "type",
+    "session_id",
+    "turn_id",
+    "ts",
+    "badge",
+    "scores",
+    "numeric_check",
+    "report",
+    "duration_ms"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "judge_report"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "turn_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ts": {
+      "type": "number",
+      "description": "Secondes depuis l'epoch (flottant)"
+    },
+    "badge": {
+      "enum": [
+        "verified",
+        "needs_review",
+        "contradicted",
+        "unavailable"
+      ]
+    },
+    "scores": {
+      "type": "object",
+      "required": [
+        "faithfulness"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "faithfulness": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "numeric_check": {
+      "type": "object",
+      "required": [
+        "status",
+        "unmatched"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "mismatch",
+            "inconclusive"
+          ]
+        },
+        "unmatched": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "report": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Rapport conforme à schemas/judge_report.v1.json (P3), ou null"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

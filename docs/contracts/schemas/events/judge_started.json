@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "events/judge_started.v1",
+  "title": "Événement judge_started",
+  "description": "Début de la vérification de la réponse. Fait foi : docs/contracts/events.md §3.11. Propriétaire : P1.",
+  "type": "object",
+  "required": [
+    "type",
+    "session_id",
+    "turn_id",
+    "ts"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "judge_started"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "turn_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ts": {
+      "type": "number",
+      "description": "Secondes depuis l'epoch (flottant)"
+    }
+  }
+}

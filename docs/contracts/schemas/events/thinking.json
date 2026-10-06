@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "events/thinking.v1",
+  "title": "Événement thinking",
+  "description": "Fragment du raisonnement du modèle, jamais dans la réponse. Fait foi : docs/contracts/events.md §3.3. Propriétaire : P1.",
+  "type": "object",
+  "required": [
+    "type",
+    "session_id",
+    "turn_id",
+    "ts",
+    "delta"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "thinking"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "turn_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ts": {
+      "type": "number",
+      "description": "Secondes depuis l'epoch (flottant)"
+    },
+    "delta": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

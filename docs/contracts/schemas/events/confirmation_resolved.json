@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "events/confirmation_resolved.v1",
+  "title": "Événement confirmation_resolved",
+  "description": "Décision appliquée à une demande de confirmation. Fait foi : docs/contracts/events.md §3.7. Propriétaire : P1.",
+  "type": "object",
+  "required": [
+    "type",
+    "session_id",
+    "turn_id",
+    "ts",
+    "action_id",
+    "decision",
+    "reason",
+    "comment"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "confirmation_resolved"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "turn_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ts": {
+      "type": "number",
+      "description": "Secondes depuis l'epoch (flottant)"
+    },
+    "action_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decision": {
+      "enum": [
+        "approve",
+        "reject",
+        "timeout"
+      ]
+    },
+    "reason": {
+      "enum": [
+        "user",
+        "cancelled",
+        "disconnected",
+        "timeout"
+      ]
+    },
+    "comment": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 500
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "const": "approve"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reason": {
+            "const": "user"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "const": "reject"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reason": {
+            "enum": [
+              "user",
+              "cancelled",
+              "disconnected"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "const": "timeout"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reason": {
+            "const": "timeout"
+          }
+        }
+      }
+    }
+  ]
+}

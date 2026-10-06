@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "events/confirmation_required.v1",
+  "title": "Événement confirmation_required",
+  "description": "Pause HITL : le moteur attend une décision. Fait foi : docs/contracts/events.md §3.6. Propriétaire : P1.",
+  "type": "object",
+  "required": [
+    "type",
+    "session_id",
+    "turn_id",
+    "ts",
+    "action_id",
+    "call_id",
+    "tool",
+    "sql",
+    "impact",
+    "expires_in_s"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "confirmation_required"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "turn_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ts": {
+      "type": "number",
+      "description": "Secondes depuis l'epoch (flottant)"
+    },
+    "action_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "call_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tool": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "sql": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "impact": {
+      "type": "object",
+      "required": [
+        "operation",
+        "rows_affected",
+        "per_table",
+        "sample",
+        "blocked"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "enum": [
+            "SELECT",
+            "INSERT",
+            "UPDATE",
+            "DELETE",
+            "OTHER"
+          ]
+        },
+        "rows_affected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "per_table": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "sample": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "type": "object"
+          }
+        },
+        "blocked": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "reason",
+              "count"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "count": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "expires_in_s": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    }
+  }
+}

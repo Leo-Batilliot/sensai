@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "events/memory_updated.v1",
+  "title": "Événement memory_updated",
+  "description": "Écriture effective dans la mémoire de l'agent. Fait foi : docs/contracts/events.md §3.9. Propriétaire : P1.",
+  "type": "object",
+  "required": [
+    "type",
+    "session_id",
+    "turn_id",
+    "ts",
+    "op",
+    "kind",
+    "ref",
+    "summary"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "memory_updated"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "turn_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ts": {
+      "type": "number",
+      "description": "Secondes depuis l'epoch (flottant)"
+    },
+    "op": {
+      "enum": [
+        "create",
+        "update",
+        "delete"
+      ]
+    },
+    "kind": {
+      "enum": [
+        "glossary",
+        "entity",
+        "relation",
+        "fact"
+      ]
+    },
+    "ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "string"
+    }
+  }
+}
