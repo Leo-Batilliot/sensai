@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ws_client.v1",
+  "title": "Message client → serveur (websocket.md §4)",
+  "description": "Structure seulement. Le serveur répond INVALID_MESSAGE si ce schéma échoue. Les règles de sens sont vérifiées après : liste blanche de ui_action (UI_ACTION_FORBIDDEN), bornes de set_config (INVALID_CONFIG), modèle existant (MODEL_NOT_FOUND). Les champs inconnus sont ignorés (§3).",
+  "type": "object",
+  "required": ["type"],
+  "properties": {
+    "type": {"enum": ["user_message", "ui_action", "confirm", "cancel", "reset", "set_model", "set_config"]},
+    "id": {"$ref": "#/$defs/correlation_id"}
+  },
+  "oneOf": [
+    {"$ref": "#/$defs/user_message"},
+    {"$ref": "#/$defs/ui_action"},
+    {"$ref": "#/$defs/confirm"},
+    {"$ref": "#/$defs/cancel"},
+    {"$ref": "#/$defs/reset"},
+    {"$ref": "#/$defs/set_model"},
+    {"$ref": "#/$defs/set_config"}
+  ],
+  "$defs": {
+    "correlation_id": {
+      "description": "Facultatif : renvoyé dans reply_to de la réponse ou de l'erreur (§3)",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "user_message": {
+      "required": ["type", "content"],
+      "properties": {
+        "type": {"const": "user_message"},
+        "content": {"type": "string", "maxLength": 4000, "pattern": "\\S"}
+      }
+    },
+    "ui_action": {
+      "required": ["type", "tool", "arguments"],
+      "properties": {
+        "type": {"const": "ui_action"},
+        "tool": {"type": "string", "minLength": 1},
+        "arguments": {"type": "object"}
+      }
+    },
+    "confirm": {
+      "required": ["type", "action_id", "decision"],
+      "properties": {
+        "type": {"const": "confirm"},
+        "action_id": {"type": "string", "minLength": 1},
+        "decision": {"enum": ["approve", "reject"]},
+        "comment": {"type": ["string", "null"], "maxLength": 500}
+      }
+    },
+    "cancel": {
+      "required": ["type"],
+      "properties": {"type": {"const": "cancel"}}
+    },
+    "reset": {
+      "required": ["type"],
+      "properties": {"type": {"const": "reset"}}
+    },
+    "set_model": {
+      "required": ["type", "model"],
+      "properties": {
+        "type": {"const": "set_model"},
+        "model": {"type": "string", "minLength": 1}
+      }
+    },
+    "set_config": {
+      "required": ["type", "patch"],
+      "properties": {
+        "type": {"const": "set_config"},
+        "patch": {"type": "object", "minProperties": 1}
+      }
+    }
+  }
+}

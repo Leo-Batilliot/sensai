@@ -1,0 +1,44 @@
+{"type":"turn_started","session_id":"s-fixture","turn_id":"t-1","ts":1760433300.0,"origin":"user","user_message":"Chez nous, un client rentable c'est une marge brute supérieure à 25 %. Retiens-le."}
+{"type":"tool_call","session_id":"s-fixture","turn_id":"t-1","ts":1760433300.8,"call_id":"k-1","server":null,"tool":"glossary_define","arguments":{"term":"client rentable","definition":"Client dont la marge brute dépasse 25 % du chiffre d'affaires HT sur la période","sql_hint":"SUM(ol.quantity * (ol.unit_price - ol.unit_cost)) > 0.25 * SUM(ol.quantity * ol.unit_price)"}}
+{"type":"tool_result","session_id":"s-fixture","turn_id":"t-1","ts":1760433300.9,"call_id":"k-1","ok":true,"summary":"Terme « client rentable » défini","data":{"op":"create","kind":"glossary","ref":"client rentable","summary":"Terme « client rentable » défini"},"error":null,"duration_ms":8}
+{"type":"memory_updated","session_id":"s-fixture","turn_id":"t-1","ts":1760433300.9,"op":"create","kind":"glossary","ref":"client rentable","summary":"Terme « client rentable » défini"}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433300.93,"delta":"C'est noté "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433300.96,"delta":": un "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433300.99,"delta":"client rentable "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433301.02,"delta":"est un "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433301.05,"delta":"client dont "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433301.08,"delta":"la marge "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433301.11,"delta":"brute dépasse "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433301.14,"delta":"25 % "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433301.17,"delta":"de son "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433301.2,"delta":"chiffre d'affaires "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433301.23,"delta":"HT sur "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433301.26,"delta":"la période. "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433301.29,"delta":"J'appliquerai cette "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433301.32,"delta":"règle à "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433301.35,"delta":"vos prochaines "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433301.38,"delta":"questions."}
+{"type":"message_done","session_id":"s-fixture","turn_id":"t-1","ts":1760433301.43,"content":"C'est noté : un client rentable est un client dont la marge brute dépasse 25 % de son chiffre d'affaires HT sur la période. J'appliquerai cette règle à vos prochaines questions.","interrupted":false,"usage":{"prompt_tokens":2100,"completion_tokens":48,"ctx_used":2148,"ctx_max":8192},"duration_ms":1900}
+{"type":"turn_started","session_id":"s-fixture","turn_id":"t-2","ts":1760433306.43,"origin":"user","user_message":"Quels sont nos clients rentables ce trimestre ?"}
+{"type":"context_injected","session_id":"s-fixture","turn_id":"t-2","ts":1760433306.48,"refs":[{"kind":"glossary","ref":"client rentable","label":"client rentable"}]}
+{"type":"tool_call","session_id":"s-fixture","turn_id":"t-2","ts":1760433306.88,"call_id":"k-2","server":"sql_toolbox","tool":"sql_toolbox__run_select","arguments":{"sql":"SELECT c.name, ROUND(SUM(ol.quantity * (ol.unit_price - ol.unit_cost)), 2) AS marge_eur, ROUND(100.0 * SUM(ol.quantity * (ol.unit_price - ol.unit_cost)) / SUM(ol.quantity * ol.unit_price), 1) AS taux_marge_pct FROM orders o JOIN order_lines ol ON ol.order_id = o.id JOIN clients c ON c.id = o.client_id WHERE o.order_date >= '2026-10-01' AND o.status <> 'cancelled' GROUP BY c.id HAVING SUM(ol.quantity * (ol.unit_price - ol.unit_cost)) > 0.25 * SUM(ol.quantity * ol.unit_price) ORDER BY marge_eur DESC","purpose":"Clients rentables selon la règle du glossaire"}}
+{"type":"sql_generated","session_id":"s-fixture","turn_id":"t-2","ts":1760433306.88,"call_id":"k-2","sql":"SELECT c.name, ROUND(SUM(ol.quantity * (ol.unit_price - ol.unit_cost)), 2) AS marge_eur, ROUND(100.0 * SUM(ol.quantity * (ol.unit_price - ol.unit_cost)) / SUM(ol.quantity * ol.unit_price), 1) AS taux_marge_pct FROM orders o JOIN order_lines ol ON ol.order_id = o.id JOIN clients c ON c.id = o.client_id WHERE o.order_date >= '2026-10-01' AND o.status <> 'cancelled' GROUP BY c.id HAVING SUM(ol.quantity * (ol.unit_price - ol.unit_cost)) > 0.25 * SUM(ol.quantity * ol.unit_price) ORDER BY marge_eur DESC","operation":"SELECT"}
+{"type":"tool_result","session_id":"s-fixture","turn_id":"t-2","ts":1760433306.98,"call_id":"k-2","ok":true,"summary":"3 lignes","data":{"columns":["name","marge_eur","taux_marge_pct"],"rows":[["Cabinet Roussel",37950.0,31.2],["Imprimerie Vasseur",41208.15,27.8],["Atelier Morel",26011.0,25.4]],"row_count":3,"truncated":false},"error":null,"duration_ms":290}
+{"type":"token","session_id":"s-fixture","turn_id":"t-2","ts":1760433307.01,"delta":"Selon votre "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-2","ts":1760433307.04,"delta":"définition (marge "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-2","ts":1760433307.07,"delta":"brute supérieure "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-2","ts":1760433307.1,"delta":"à 25 "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-2","ts":1760433307.13,"delta":"%), 3 "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-2","ts":1760433307.16,"delta":"clients sont "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-2","ts":1760433307.19,"delta":"rentables ce "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-2","ts":1760433307.22,"delta":"trimestre : "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-2","ts":1760433307.25,"delta":"Cabinet Roussel "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-2","ts":1760433307.28,"delta":"(31,2 %), "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-2","ts":1760433307.31,"delta":"Imprimerie Vasseur "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-2","ts":1760433307.34,"delta":"(27,8 %) "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-2","ts":1760433307.37,"delta":"et Atelier "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-2","ts":1760433307.4,"delta":"Morel (25,4 "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-2","ts":1760433307.43,"delta":"%)."}
+{"type":"message_done","session_id":"s-fixture","turn_id":"t-2","ts":1760433307.48,"content":"Selon votre définition (marge brute supérieure à 25 %), 3 clients sont rentables ce trimestre : Cabinet Roussel (31,2 %), Imprimerie Vasseur (27,8 %) et Atelier Morel (25,4 %).","interrupted":false,"usage":{"prompt_tokens":2650,"completion_tokens":70,"ctx_used":2720,"ctx_max":8192},"duration_ms":3100}
+{"type":"judge_started","session_id":"s-fixture","turn_id":"t-2","ts":1760433307.48}
+{"type":"judge_report","session_id":"s-fixture","turn_id":"t-2","ts":1760433309.18,"badge":"verified","scores":{"faithfulness":1.0},"numeric_check":{"status":"ok","unmatched":[]},"report":{"claims":[{"text":"3 clients sont rentables ce trimestre","verdict":"supported","evidence":"3 lignes renvoyées","expected_value":null},{"text":"Cabinet Roussel (31,2 %)","verdict":"supported","evidence":"taux_marge_pct = 31.2","expected_value":null},{"text":"Imprimerie Vasseur (27,8 %)","verdict":"supported","evidence":"taux_marge_pct = 27.8","expected_value":null},{"text":"Atelier Morel (25,4 %)","verdict":"supported","evidence":"taux_marge_pct = 25.4","expected_value":null}],"relevance":5,"sql_answers_question":true,"key_figures":[{"label":"Clients rentables","value":3,"unit":"clients","source_column":null}],"assumptions":[],"followups":["Voir la marge en euros de chacun ?"]},"duration_ms":1700}

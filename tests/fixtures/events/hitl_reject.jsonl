@@ -1,0 +1,16 @@
+{"type":"turn_started","session_id":"s-fixture","turn_id":"t-1","ts":1760433100.0,"origin":"user","user_message":"Supprime les clients inactifs depuis plus de 18 mois."}
+{"type":"tool_call","session_id":"s-fixture","turn_id":"t-1","ts":1760433101.8,"call_id":"k-1","server":"sql_toolbox","tool":"sql_toolbox__execute_write","arguments":{"sql":"DELETE FROM clients WHERE status = 'inactive' AND id NOT IN (SELECT client_id FROM invoices)"}}
+{"type":"sql_generated","session_id":"s-fixture","turn_id":"t-1","ts":1760433101.8,"call_id":"k-1","sql":"DELETE FROM clients WHERE status = 'inactive' AND id NOT IN (SELECT client_id FROM invoices)","operation":"DELETE"}
+{"type":"confirmation_required","session_id":"s-fixture","turn_id":"t-1","ts":1760433102.1,"action_id":"a-1","call_id":"k-1","tool":"sql_toolbox__execute_write","sql":"DELETE FROM clients WHERE status = 'inactive' AND id NOT IN (SELECT client_id FROM invoices)","impact":{"operation":"DELETE","rows_affected":27,"per_table":{"clients":-27,"contacts":-41},"sample":[{"id":12,"name":"Atelier Morel"},{"id":37,"name":"Papeterie Lucas"},{"id":58,"name":"Quincaillerie Benoit"},{"id":91,"name":"Bureau Vallée Arras"},{"id":140,"name":"Garage du Centre"}],"blocked":[]},"expires_in_s":120}
+{"type":"confirmation_resolved","session_id":"s-fixture","turn_id":"t-1","ts":1760433110.1,"action_id":"a-1","decision":"reject","reason":"user","comment":"Pas avant la clôture."}
+{"type":"tool_result","session_id":"s-fixture","turn_id":"t-1","ts":1760433110.2,"call_id":"k-1","ok":false,"summary":"Action refusée","data":null,"error":{"code":"ACTION_REJECTED","message":"Suppression refusée par l'utilisateur."},"duration_ms":0}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433110.23,"delta":"D'accord, je "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433110.26,"delta":"n'ai rien "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433110.29,"delta":"supprimé : "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433110.32,"delta":"la base "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433110.35,"delta":"est intacte. "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433110.38,"delta":"Les 27 "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433110.41,"delta":"clients inactifs "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433110.44,"delta":"sont toujours "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433110.47,"delta":"là."}
+{"type":"message_done","session_id":"s-fixture","turn_id":"t-1","ts":1760433110.52,"content":"D'accord, je n'ai rien supprimé : la base est intacte. Les 27 clients inactifs sont toujours là.","interrupted":false,"usage":{"prompt_tokens":3100,"completion_tokens":40,"ctx_used":3140,"ctx_max":8192},"duration_ms":11000}
