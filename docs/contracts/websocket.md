@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Statut** | 🟡 Brouillon (réponses de P1, P2 et P3 intégrées) — gel prévu le **mar 06/10 à 12 h** |
+| **Statut** | 🟢 Validé le **mar 06/10** par P1, P2, P3 et P4 — gelé à la fusion sur `main`. Toute modification passe désormais par une PR dédiée (règle ci-dessous) |
 | **Propriétaire** | P4 (Web & Produit) |
 | **Consommateurs** | P1 (moteur, événements), P2 (outils MCP, HITL), P3 (mémoire, juge) |
 | **Tâche** | WEB-01 (PLANNING §7, sprint 1) |
@@ -483,7 +483,7 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 
 ---
 
-## 10. Décisions et points ouverts
+## 10. Décisions
 
 ### 10.1 Décidé avec P1, P2 et P3 (05/10 et 06/10)
 
@@ -518,27 +518,32 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 | Noms des outils (ALL-02, question 3) | Toujours préfixés (P-17) |
 | Fixtures (WEB-01) | Noms de fichiers de la fiche (§11) |
 
-### 10.3 Encore ouverts
+### 10.3 Clos au gel (06/10)
 
-| # | Question | Avec | Proposition |
+**Aucun point ouvert.** Les trois derniers points sont clos ainsi :
+
+| # | Sujet | Décision | Suite |
 |---|---|---|---|
-| P-9 | « Basic agent switching » (catalogue X1) : le changement de modèle suffit-il ? | Suivi | Question à poser au suivi ; `set_model` en attendant |
-| P-13 bis | Valeurs de `badge` et forme de `numeric_check` dans l'enveloppe de `judge_report` (`events.md` E-1, E-2 ; `judge.md` J-1) | P3 | Celles d'`events.md` §3.11 |
-| P-18 | `events.md` rédigé en brouillon (avec toutes les décisions P-2 à P-17) : à relire et valider par son propriétaire | P1 | Brouillon proposé par P4 le 06/10 |
+| P-9 | « Basic agent switching » (catalogue X1) | `set_model` est le changement d'agent de la v1 : il change le modèle au tour suivant sans perdre l'historique. | Question posée au suivi. Si le jury attend davantage (profils d'agent), ce sera une extension par PR de modification de contrat, sans casser l'existant. |
+| P-13 bis | Valeurs de `badge` et forme de `numeric_check` | Celles d'`events.md` §3.11 : `badge` ∈ `verified`, `needs_review`, `contradicted`, `unavailable` ; `numeric_check = {status, unmatched}`. | P3 les reporte dans `judge.md` (J-1). |
+| P-18 | `events.md`, auquel ce contrat renvoie | Brouillon rédigé avec toutes les décisions P-2 à P-17, transmis à P1, qui en est propriétaire et ouvre la PR. | Un écart découvert dans cette PR se corrige par une PR de modification de ce contrat. |
 
 ---
 
-## 11. Suite (WEB-01, mar 06/10)
+## 11. Fichiers liés (WEB-01)
 
-- Schémas JSON des messages dans `docs/contracts/schemas/` : `ws_client.v1.json` (messages du client) et `ws_server.v1.json` (messages propres au WS).
-- Fixtures dans `tests/fixtures/events/`, validées par P1 : `nominal.jsonl`, `hitl_approve.jsonl` et `hitl_reject.jsonl` (les deux branches de l'acte 4), `judge_contradiction.jsonl`, `errors.jsonl`. Elles alimentent le `MockEngine` (WEB-04). Dans chacune, la concaténation des `token` doit être égale à `message_done.content`.
-- Tests de contrat dans `tests/unit/contracts/` : chaque ligne des fixtures est validée contre les schémas.
+- **Schémas JSON** dans `docs/contracts/schemas/` :
+  - [`ws_client.v1.json`](schemas/ws_client.v1.json) : messages du client (§4), structure seulement. Le serveur répond `INVALID_MESSAGE` quand il échoue ; liste blanche, bornes et modèle sont vérifiés ensuite.
+  - [`ws_server.v1.json`](schemas/ws_server.v1.json) : messages propres au WebSocket (§5.2).
+  - Les événements du moteur ont leurs propres schémas, prévus par `events.md` (CORE-05).
+- **Fixtures** dans [`tests/fixtures/events/`](../../tests/fixtures/events/README.md) : `nominal`, `memory`, `judge_contradiction`, `hitl_approve`, `hitl_reject`, `errors`. Elles alimentent le `MockEngine` (WEB-04) ; leur README décrit comment les rejouer.
+- **Tests de contrat** : [`tests/unit/contracts/test_websocket_contract.py`](../../tests/unit/contracts/test_websocket_contract.py) vérifie chaque fixture selon `events.md` (champs, ordre des événements, invariants du §4.3), et chaque exemple de ce document contre les schémas. Un exemple faux ici fait échouer la CI.
 
 ## Validation
 
 | Rôle | Nom | Validé le |
 |---|---|---|
-| P4 — propriétaire | | |
-| P1 — moteur | | |
-| P2 — outils MCP, HITL | | 06/10 (réserves 1 et 2 intégrées : P-15, P-16) |
-| P3 — mémoire, juge | | |
+| P4 — propriétaire | Arthur| 06/10 |
+| P1 — moteur | Gabin | 06/10 (réponses du 05/10 sur P-2 à P-7, du 06/10 sur P-9 à P-14) |
+| P2 — outils MCP, HITL | Thomas | 06/10 (réserves 1 et 2 intégrées : P-15, P-16) |
+| P3 — mémoire, juge | Léo | 06/10 (réponses du 05/10 sur P-1 à P-8 ; valeurs de `badge` à reporter dans `judge.md`) |
