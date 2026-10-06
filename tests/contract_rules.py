@@ -1,16 +1,16 @@
 """Rules of the engine events and WebSocket contracts, shared by the tests.
 
-Transcribes docs/contracts/events.md (§3 fields, §4.3 invariants, §5 codes) and loads the
-schemas of docs/contracts/websocket.md. Used by the contract tests (WEB-01) and the server
-tests (WEB-04). Replace the event rules with the JSON schemas of schemas/events/ once
-CORE-05 adds them.
+- One event at a time: the official JSON schemas of docs/contracts/schemas/events/ (P1,
+  CORE-05), and judge_report.v1.json (P3) for the report inside a judge_report event.
+- A whole turn (order, tokens = content, confirmations resolved...): `check_turns`, which
+  transcribes events.md §4.3, since a schema only sees one event.
+
+Used by the contract tests (WEB-01) and the server tests (WEB-04).
 """
 
 from __future__ import annotations
 
 import json
-import re
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -20,219 +20,61 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACTS = ROOT / "docs" / "contracts"
 FIXTURES = ROOT / "tests" / "fixtures" / "events"
 
-Check = Callable[[Any], bool]
+
+# --- loading ------------------------------------------------------------------------------
 
 
-# --- field checks ---------------------------------------------------------------------
+def load_jsonl(path: Path) -> list[dict[str, Any]]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
 
 
-def is_str(value: Any) -> bool:
-    return isinstance(value, str)
+def load_schema(path: Path) -> Draft202012Validator:
+    schema = json.loads(path.read_text(encoding="utf-8"))
+    Draft202012Validator.check_schema(schema)
+    return Draft202012Validator(schema)
 
 
-def is_text(value: Any) -> bool:
-    return isinstance(value, str) and value != ""
-
-
-def is_bool(value: Any) -> bool:
-    return isinstance(value, bool)
-
-
-def is_count(value: Any) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
-
-
-def is_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
-
-
-def is_object(value: Any) -> bool:
-    return isinstance(value, dict)
-
-
-def nullable(check: Check) -> Check:
-    return lambda value: value is None or check(value)
-
-
-def one_of(*allowed: str) -> Check:
-    return lambda value: value in allowed
-
-
-def list_of(check: Check, max_items: int | None = None, min_items: int = 0) -> Check:
-    def run(value: Any) -> bool:
-        if not isinstance(value, list) or len(value) < min_items:
-            return False
-        if max_items is not None and len(value) > max_items:
-            return False
-        return all(check(item) for item in value)
-
-    return run
-
-
-def has_fields(**fields: Check) -> Check:
-    return lambda value: (
-        isinstance(value, dict)
-        and all(name in value and check(value[name]) for name, check in fields.items())
-    )
-
-
-def between(low: float, high: float) -> Check:
-    return lambda value: is_number(value) and low <= value <= high
-
-
-def is_tool_name(value: Any) -> bool:
-    # Always prefixed by the server, except native tools (events.md §3.4)
-    return is_str(value) and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value) is not None
-
-
-KIND = one_of("glossary", "entity", "relation", "fact")
-OPERATION = one_of("SELECT", "INSERT", "UPDATE", "DELETE", "OTHER")
-
-# events.md §5.1
-ERROR_CODES = (
-    "OLLAMA_UNAVAILABLE",
-    "OLLAMA_TIMEOUT",
-    "MODEL_NOT_FOUND",
-    "MODEL_NO_TOOLS",
-    "STREAM_INTERRUPTED",
-    "OLLAMA_ERROR",
-    "MAX_ITERATIONS",
-    "INTERNAL",
-    "INVALID_MESSAGE",
-    "BUSY",
-    "UNKNOWN_ACTION",
-    "INVALID_CONFIG",
-    "UI_ACTION_FORBIDDEN",
-)
-
-IMPACT = has_fields(
-    operation=OPERATION,
-    rows_affected=is_count,
-    per_table=lambda v: is_object(v) and all(isinstance(n, int) for n in v.values()),
-    sample=list_of(is_object, max_items=5),
-    blocked=list_of(has_fields(reason=is_text, count=nullable(is_count))),
-)
-
-USAGE = has_fields(
-    prompt_tokens=is_count, completion_tokens=is_count, ctx_used=is_count, ctx_max=is_count
-)
-
-# judge_report.v1.json (judge.md §1, P3)
-JUDGE_REPORT = has_fields(
-    claims=list_of(
-        has_fields(
-            text=is_text,
-            verdict=one_of("supported", "contradicted", "unverifiable"),
-            evidence=is_str,
-            expected_value=nullable(is_str),
-        )
-    ),
-    relevance=lambda v: isinstance(v, int) and 1 <= v <= 5,
-    sql_answers_question=is_bool,
-    key_figures=list_of(
-        has_fields(label=is_text, value=is_number, unit=is_str, source_column=nullable(is_str)),
-        max_items=5,
-    ),
-    assumptions=list_of(is_text, max_items=3),
-    followups=list_of(is_text, max_items=3),
-)
-
-# events.md §3: specific fields of each event type, all always present
-EVENT_FIELDS: dict[str, dict[str, Check]] = {
-    "turn_started": {"origin": one_of("user", "ui"), "user_message": nullable(is_text)},
-    "context_injected": {
-        "refs": list_of(has_fields(kind=KIND, ref=is_text, label=is_text), min_items=1)
-    },
-    "token": {"delta": is_text},
-    "thinking": {"delta": is_text},
-    "tool_call": {
-        "call_id": is_text,
-        "server": nullable(is_text),
-        "tool": is_tool_name,
-        "arguments": is_object,
-    },
-    "sql_generated": {"call_id": is_text, "sql": is_text, "operation": OPERATION},
-    "confirmation_required": {
-        "action_id": is_text,
-        "call_id": is_text,
-        "tool": is_tool_name,
-        "sql": nullable(is_text),
-        "impact": IMPACT,
-        "expires_in_s": lambda v: is_number(v) and v > 0,
-    },
-    "confirmation_resolved": {
-        "action_id": is_text,
-        "decision": one_of("approve", "reject", "timeout"),
-        "reason": one_of("user", "cancelled", "disconnected", "timeout"),
-        "comment": nullable(is_str),
-    },
-    "tool_result": {
-        "call_id": is_text,
-        "ok": is_bool,
-        "summary": is_str,
-        "data": nullable(is_object),
-        "error": nullable(has_fields(code=is_text, message=is_text)),
-        "duration_ms": is_count,
-    },
-    "memory_updated": {
-        "op": one_of("create", "update", "delete"),
-        "kind": KIND,
-        "ref": is_text,
-        "summary": is_str,
-    },
-    "message_done": {
-        "content": is_str,
-        "interrupted": is_bool,
-        "usage": nullable(USAGE),
-        "duration_ms": is_count,
-    },
-    "judge_started": {},
-    "judge_report": {
-        "badge": one_of("verified", "needs_review", "contradicted", "unavailable"),
-        "scores": has_fields(faithfulness=nullable(between(0, 1))),
-        "numeric_check": has_fields(
-            status=one_of("ok", "mismatch", "inconclusive"), unmatched=list_of(is_text)
-        ),
-        "report": nullable(JUDGE_REPORT),
-        "duration_ms": is_count,
-    },
-    "error": {"code": one_of(*ERROR_CODES), "message": is_text, "recoverable": is_bool},
+EVENT_SCHEMAS = {
+    path.stem: load_schema(path)
+    for path in sorted((CONTRACTS / "schemas" / "events").glob("*.json"))
 }
-COMMON = {"type", "session_id", "turn_id", "ts"}
-# Protocol errors emitted by the web layer carry reply_to (websocket.md §7.1)
-OPTIONAL = {"error": {"reply_to"}}
-# events.md §3.7
-REASONS_BY_DECISION = {
-    "approve": {"user"},
-    "reject": {"user", "cancelled", "disconnected"},
-    "timeout": {"timeout"},
+EVENT_TYPES = frozenset(EVENT_SCHEMAS)
+JUDGE_REPORT = load_schema(CONTRACTS / "schemas" / "judge_report.v1.json")
+
+CLIENT = load_schema(CONTRACTS / "schemas" / "ws_client.v1.json")
+SERVER = load_schema(CONTRACTS / "schemas" / "ws_server.v1.json")
+CLIENT_TYPES = {
+    "user_message",
+    "ui_action",
+    "confirm",
+    "cancel",
+    "reset",
+    "set_model",
+    "set_config",
 }
+SERVER_TYPES = {"session_ready", "session_reset", "model_changed", "config_updated"}
+
+
+# --- one event ----------------------------------------------------------------------------
 
 
 def check_event(event: dict[str, Any]) -> None:
+    """The event follows its official schema (events.md §3)."""
     kind = event.get("type")
-    assert kind in EVENT_FIELDS, f"type inconnu : {kind!r}"
-    spec = EVENT_FIELDS[kind]
-    allowed = COMMON | set(spec) | OPTIONAL.get(kind, set())
-    missing = (COMMON | set(spec)) - set(event)
-    assert not missing, f"{kind} : champs manquants {sorted(missing)}"
-    extra = set(event) - allowed
-    assert not extra, f"{kind} : champs inconnus {sorted(extra)}"
-    assert is_text(event["session_id"]), f"{kind}.session_id"
-    assert is_number(event["ts"]), f"{kind}.ts"
-    if kind == "error":
-        assert nullable(is_text)(event["turn_id"]), "error.turn_id"
-    else:
-        assert is_text(event["turn_id"]), f"{kind}.turn_id"
-    for name, check in spec.items():
-        assert check(event[name]), f"{kind}.{name} invalide : {event[name]!r}"
-    if kind == "tool_result":
-        assert (event["error"] is None) == event["ok"], "tool_result : error doit être null si ok"
-    if kind == "confirmation_resolved":
-        assert event["reason"] in REASONS_BY_DECISION[event["decision"]], (
-            f"confirmation_resolved : reason {event['reason']!r} impossible avec "
-            f"decision {event['decision']!r}"
-        )
+    assert kind in EVENT_SCHEMAS, f"type inconnu : {kind!r}"
+    _first_error(EVENT_SCHEMAS[kind], event, kind)
+    if kind == "judge_report" and event["report"] is not None:
+        _first_error(JUDGE_REPORT, event["report"], "judge_report.report")
+
+
+def _first_error(validator: Draft202012Validator, value: Any, where: str) -> None:
+    error = next(iter(sorted(validator.iter_errors(value), key=str)), None)
+    if error is not None:
+        path = "/".join(str(part) for part in error.absolute_path) or "(racine)"
+        raise AssertionError(f"{where} : {path} : {error.message}")
+
+
+# --- a whole turn -------------------------------------------------------------------------
 
 
 def check_turns(events: list[dict[str, Any]]) -> None:
@@ -304,30 +146,3 @@ def check_turns(events: list[dict[str, Any]]) -> None:
                     quoted += [claim["text"] for claim in report["report"]["claims"]]
                 for text in quoted:
                     assert text in done["content"], f"{where} : {text!r} absent de la réponse"
-
-
-# --- loading ----------------------------------------------------------------------------
-
-
-def load_jsonl(path: Path) -> list[dict[str, Any]]:
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
-
-
-def load_schema(name: str) -> Draft202012Validator:
-    schema = json.loads((CONTRACTS / "schemas" / name).read_text(encoding="utf-8"))
-    Draft202012Validator.check_schema(schema)
-    return Draft202012Validator(schema)
-
-
-CLIENT = load_schema("ws_client.v1.json")
-SERVER = load_schema("ws_server.v1.json")
-CLIENT_TYPES = {
-    "user_message",
-    "ui_action",
-    "confirm",
-    "cancel",
-    "reset",
-    "set_model",
-    "set_config",
-}
-SERVER_TYPES = {"session_ready", "session_reset", "model_changed", "config_updated"}

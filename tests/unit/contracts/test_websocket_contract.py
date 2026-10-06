@@ -17,7 +17,7 @@ from contract_rules import (
     CLIENT,
     CLIENT_TYPES,
     CONTRACTS,
-    EVENT_FIELDS,
+    EVENT_TYPES,
     FIXTURES,
     SERVER,
     SERVER_TYPES,
@@ -126,7 +126,7 @@ def test_websocket_examples_follow_the_contract() -> None:
             else:
                 check_event(message)
             checked += 1
-        engine_events = [m for m in block if m.get("type") in EVENT_FIELDS]
+        engine_events = [m for m in block if m.get("type") in EVENT_TYPES]
         if any(m["type"] == "turn_started" for m in engine_events):
             check_turns(engine_events)
     assert checked >= 30
