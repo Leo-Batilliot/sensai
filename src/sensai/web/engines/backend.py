@@ -34,8 +34,11 @@ class WebEngine(Protocol):
 
     def run_ui_action(self, tool: str, arguments: dict[str, Any]) -> AsyncIterator[Any]: ...
 
-    def cancel(self) -> None:
-        """Flag checked by the running turn, which then ends with `message_done {interrupted}`."""
+    def cancel(self) -> bool:
+        """Flag checked by the running turn, which then ends with `message_done {interrupted}`.
+
+        False when no turn is running (the request is ignored), as Engine.cancel().
+        """
         ...
 
     def reset(self) -> None: ...

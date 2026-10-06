@@ -16,7 +16,7 @@ web/
 │   ├── endpoint.py    porte d'entrée /ws/{id} : accepte, envoie session_ready, lit en boucle
 │   ├── messages.py    ce que fait chaque message (une méthode _on_<type> par message)
 │   ├── session.py     une session par conversation : historique, tour en cours, envoi
-│   ├── confirm.py     confirmations HITL : une attente par action, délai, refus en masse
+│   ├── confirm.py     confirmations HITL : le ConfirmationBroker de core/confirm.py côté web
 │   └── settings.py    réglages modifiables par set_config, bornes, validation
 └── engines/           le côté moteur
     ├── backend.py     l'interface que le moteur doit respecter (WebEngine, WebBackend)
@@ -46,7 +46,7 @@ navigateur ──user_message──▶ websocket/endpoint.py ──▶ websocket
 | Ajouter une route REST (`/api/config`, `/api/memory`…) | `server.py` |
 | Changer ce que fait un message (`reset`, `cancel`…) ou en ajouter un | `websocket/messages.py`, et d'abord `docs/contracts/websocket.md` + `docs/contracts/schemas/ws_client.v1.json` |
 | Comprendre quand la session est « occupée », ou l'historique de reconnexion | `websocket/session.py` |
-| Changer le délai ou le comportement d'une confirmation | `websocket/confirm.py` |
+| Changer la façon dont la réponse du navigateur arrive au moteur | `websocket/confirm.py` (le délai, lui, vient de `[hitl] confirmation_timeout_s` et c'est le moteur qui l'applique) |
 | Rendre un réglage modifiable depuis l'interface | `websocket/settings.py`, et d'abord le contrat (§4.7) |
 | Changer le scénario rejoué pour un message, ou le rythme du faux moteur | `engines/mock.py` (`ROUTES`, `Pacing`) |
 | Brancher le vrai moteur (WEB-08) | `engines/backend.py` (interface à respecter), puis un nouveau fichier dans `engines/` à côté de `mock.py` |
@@ -58,4 +58,5 @@ navigateur ──user_message──▶ websocket/endpoint.py ──▶ websocket
 | `tests/unit/web/test_server.py` | Routes REST, page construite, commande `sensai web` |
 | `tests/unit/web/test_ws.py` | Le WebSocket de bout en bout : tours, confirmation, `BUSY`, `cancel`, `reset`, reconnexion, erreurs |
 | `tests/unit/web/test_mock_engine.py` | Choix du scénario, identifiants réécrits, pannes en boucle |
+| `tests/unit/web/test_confirm.py` | Le broker seul, et branché sur le vrai `Engine` de P1 (décision transmise, délai) |
 | `tests/contract_rules.py` | Règles du contrat partagées : chaque événement envoyé est vérifié avec |

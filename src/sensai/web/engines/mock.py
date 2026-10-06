@@ -24,8 +24,9 @@ from pathlib import Path
 from typing import Any
 
 from sensai.core.config import Config
+from sensai.core.confirm import ConfirmationBroker, Decision, PendingAction
 from sensai.web.engines.backend import ModelInfo
-from sensai.web.websocket.confirm import Resolution, WebConfirmationBroker
+from sensai.web.websocket.confirm import WebConfirmationBroker
 from sensai.web.paths import FIXTURES_DIR
 from sensai.web.websocket.settings import session_settings
 
@@ -169,7 +170,7 @@ class MockEngine:
         self,
         session_id: str,
         config: Config,
-        broker: WebConfirmationBroker,
+        broker: ConfirmationBroker,
         turns: dict[str, list[Turn]],
         pacing: Pacing,
     ) -> None:
@@ -181,6 +182,7 @@ class MockEngine:
         self._pacing = pacing
         self._confirmation_timeout_s = config.hitl.confirmation_timeout_s
         self._cancelled = False
+        self._running = False
         self._next_error_turn = 0
 
     # --- WebEngine ----------------------------------------------------------------------
@@ -196,8 +198,12 @@ class MockEngine:
         prefix, branches = _ui_action_turn(tool, arguments)
         return self._replay(prefix, branches, None)
 
-    def cancel(self) -> None:
+    def cancel(self) -> bool:
+        """Same contract as Engine.cancel(): False (ignored) when no turn is running."""
+        if not self._running:
+            return False
         self._cancelled = True
+        return True
 
     def reset(self) -> None:
         self._next_error_turn = 0
@@ -234,11 +240,24 @@ class MockEngine:
         user_message: str | None,
     ) -> AsyncIterator[Event]:
         self._cancelled = False
+        self._running = True
+        try:
+            async for event in self._play(prefix, branches, user_message):
+                yield event
+        finally:
+            self._running = False
+
+    async def _play(
+        self,
+        prefix: Sequence[Event],
+        branches: dict[str, Turn] | None,
+        user_message: str | None,
+    ) -> AsyncIterator[Event]:
         started = time.monotonic()
         turn_id = _new_id()
         ids: dict[str, str] = {}
         tokens: list[str] = []
-        resolution: Resolution | None = None
+        decision: Decision | None = None
         queue = list(prefix)
         index = 0
         while index < len(queue):
@@ -256,19 +275,22 @@ class MockEngine:
                 )
                 return
             await asyncio.sleep(self._pacing.before(kind))
-            event = self._instantiate(template, turn_id, ids, user_message, resolution)
+            event = self._instantiate(template, turn_id, ids, user_message, decision)
             if kind == "token":
                 tokens.append(event["delta"])
             elif kind == "message_done":
                 event["duration_ms"] = _elapsed_ms(started)
             yield event
             if kind == "confirmation_required" and branches is not None:
-                resolution = await self._broker.request(
-                    event["action_id"], self._confirmation_timeout_s
-                )
-                queue[index:] = branches[
-                    "approve" if resolution.decision == "approve" else "reject"
-                ]
+                decision = await self._confirm(_pending_action(event))
+                queue[index:] = branches["approve" if decision.approved else "reject"]
+
+    async def _confirm(self, action: PendingAction) -> Decision:
+        """Same pause as Engine._confirm: the broker's answer, or "timeout" after the delay."""
+        try:
+            return await asyncio.wait_for(self._broker.request(action), action.expires_in_s)
+        except asyncio.TimeoutError:  # distinct from the builtin TimeoutError in 3.10
+            return Decision("timeout", "timeout")
 
     def _instantiate(
         self,
@@ -276,7 +298,7 @@ class MockEngine:
         turn_id: str,
         ids: dict[str, str],
         user_message: str | None,
-        resolution: Resolution | None,
+        decision: Decision | None,
     ) -> Event:
         event = copy.deepcopy(template)
         event.update(session_id=self.session_id, turn_id=turn_id, ts=time.time())
@@ -288,12 +310,12 @@ class MockEngine:
             event["user_message"] = user_message
         elif kind == "confirmation_required":
             event["expires_in_s"] = self._confirmation_timeout_s
-        elif kind == "confirmation_resolved" and resolution is not None:
+        elif kind == "confirmation_resolved" and decision is not None:
             event.update(
-                decision=resolution.decision, reason=resolution.reason, comment=resolution.comment
+                decision=decision.decision, reason=decision.reason, comment=decision.comment
             )
-        elif kind == "tool_result" and resolution is not None and not event["ok"]:
-            message = REJECTED_MESSAGES.get(resolution.reason)
+        elif kind == "tool_result" and decision is not None and not event["ok"]:
+            message = REJECTED_MESSAGES.get(decision.reason)
             if message is not None:
                 event["error"] = {"code": "ACTION_REJECTED", "message": message}
         return event
@@ -306,6 +328,17 @@ class MockEngine:
             "ts": time.time(),
             **fields,
         }
+
+
+def _pending_action(event: Event) -> PendingAction:
+    return PendingAction(
+        action_id=event["action_id"],
+        call_id=event["call_id"],
+        tool=event["tool"],
+        sql=event["sql"],
+        impact=event["impact"],
+        expires_in_s=event["expires_in_s"],
+    )
 
 
 def _elapsed_ms(started: float) -> int:

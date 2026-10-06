@@ -20,6 +20,7 @@ from typing import Any
 
 from fastapi import WebSocket
 
+from sensai.core.events import DecisionReason
 from sensai.web.engines.backend import WebBackend, WebEngine
 from sensai.web.websocket.confirm import WebConfirmationBroker
 
@@ -92,7 +93,7 @@ class Session:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
-    def interrupt(self, reason: str) -> None:
+    def interrupt(self, reason: DecisionReason) -> None:
         """`cancel`, `reset` or disconnection: refuse pending confirmations, stop the turn."""
         if self.turn_active:
             self.broker.reject_all(reason)

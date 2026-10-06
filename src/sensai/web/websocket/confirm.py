@@ -1,56 +1,49 @@
 """Web ConfirmationBroker: a pending HITL action is a Future resolved by a WebSocket message.
 
-The engine awaits `request()` inside its turn generator; the WebSocket receive loop, a
-concurrent task, calls `resolve()` when a `confirm` message arrives (events.md §6).
-Resolving from the code that consumes the generator would deadlock.
+It implements `sensai.core.confirm.ConfirmationBroker`, like the CLI broker (HITL-02):
+- the engine calls `request(action)` inside its turn generator, and bounds the wait to
+  `action.expires_in_s` itself (`Engine._confirm`): no answer in time is its "timeout";
+- the WebSocket receive loop, a concurrent task, calls `resolve()` when a `confirm`
+  message arrives (events.md §6). Resolving from the code that consumes the generator
+  would deadlock.
 """
 
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 
-
-@dataclass(frozen=True)
-class Resolution:
-    """How a confirmation ended: `decision` and `reason` as in events.md §3.7."""
-
-    decision: str  # "approve" | "reject" | "timeout"
-    reason: str  # "user" | "cancelled" | "disconnected" | "timeout"
-    comment: str | None = None
-
-
-TIMED_OUT = Resolution("timeout", "timeout")
+from sensai.core.confirm import Decision, PendingAction
+from sensai.core.events import DecisionKind, DecisionReason
 
 
 class WebConfirmationBroker:
     def __init__(self) -> None:
-        self._pending: dict[str, asyncio.Future[Resolution]] = {}
+        self._pending: dict[str, asyncio.Future[Decision]] = {}
 
-    async def request(self, action_id: str, timeout_s: float) -> Resolution:
-        """Wait for the user's decision; no answer within `timeout_s` means a refusal."""
-        future: asyncio.Future[Resolution] = asyncio.get_running_loop().create_future()
-        self._pending[action_id] = future
+    async def request(self, action: PendingAction) -> Decision:
+        """Wait for the user's decision, as long as the engine lets this call run."""
+        future: asyncio.Future[Decision] = asyncio.get_running_loop().create_future()
+        self._pending[action.action_id] = future
         try:
-            return await asyncio.wait_for(future, timeout_s)
-        except asyncio.TimeoutError:  # distinct from the builtin TimeoutError on Python 3.10
-            return TIMED_OUT
-        finally:
-            self._pending.pop(action_id, None)
+            return await future
+        finally:  # answered, or cancelled by the engine's timeout
+            self._pending.pop(action.action_id, None)
 
-    def resolve(self, action_id: str, decision: str, comment: str | None = None) -> bool:
+    def resolve(
+        self, action_id: str, decision: DecisionKind, comment: str | None = None
+    ) -> bool:
         """Apply a `confirm` message. False if the action is unknown, resolved or expired."""
         future = self._pending.get(action_id)
         if future is None or future.done():
             return False
-        future.set_result(Resolution(decision, "user", comment))
+        future.set_result(Decision(decision, "user", comment))
         return True
 
-    def reject_all(self, reason: str) -> None:
-        """Refuse every pending action (`cancel`, `reset` or disconnection)."""
+    def reject_all(self, reason: DecisionReason) -> None:
+        """Refuse every pending action: `cancelled` (cancel, reset) or `disconnected`."""
         for future in self._pending.values():
             if not future.done():
-                future.set_result(Resolution("reject", reason))
+                future.set_result(Decision("reject", reason))
 
     @property
     def pending(self) -> frozenset[str]:

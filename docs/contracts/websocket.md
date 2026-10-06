@@ -535,9 +535,9 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 - **Schémas JSON** dans `docs/contracts/schemas/` :
   - [`ws_client.v1.json`](schemas/ws_client.v1.json) : messages du client (§4), structure seulement. Le serveur répond `INVALID_MESSAGE` quand il échoue ; liste blanche, bornes et modèle sont vérifiés ensuite.
   - [`ws_server.v1.json`](schemas/ws_server.v1.json) : messages propres au WebSocket (§5.2).
-  - Les événements du moteur ont leurs propres schémas, prévus par `events.md` (CORE-05).
+  - Les événements du moteur ont leurs propres schémas : [`schemas/events/`](schemas/events/), un par événement (P1, CORE-05).
 - **Fixtures** dans [`tests/fixtures/events/`](../../tests/fixtures/events/README.md) : `nominal`, `memory`, `judge_contradiction`, `hitl_approve`, `hitl_reject`, `errors`. Elles alimentent le `MockEngine` (WEB-04) ; leur README décrit comment les rejouer.
-- **Tests de contrat** : [`tests/unit/contracts/test_websocket_contract.py`](../../tests/unit/contracts/test_websocket_contract.py) vérifie chaque fixture selon `events.md` (champs, ordre des événements, invariants du §4.3), et chaque exemple de ce document contre les schémas. Un exemple faux ici fait échouer la CI.
+- **Tests de contrat** : [`tests/unit/contracts/test_websocket_contract.py`](../../tests/unit/contracts/test_websocket_contract.py) vérifie chaque fixture et chaque exemple de ce document contre les schémas officiels (un événement à la fois), puis les invariants d'un tour entier (`events.md` §4.3 : ordre, `token` = `message_done.content`…). Les règles partagées sont dans [`tests/contract_rules.py`](../../tests/contract_rules.py). Un exemple faux ici fait échouer la CI.
 
 ## Validation
 
