@@ -17,6 +17,19 @@ COMMANDS: dict[str, tuple[str, str]] = {
 }
 
 
+def _add_chat_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--model", help="modèle Ollama (défaut : [ollama] model)")
+    parser.add_argument("--config", help="fichier de configuration (défaut : ./config.toml)")
+    parser.add_argument("--host", help="URL du serveur Ollama (défaut : [ollama] host)")
+
+
+def _run_chat(args: argparse.Namespace) -> int:
+    # Imported here so that `sensai --version` and the other commands stay fast
+    from sensai.cli.app import run_chat
+
+    return run_chat(args.config, args.model, args.host)
+
+
 def _add_web_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", help="fichier de configuration (défaut : ./config.toml)")
     parser.add_argument("--host", help="adresse d'écoute (défaut : [web] host)")
@@ -41,7 +54,7 @@ def _run_web(args: argparse.Namespace) -> int:
 
 
 # Subcommands already implemented; the others print "pas encore implémenté"
-HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {"web": _run_web}
+HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {"chat": _run_chat, "web": _run_web}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -50,7 +63,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", metavar="{" + ",".join(COMMANDS) + "}")
     for name, (help_text, _task) in COMMANDS.items():
         command = sub.add_parser(name, help=help_text)
-        if name == "web":
+        if name == "chat":
+            _add_chat_arguments(command)
+        elif name == "web":
             _add_web_arguments(command)
     return parser
 
