@@ -4,7 +4,7 @@ import sys
 import pytest
 
 from sensai import __version__
-from sensai.__main__ import COMMANDS, main
+from sensai.__main__ import COMMANDS, HANDLERS, main
 
 
 def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
@@ -19,7 +19,7 @@ def test_no_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
     assert "usage: sensai" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("command", sorted(COMMANDS))
+@pytest.mark.parametrize("command", sorted(set(COMMANDS) - set(HANDLERS)))
 def test_unimplemented_command_fails_cleanly(
     command: str, capsys: pytest.CaptureFixture[str]
 ) -> None:

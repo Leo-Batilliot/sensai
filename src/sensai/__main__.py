@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Callable
 
 from sensai import __version__
 
@@ -16,12 +17,31 @@ COMMANDS: dict[str, tuple[str, str]] = {
 }
 
 
+def _add_chat_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--model", help="modèle Ollama (défaut : [ollama] model)")
+    parser.add_argument("--config", help="fichier de configuration (défaut : ./config.toml)")
+    parser.add_argument("--host", help="URL du serveur Ollama (défaut : [ollama] host)")
+
+
+def _run_chat(args: argparse.Namespace) -> int:
+    # Imported here so that `sensai --version` and the other commands stay fast
+    from sensai.cli.app import run_chat
+
+    return run_chat(args.config, args.model, args.host)
+
+
+# Subcommands already implemented; the others print "pas encore implémenté"
+HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {"chat": _run_chat}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="sensai", description="Copilote BI local (Ollama).")
     parser.add_argument("--version", action="version", version=f"sensai {__version__}")
     sub = parser.add_subparsers(dest="command", metavar="{" + ",".join(COMMANDS) + "}")
     for name, (help_text, _task) in COMMANDS.items():
-        sub.add_parser(name, help=help_text)
+        command = sub.add_parser(name, help=help_text)
+        if name == "chat":
+            _add_chat_arguments(command)
     return parser
 
 
@@ -31,6 +51,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command is None:
         parser.print_help()
         return 0
+    handler = HANDLERS.get(args.command)
+    if handler is not None:
+        return handler(args)
     _help, task = COMMANDS[args.command]
     print(f"sensai {args.command} : pas encore implémenté ({task}).", file=sys.stderr)
     return 1
