@@ -30,8 +30,31 @@ def _run_chat(args: argparse.Namespace) -> int:
     return run_chat(args.config, args.model, args.host)
 
 
+def _add_web_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--config", help="fichier de configuration (défaut : ./config.toml)")
+    parser.add_argument("--host", help="adresse d'écoute (défaut : [web] host)")
+    parser.add_argument("--port", type=int, help="port d'écoute (défaut : [web] port)")
+
+
+def _run_web(args: argparse.Namespace) -> int:
+    # Imported here so that `sensai --version` and the other commands stay fast
+    import uvicorn
+
+    from sensai.core.config import ConfigError, load_config
+    from sensai.web.server import create_app
+
+    try:
+        config = load_config(args.config, overrides={"web.host": args.host, "web.port": args.port})
+    except ConfigError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    # Default single worker: web sessions will live in memory (WEB-04)
+    uvicorn.run(create_app(config), host=config.web.host, port=config.web.port)
+    return 0
+
+
 # Subcommands already implemented; the others print "pas encore implémenté"
-HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {"chat": _run_chat}
+HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {"chat": _run_chat, "web": _run_web}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -42,6 +65,8 @@ def build_parser() -> argparse.ArgumentParser:
         command = sub.add_parser(name, help=help_text)
         if name == "chat":
             _add_chat_arguments(command)
+        elif name == "web":
+            _add_web_arguments(command)
     return parser
 
 
