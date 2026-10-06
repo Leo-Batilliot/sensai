@@ -1,101 +1,28 @@
-"""CLI chat tests, with a fake Ollama client that streams scripted chunks (no network)."""
+"""CLI chat tests: an Engine on a fake Ollama client that streams scripted chunks."""
 
 import asyncio
 import io
 import signal
-from collections.abc import AsyncGenerator, Callable, Iterator
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any
 
 import pytest
 from rich.console import Console
 
-from sensai.cli import app
+from fakes import CTRL_C, HANG, MODEL, OTHER_MODEL, FakeClient, answer
 from sensai.cli.app import ChatSession, run_chat, run_interruptible, run_repl
 from sensai.cli.render import Renderer
-from sensai.core.errors import ModelNotFound, OllamaUnavailable, StreamInterrupted
-from sensai.llm.ollama_client import Chunk, Message, ModelDetails
-
-MODEL = "qwen3:8b"
-OTHER_MODEL = "llama3.1:8b"
-
-
-@dataclass(frozen=True)
-class Pause:
-    """Stream item: the stream waits until cancelled, after a Ctrl+C if ctrl_c is set."""
-
-    ctrl_c: bool = False
-
-
-HANG = Pause()
-CTRL_C = Pause(ctrl_c=True)
-
-StreamItem = Chunk | Exception | Pause
-
-
-def answer(*parts: str) -> list[StreamItem]:
-    return [*(Chunk(content=part) for part in parts), Chunk(done=True, done_reason="stop")]
-
-
-class FakeClient:
-    """Stands in for OllamaClient: each chat_stream call plays the next scripted reply."""
-
-    def __init__(
-        self,
-        *replies: list[StreamItem],
-        models: tuple[str, ...] = (MODEL, OTHER_MODEL),
-        capabilities: tuple[str, ...] = ("completion", "tools"),
-        show_error: Exception | None = None,
-    ) -> None:
-        self.replies = list(replies)
-        self.models = models
-        self.capabilities = capabilities
-        self.show_error = show_error
-        self.calls: list[tuple[str, list[Message], dict[str, Any] | None]] = []
-        self.open_streams = 0
-        self.closed = False
-
-    async def chat_stream(
-        self, model: str, messages: list[Message], *, options: dict[str, Any] | None = None
-    ) -> AsyncGenerator[Chunk, None]:
-        self.calls.append((model, messages, options))
-        reply = self.replies.pop(0)
-        self.open_streams += 1
-        try:
-            for item in reply:
-                await asyncio.sleep(0)
-                if isinstance(item, Exception):
-                    raise item
-                if isinstance(item, Pause):
-                    if item.ctrl_c:
-                        signal.raise_signal(signal.SIGINT)
-                    await asyncio.Event().wait()
-                    continue
-                yield item
-        finally:
-            self.open_streams -= 1
-
-    async def show(self, model: str) -> ModelDetails:
-        if self.show_error is not None:
-            raise self.show_error
-        if model not in self.models:
-            raise ModelNotFound(model)
-        return ModelDetails(name=model, capabilities=self.capabilities, context_length=8192)
-
-    async def list_models(self) -> list[str]:
-        if self.show_error is not None:
-            raise self.show_error
-        return list(self.models)
-
-    async def aclose(self) -> None:
-        self.closed = True
+from sensai.core import engine as engine_module
+from sensai.core.config import Config
+from sensai.core.engine import Engine
+from sensai.core.errors import OllamaUnavailable, StreamInterrupted
+from sensai.llm.ollama_client import Chunk, Message
 
 
 def make_session(client: FakeClient) -> tuple[ChatSession, io.StringIO]:
     out = io.StringIO()
     console = Console(file=out, width=100, color_system=None, highlight=False)
-    return ChatSession(client, MODEL, Renderer(console)), out
+    return ChatSession(Engine(Config(), client, session_id="s-1"), Renderer(console)), out
 
 
 def scripted(*lines: str) -> Callable[[str], str]:
@@ -132,7 +59,7 @@ async def test_streams_the_answer_and_records_the_exchange() -> None:
     assert await session.handle("Salut") is True
 
     assert "Bonjour, je suis SENSAI.\n" in out.getvalue()
-    assert session.history.messages == exchange("Salut", "Bonjour, je suis SENSAI.")
+    assert session.engine.history.messages == exchange("Salut", "Bonjour, je suis SENSAI.")
 
 
 async def test_second_call_receives_the_first_exchange() -> None:
@@ -182,7 +109,7 @@ async def test_session_survives_ollama_being_down() -> None:
 
     assert "Ollama injoignable sur http://localhost:11434" in out.getvalue()
     assert "Me revoilà." in out.getvalue()
-    assert session.history.messages == exchange("Second essai", "Me revoilà.")
+    assert session.engine.history.messages == exchange("Second essai", "Me revoilà.")
 
 
 async def test_cut_stream_is_shown_but_not_kept() -> None:
@@ -195,10 +122,10 @@ async def test_cut_stream_is_shown_but_not_kept() -> None:
     assert "Le chiffre\n" in out.getvalue()
     assert "La réponse a été interrompue (connexion coupée)." in out.getvalue()
     assert "pas conservée dans l'historique" in out.getvalue()
-    assert len(session.history) == 0
+    assert len(session.engine.history) == 0
 
 
-async def test_cancelled_answer_is_not_kept_and_its_stream_is_closed() -> None:
+async def test_cancelled_task_leaves_no_trace() -> None:
     client = FakeClient([Chunk(content="Début"), HANG])
     session, out = make_session(client)
 
@@ -208,9 +135,9 @@ async def test_cancelled_answer_is_not_kept_and_its_stream_is_closed() -> None:
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    assert "Réponse interrompue." in out.getvalue()
-    assert len(session.history) == 0
+    assert len(session.engine.history) == 0
     assert client.open_streams == 0
+    assert not session.engine.busy
 
 
 async def test_thinking_is_announced_once_and_never_kept() -> None:
@@ -218,8 +145,7 @@ async def test_thinking_is_announced_once_and_never_kept() -> None:
         [
             Chunk(thinking="17 fois 3,"),
             Chunk(thinking=" c'est 51."),
-            Chunk(content="17 × 3 font 51."),
-            Chunk(done=True),
+            *answer("17 × 3 font 51."),
         ]
     )
     session, out = make_session(client)
@@ -228,7 +154,7 @@ async def test_thinking_is_announced_once_and_never_kept() -> None:
 
     assert out.getvalue().count("(réflexion…)") == 1
     assert "c'est 51" not in out.getvalue()
-    assert session.history.messages == exchange("17 × 3 ?", "17 × 3 font 51.")
+    assert session.engine.history.messages == exchange("17 × 3 ?", "17 × 3 font 51.")
 
 
 async def test_model_text_is_printed_as_is() -> None:
@@ -238,16 +164,6 @@ async def test_model_text_is_printed_as_is() -> None:
     await session.handle("Total ?")
 
     assert "[bold]Total[/bold] :memo:" in out.getvalue()
-
-
-async def test_chat_options_are_sent_with_every_request() -> None:
-    client = FakeClient(answer("Oui."))
-    session, _ = make_session(client)
-    session.options = {"temperature": 0.1, "num_ctx": 8192}
-
-    await session.handle("Question")
-
-    assert client.calls[0][2] == {"temperature": 0.1, "num_ctx": 8192}
 
 
 # --- Startup check ---
@@ -297,7 +213,7 @@ async def test_model_command_switches_and_keeps_the_history() -> None:
     await session.handle(f"/model {OTHER_MODEL}")
     await session.handle("Second")
 
-    assert session.model == OTHER_MODEL
+    assert session.engine.model == OTHER_MODEL
     assert f"Modèle : {OTHER_MODEL} (historique conservé)." in out.getvalue()
     model, messages, _options = client.calls[1]
     assert model == OTHER_MODEL
@@ -309,7 +225,7 @@ async def test_model_command_with_an_unknown_model_keeps_the_current_one() -> No
 
     await session.handle("/model inexistant")
 
-    assert session.model == MODEL
+    assert session.engine.model == MODEL
     assert "ollama pull inexistant" in out.getvalue()
     assert f"* {MODEL}" in out.getvalue()
 
@@ -367,7 +283,7 @@ def test_repl_runs_until_exit(loop: asyncio.AbstractEventLoop) -> None:
 
     run_repl(session, loop, scripted("Salut", "/exit", "jamais lu"))
 
-    assert session.history.messages == exchange("Salut", "Bonjour !")
+    assert session.engine.history.messages == exchange("Salut", "Bonjour !")
 
 
 @pytest.mark.parametrize("quit_key", [EOFError, KeyboardInterrupt])
@@ -385,14 +301,27 @@ def test_ctrl_d_or_ctrl_c_at_the_prompt_quits(
 def test_ctrl_c_during_an_answer_goes_back_to_the_prompt(
     loop: asyncio.AbstractEventLoop,
 ) -> None:
-    client = FakeClient([Chunk(content="Début"), CTRL_C], answer("Suite."))
+    client = FakeClient(
+        [Chunk(content="Début"), CTRL_C, Chunk(content=" jamais affiché"), Chunk(done=True)],
+        answer("Suite."),
+    )
     session, out = make_session(client)
 
     run_repl(session, loop, scripted("Question longue", "Autre question", "/exit"))
 
-    assert "Réponse interrompue." in out.getvalue()
-    assert session.history.messages == exchange("Autre question", "Suite.")
+    assert "Début\nRéponse interrompue." in out.getvalue()
+    assert "jamais affiché" not in out.getvalue()
+    assert session.engine.history.messages == exchange("Autre question", "Suite.")
     assert client.open_streams == 0
+
+
+def test_ctrl_c_outside_a_turn_cancels_the_command(loop: asyncio.AbstractEventLoop) -> None:
+    async def slow_command() -> None:
+        signal.raise_signal(signal.SIGINT)
+        await asyncio.sleep(10)
+
+    with pytest.raises(asyncio.CancelledError):
+        run_interruptible(loop, slow_command(), on_interrupt=lambda: False)
 
 
 def test_ctrl_c_handler_is_restored_after_a_turn(loop: asyncio.AbstractEventLoop) -> None:
@@ -418,7 +347,7 @@ def config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def use_fake(monkeypatch: pytest.MonkeyPatch, client: FakeClient) -> None:
-    monkeypatch.setattr(app, "OllamaClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(engine_module, "OllamaClient", lambda *args, **kwargs: client)
 
 
 def test_model_argument_wins_over_the_config_file(

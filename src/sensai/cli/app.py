@@ -1,8 +1,8 @@
-"""CLI chat: the base loop of the subject (B1, PROJECT.md §6.1).
+"""CLI chat: a thin adapter of the Engine (B1, PROJECT.md §6.1; CORE-05).
 
-Streaming, history within the session, clean error handling, and a model chosen by
-argument or configuration. CORE-05 will turn this module into a thin adapter of the
-Engine.
+It reads lines, turns commands into Engine calls and displays the events of each turn.
+History, model, errors and cancellation belong to the Engine
+(docs/contracts/events.md): the CLI never talks to Ollama itself.
 """
 
 from __future__ import annotations
@@ -11,15 +11,16 @@ import asyncio
 import contextlib
 import signal
 import sys
-from collections.abc import AsyncGenerator, Callable, Coroutine
+from collections.abc import Callable, Coroutine
 from types import FrameType
-from typing import Any, Protocol, TypeVar
+from typing import Any, TypeVar
 
 from sensai.cli.render import Renderer
-from sensai.core.config import Config, ConfigError, load_config
-from sensai.core.errors import ModelNotFound, SensaiError, StreamInterrupted
-from sensai.core.history import History
-from sensai.llm.ollama_client import Chunk, Message, ModelDetails, OllamaClient
+from sensai.core import events
+from sensai.core.config import ConfigError, load_config
+from sensai.core.engine import Engine
+from sensai.core.errors import ModelNotFound, SensaiError
+from sensai.llm.ollama_client import ModelDetails
 
 T = TypeVar("T")
 
@@ -41,40 +42,17 @@ NOT_YET_AVAILABLE = {"/tools": "MCP-04", "/memory": "MEM-03"}
 NOT_KEPT = "Elle n'est pas conservée dans l'historique."
 
 
-class ChatClient(Protocol):
-    """What the chat needs from OllamaClient (tests use a scripted fake)."""
-
-    def chat_stream(
-        self, model: str, messages: list[Message], *, options: dict[str, Any] | None = None
-    ) -> AsyncGenerator[Chunk, None]: ...
-
-    async def show(self, model: str) -> ModelDetails: ...
-
-    async def list_models(self) -> list[str]: ...
-
-    async def aclose(self) -> None: ...
-
-
 class ChatSession:
-    """One CLI conversation: the current model, its history and the Ollama client."""
+    """One CLI conversation: an Engine and the terminal it is displayed on."""
 
-    def __init__(
-        self,
-        client: ChatClient,
-        model: str,
-        renderer: Renderer,
-        options: dict[str, Any] | None = None,
-    ) -> None:
-        self.client = client
-        self.model = model
+    def __init__(self, engine: Engine, renderer: Renderer) -> None:
+        self.engine = engine
         self.render = renderer
-        self.options = options
-        self.history = History()
 
     async def check_model(self) -> bool:
         """Startup check. False when the model is not installed: the chat cannot start."""
         try:
-            details = await self.client.show(self.model)
+            details = await self.engine.model_details()
         except ModelNotFound as exc:
             self.render.error(exc.message)
             with contextlib.suppress(SensaiError):
@@ -103,35 +81,27 @@ class ChatSession:
             return True
 
     async def ask(self, question: str) -> None:
-        """One turn: stream the answer, then record the exchange if it is complete."""
-        parts: list[str] = []
-        try:
-            await self._stream_answer(question, parts)
-        except asyncio.CancelledError:
-            self.render.warning(f"Réponse interrompue. {NOT_KEPT}")
-            raise
-        except StreamInterrupted as exc:
-            self.render.warning(f"{exc.message} {NOT_KEPT}")
-            return
-        except SensaiError as exc:
-            self.render.error(exc.message)
-            return
-        self.history.commit(question, "".join(parts))
+        """One turn: display the events of the Engine as they come."""
+        async with contextlib.aclosing(self.engine.run_turn(question)) as turn:
+            async for event in turn:
+                self._show(event)
 
-    async def _stream_answer(self, question: str, parts: list[str]) -> None:
-        messages = self.history.messages_for(question)
-        stream = self.client.chat_stream(self.model, messages, options=self.options)
-        try:
-            # aclosing: on cancel, the generator closes its HTTP response, which stops Ollama
-            async with contextlib.aclosing(stream) as chunks:
-                async for chunk in chunks:
-                    if chunk.thinking:
-                        self.render.thinking()
-                    if chunk.content:
-                        parts.append(chunk.content)
-                        self.render.delta(chunk.content)
-        finally:
+    def _show(self, event: events.Event) -> None:
+        if isinstance(event, events.Thinking):
+            self.render.thinking()
+        elif isinstance(event, events.Token):
+            self.render.delta(event.delta)
+        elif isinstance(event, events.MessageDone):
             self.render.end_answer()
+            if event.interrupted:
+                self.render.warning(f"Réponse interrompue. {NOT_KEPT}")
+        elif isinstance(event, events.Error):
+            self.render.end_answer()
+            if event.code == "STREAM_INTERRUPTED":
+                self.render.warning(f"{event.message} {NOT_KEPT}")
+            else:
+                self.render.error(event.message)
+        # Tool, HITL and judge events are displayed from CORE-06 on
 
     async def _command(self, text: str) -> bool:
         name, _, argument = text.partition(" ")
@@ -140,7 +110,7 @@ class ChatSession:
         if name == "/help":
             self.render.info(HELP)
         elif name == "/reset":
-            self.history.clear()
+            self.engine.reset()
             self.render.info("Historique vidé.")
         elif name == "/models":
             await self._show_models()
@@ -154,24 +124,24 @@ class ChatSession:
 
     async def _switch_model(self, name: str) -> None:
         if not name:
-            self.render.info(f"Modèle actuel : {self.model}. Pour en changer : /model <nom>")
+            self.render.info(f"Modèle actuel : {self.engine.model}. Pour en changer : /model <nom>")
             return
         try:
-            details = await self.client.show(name)
+            details = await self.engine.model_details(name)
         except ModelNotFound as exc:
             self.render.error(exc.message)
             await self._show_models()
             return
-        self.model = name
+        self.engine.set_model(name)
         self.render.info(f"Modèle : {name} (historique conservé).")
         self._warn_if_no_tools(details)
 
     async def _show_models(self) -> None:
-        models = await self.client.list_models()
+        models = await self.engine.list_models()
         if not models:
             self.render.info("Aucun modèle installé (ollama pull <nom>).")
             return
-        lines = [f"{'*' if name == self.model else ' '} {name}" for name in models]
+        lines = [f"{'*' if name == self.engine.model else ' '} {name}" for name in models]
         self.render.info("Modèles installés :\n" + "\n".join(lines))
 
     def _warn_if_no_tools(self, details: ModelDetails) -> None:
@@ -182,22 +152,32 @@ class ChatSession:
             )
 
 
-def run_interruptible(loop: asyncio.AbstractEventLoop, coro: Coroutine[Any, Any, T]) -> T:
-    """Run coro until done; Ctrl+C cancels it (CancelledError) instead of killing the app.
+def run_interruptible(
+    loop: asyncio.AbstractEventLoop,
+    coro: Coroutine[Any, Any, T],
+    on_interrupt: Callable[[], bool] | None = None,
+) -> T:
+    """Run coro until done; Ctrl+C interrupts it instead of killing the app.
 
-    Like asyncio.run in 3.11+, the SIGINT handler cancels the task, so the interruption
-    lands on an await, never in the middle of a statement. signal.signal also works on
+    The first Ctrl+C calls on_interrupt (Engine.cancel: the turn ends cleanly with
+    message_done(interrupted)). When it returns False, as when no turn is running, the
+    task is cancelled instead (CancelledError). The SIGINT handler only schedules this on
+    the loop, so it never runs in the middle of a statement; signal.signal also works on
     Windows, unlike loop.add_signal_handler. A second Ctrl+C raises KeyboardInterrupt.
     """
     task = loop.create_task(coro)
     interrupted = False
+
+    def interrupt() -> None:
+        if on_interrupt is None or not on_interrupt():
+            task.cancel()
 
     def on_sigint(signum: int, frame: FrameType | None) -> None:
         nonlocal interrupted
         if interrupted:
             raise KeyboardInterrupt
         interrupted = True
-        loop.call_soon_threadsafe(task.cancel)
+        loop.call_soon_threadsafe(interrupt)
 
     previous = signal.signal(signal.SIGINT, on_sigint)
     try:
@@ -219,16 +199,11 @@ def run_repl(
             session.render.info("")  # the shell prompt must not follow "> " on the same line
             return
         try:
-            keep_going = run_interruptible(loop, session.handle(line))
+            keep_going = run_interruptible(loop, session.handle(line), session.engine.cancel)
         except asyncio.CancelledError:
-            continue  # Ctrl+C during a turn: back to the prompt
+            continue  # Ctrl+C during a command: back to the prompt
         if not keep_going:
             return
-
-
-def chat_options(config: Config) -> dict[str, Any]:
-    """Ollama options of every chat request, from the configuration."""
-    return {"temperature": config.agent.temperature, "num_ctx": config.ollama.num_ctx}
 
 
 def run_chat(
@@ -246,16 +221,12 @@ def run_chat(
         return 1
 
     renderer = Renderer()
-    client = OllamaClient(
-        config.ollama.host,
-        timeout_s=config.ollama.timeout_s,
-        keep_alive=config.ollama.keep_alive,
-    )
-    session = ChatSession(client, config.ollama.model, renderer, chat_options(config))
+    engine = Engine(config)
+    session = ChatSession(engine, renderer)
     loop = asyncio.new_event_loop()
     try:
         renderer.hint(
-            f"SENSAI · {config.ollama.model} sur {config.ollama.host} · "
+            f"SENSAI · {engine.model} sur {config.ollama.host} · "
             "/help pour l'aide, /exit pour quitter"
         )
         if not run_interruptible(loop, session.check_model()):
@@ -266,6 +237,6 @@ def run_chat(
         renderer.info("")
         return 130
     finally:
-        loop.run_until_complete(client.aclose())
+        loop.run_until_complete(engine.aclose())
         loop.run_until_complete(loop.shutdown_asyncgens())
         loop.close()
