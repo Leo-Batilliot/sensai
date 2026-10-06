@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "events/error.v1",
+  "title": "Événement error",
+  "description": "Erreur ; termine le tour quand turn_id n'est pas null. Fait foi : docs/contracts/events.md §3.12. Propriétaire : P1.",
+  "type": "object",
+  "required": [
+    "type",
+    "session_id",
+    "turn_id",
+    "ts",
+    "code",
+    "message",
+    "recoverable"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "error"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "turn_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ts": {
+      "type": "number",
+      "description": "Secondes depuis l'epoch (flottant)"
+    },
+    "code": {
+      "enum": [
+        "OLLAMA_UNAVAILABLE",
+        "OLLAMA_TIMEOUT",
+        "MODEL_NOT_FOUND",
+        "MODEL_NO_TOOLS",
+        "STREAM_INTERRUPTED",
+        "OLLAMA_ERROR",
+        "MAX_ITERATIONS",
+        "INTERNAL",
+        "INVALID_MESSAGE",
+        "BUSY",
+        "UNKNOWN_ACTION",
+        "INVALID_CONFIG",
+        "UI_ACTION_FORBIDDEN"
+      ]
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1
+    },
+    "recoverable": {
+      "type": "boolean"
+    },
+    "reply_to": {
+      "type": "string",
+      "description": "Ajouté par la couche web (websocket.md §7.1)"
+    }
+  }
+}

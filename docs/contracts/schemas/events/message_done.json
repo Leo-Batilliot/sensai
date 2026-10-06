@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "events/message_done.v1",
+  "title": "Événement message_done",
+  "description": "Fin de la réponse (éventuellement interrompue). Fait foi : docs/contracts/events.md §3.10. Propriétaire : P1.",
+  "type": "object",
+  "required": [
+    "type",
+    "session_id",
+    "turn_id",
+    "ts",
+    "content",
+    "interrupted",
+    "usage",
+    "duration_ms"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "message_done"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "turn_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ts": {
+      "type": "number",
+      "description": "Secondes depuis l'epoch (flottant)"
+    },
+    "content": {
+      "type": "string"
+    },
+    "interrupted": {
+      "type": "boolean"
+    },
+    "usage": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "prompt_tokens",
+            "completion_tokens",
+            "ctx_used",
+            "ctx_max"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "prompt_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "completion_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "ctx_used": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "ctx_max": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      ]
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "if": {
+    "properties": {
+      "interrupted": {
+        "const": true
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "usage": {
+        "type": "null"
+      }
+    }
+  }
+}

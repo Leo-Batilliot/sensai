@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "events/turn_started.v1",
+  "title": "Événement turn_started",
+  "description": "Début d'un tour. Fait foi : docs/contracts/events.md §3.1. Propriétaire : P1.",
+  "type": "object",
+  "required": [
+    "type",
+    "session_id",
+    "turn_id",
+    "ts",
+    "origin",
+    "user_message"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "turn_started"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "turn_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ts": {
+      "type": "number",
+      "description": "Secondes depuis l'epoch (flottant)"
+    },
+    "origin": {
+      "enum": [
+        "user",
+        "ui"
+      ]
+    },
+    "user_message": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "if": {
+    "properties": {
+      "origin": {
+        "const": "ui"
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "user_message": {
+        "type": "null"
+      }
+    }
+  },
+  "else": {
+    "properties": {
+      "user_message": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

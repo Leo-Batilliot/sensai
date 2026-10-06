@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "judge_report.v1",
+  "title": "Rapport du juge (sortie du modèle)",
+  "description": "Ce que le juge LLM renvoie, passé tel quel en paramètre format à POST /api/chat. Les scores et le badge ne sont pas demandés au modèle : ils sont calculés par le code (docs/contracts/judge.md §2). Propriétaire : P3.",
+  "type": "object",
+  "required": ["claims", "relevance", "sql_answers_question", "key_figures", "assumptions", "followups"],
+  "additionalProperties": false,
+  "properties": {
+    "claims": {
+      "description": "Une entrée par affirmation chiffrée ou factuelle de la réponse.",
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "required": ["text", "verdict", "evidence", "expected_value"],
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "description": "Extrait copié mot pour mot de la réponse (sert au surlignage).",
+            "type": "string",
+            "minLength": 1
+          },
+          "verdict": {"type": "string", "enum": ["supported", "contradicted", "unverifiable"]},
+          "evidence": {
+            "description": "Ligne, colonne ou valeur des résultats SQL qui justifie le verdict.",
+            "type": "string"
+          },
+          "expected_value": {
+            "description": "Valeur réelle d'après les données quand verdict = contradicted, sinon null.",
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "relevance": {
+      "description": "La réponse traite-t-elle la question posée ? 1 = hors sujet, 5 = complète.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "sql_answers_question": {
+      "description": "Le SQL exécuté calcule-t-il bien ce que demande la question ?",
+      "type": "boolean"
+    },
+    "key_figures": {
+      "description": "Chiffres clés de la réponse, affichés en cartes (US-T5-02).",
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["label", "value", "unit", "source_column"],
+        "additionalProperties": false,
+        "properties": {
+          "label": {"type": "string", "minLength": 1},
+          "value": {"type": "number"},
+          "unit": {"description": "Ex. EUR, k€, %, jours, clients. Chaîne vide si sans unité.", "type": "string"},
+          "source_column": {
+            "description": "Colonne du résultat SQL d'où vient la valeur, null si aucune.",
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "assumptions": {
+      "description": "Hypothèses faites par la réponse ou le SQL (ex. délai moyen calculé sur tout l'historique).",
+      "type": "array",
+      "maxItems": 3,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "followups": {
+      "description": "Questions de relance proposées à l'utilisateur.",
+      "type": "array",
+      "maxItems": 3,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

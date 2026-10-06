@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "events/tool_call.v1",
+  "title": "Événement tool_call",
+  "description": "Le modèle (ou l'interface) demande un outil. Fait foi : docs/contracts/events.md §3.4. Propriétaire : P1.",
+  "type": "object",
+  "required": [
+    "type",
+    "session_id",
+    "turn_id",
+    "ts",
+    "call_id",
+    "server",
+    "tool",
+    "arguments"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "tool_call"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "turn_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ts": {
+      "type": "number",
+      "description": "Secondes depuis l'epoch (flottant)"
+    },
+    "call_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "server": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tool": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "arguments": {
+      "type": "object"
+    }
+  }
+}

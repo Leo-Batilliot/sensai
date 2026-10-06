@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "events/sql_generated.v1",
+  "title": "Événement sql_generated",
+  "description": "SQL d'un appel d'outil, classé par la garde SQL. Fait foi : docs/contracts/events.md §3.5. Propriétaire : P1.",
+  "type": "object",
+  "required": [
+    "type",
+    "session_id",
+    "turn_id",
+    "ts",
+    "call_id",
+    "sql",
+    "operation"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "sql_generated"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "turn_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ts": {
+      "type": "number",
+      "description": "Secondes depuis l'epoch (flottant)"
+    },
+    "call_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sql": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operation": {
+      "enum": [
+        "SELECT",
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "OTHER"
+      ]
+    }
+  }
+}
