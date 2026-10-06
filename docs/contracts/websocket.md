@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Statut** | 🟡 Brouillon (lun 05/10, réponses de P1 et P3 intégrées) — gel prévu le **mar 06/10 à 12 h** |
+| **Statut** | 🟡 Brouillon (réponses de P1, P2 et P3 intégrées) — gel prévu le **mar 06/10 à 12 h** |
 | **Propriétaire** | P4 (Web & Produit) |
-| **Consommateurs** | P1 (moteur, événements), P3 (mémoire) |
+| **Consommateurs** | P1 (moteur, événements), P2 (outils MCP, HITL), P3 (mémoire, juge) |
 | **Tâche** | WEB-01 (PLANNING §7, sprint 1) |
 | **Dépend de** | `events.md` (P1), `tools.md` (P1, P2), `judge.md` + `schemas/judge_report.v1.json` (P3, EVAL-01), `memory.md` (P3, MEM-01) |
 
@@ -221,7 +221,9 @@ Leur définition fait foi dans `events.md` (propriétaire P1). Ce contrat n'en r
 |---|---|
 | `turn_started` | `origin` : `"user"` ou `"ui"`. Pour un tour lancé par `ui_action`, `user_message` vaut `null` et le front n'affiche pas de bulle utilisateur. |
 | `context_injected` | `refs: [{kind, ref, label}]`, émis juste après `turn_started`, **seulement s'il y a des entrées**. `kind` et `ref` comme pour les outils mémoire (§4.2). `label` : le terme pour le glossaire, le nom pour une entité, le début du contenu pour un fait. Les entrées sont choisies par MEM-04 (au plus 5 définitions et 5 faits). Il dit ce qui a été **fourni** au modèle, pas ce qu'il a appliqué : le libellé de l'interface est **« Contexte mémoire fourni »**, jamais « appliqué ». |
-| `tool_result` (`run_select`) | `data = {columns, rows, row_count, truncated}`. `row_count` est le nombre de lignes **présentes dans `rows`**, pas le total. `truncated: true` signifie qu'il y avait d'autres lignes. Les valeurs sont des scalaires JSON (nombre, chaîne, `null`). Le front affiche « 200 lignes affichées · résultat tronqué », jamais un total. |
+| `tool_result` (`run_select`) | `data` = le `structuredContent` de l'outil : `{columns, rows, row_count, truncated}`. `rows` est une liste de listes, dans l'ordre de `columns`. `row_count` est le nombre de lignes **présentes dans `rows`**, pas le total. `truncated: true` signifie qu'il y avait d'autres lignes (le serveur en lit `row_limit + 1` et n'en renvoie que `row_limit`). Les valeurs sont des scalaires JSON (nombre, chaîne, `null`). Le front affiche « 200 lignes affichées · résultat tronqué », jamais un total. |
+| `sql_generated` | `operation` : `"SELECT"`, `"INSERT"`, `"UPDATE"`, `"DELETE"` ou `"OTHER"`. Valeur produite par la garde SQL (SEC-01), jamais par le modèle. |
+| `confirmation_required` | `impact = {operation, rows_affected, per_table, sample, blocked}` (`tools.md`, P2) :<br>• `per_table` : différences signées de `COUNT(*)` par table, cascades incluses (négatif = lignes supprimées). Pour un `UPDATE`, elles valent 0 : le front affiche alors `rows_affected` sous la forme « N lignes modifiées » au lieu de lire `per_table`.<br>• `blocked: [{reason, count}]` : avec `ON DELETE RESTRICT`, SQLite **rejette toute l'instruction** dès qu'une ligne est protégée. Dans ce cas, `rows_affected` vaut 0, `per_table` vaut `{}`, et `blocked` dit pourquoi. `count` vaut `null` en v1 (MCP-05) ; le comptage exact arrive avec l'aperçu riche (HITL-03).<br>• Une requête qui exclut elle-même les lignes protégées (acte 4 : `NOT IN (SELECT client_id FROM invoices)`) passe : `blocked` est alors vide. |
 | `memory_updated` | Identifie l'entrée par `kind` et `ref`, comme les outils mémoire (renommage de `id` en `ref` demandé par P3 à P1, point ouvert P-14). |
 | `judge_report` | Schéma `judge_report.v1.json` (P3). `key_figures[]` (0 à 5 : `label`, `value`, `unit`, `source_column`) → cartes KPI. `assumptions[]` (3 au maximum, toujours présent, `[]` si aucune) → hypothèses. `followups[]` (3 au maximum) → boutons de relance. `claims[].text` est un **extrait copié mot pour mot** de la réponse : le front le cherche pour le surligner, et s'il est introuvable, l'affirmation reste listée sous le badge sans surlignage. Le badge et les scores sont **calculés par le code**, jamais par le modèle. Quatre états : Vérifiée, À vérifier, Contredite, **Vérification indisponible** (rapport invalide après réparation, ou juge sans réponse : voir P-13). Si `truncated: true`, un nombre absent des lignes reçues est classé « à vérifier », pas « contredit ». |
 | `confirmation_resolved` | `decision` : `"approve"`, `"reject"` ou `"timeout"` (ALL-02, question 6). `reason` facultatif : `"user"`, `"cancelled"` ou `"disconnected"`. |
@@ -249,13 +251,18 @@ Envoyé une fois, juste après l'ouverture.
  "servers": [
    {"name": "sql_toolbox", "status": "up"},
    {"name": "time", "status": "up"},
-   {"name": "filesystem", "status": "down", "error": "npx introuvable"}
+   {"name": "filesystem", "status": "down", "error": "La commande `npx` est introuvable : installez Node.js."}
  ],
  "tools": [
    {"name": "sql_toolbox__run_select", "server": "sql_toolbox",
-    "description": "Exécute une requête de lecture", "read_only": true, "destructive": false},
+    "description": "Exécute une requête de lecture",
+    "read_only": true, "destructive": false, "requires_confirmation": false},
+   {"name": "sql_toolbox__execute_write", "server": "sql_toolbox",
+    "description": "Exécute une écriture en transaction",
+    "read_only": false, "destructive": true, "requires_confirmation": true},
    {"name": "memory_delete", "server": null,
-    "description": "Supprime une entrée de la mémoire", "read_only": false, "destructive": true}
+    "description": "Supprime une entrée de la mémoire",
+    "read_only": false, "destructive": true, "requires_confirmation": true}
  ]}
 ```
 
@@ -263,9 +270,14 @@ Envoyé une fois, juste après l'ouverture.
   - Pour alléger le message, **les `token` et `thinking` sont omis**, puisque `message_done.content` porte le texte complet.
   - Aucun tour n'est en cours à la reconnexion, car une déconnexion annule le tour (§2.4). La liste ne contient donc jamais de confirmation en attente.
 - `config` contient les **valeurs de la session**, uniquement pour les clés du tableau §4.7. Les valeurs de `config.toml` et les réglages en lecture seule sont dans `GET /api/config` (§9).
-- `servers[].status` : `"up"` ou `"down"`. Les chips de la barre d'état en découlent (maquette BarreEtat, annotation 2).
+- `servers[].status` : `"up"` ou `"down"`. Les chips de la barre d'état en découlent (maquette BarreEtat, annotation 2). `servers[].error` est un message en français fourni par la couche MCP, affichable tel quel.
 - `tools[].server` vaut `null` pour les outils natifs (mémoire).
-- `tools[].name` est le nom tel que le modèle le voit, défini dans `tools.md`. Proposition de l'atelier (ALL-02, question 3) : toujours préfixé par le serveur (`sql_toolbox__run_select`).
+- `tools[].name` est le nom tel que le modèle le voit (`tools.md`, MCP-04) :
+  - **toujours préfixé par le serveur** (`sql_toolbox__run_select`), pour que les noms restent stables quand on ajoute un serveur ;
+  - les outils natifs (mémoire) restent sans préfixe ;
+  - caractères `[A-Za-z0-9_-]`, 64 au maximum. Les caractères interdits d'un outil tiers sont remplacés par `_`.
+- `tools[].read_only` et `tools[].destructive` : les annotations MCP **telles que déclarées** par le serveur, `null` si elles ne le sont pas (elles sont facultatives, et le client n'invente jamais de `false`).
+- `tools[].requires_confirmation` : la décision de la **politique HITL** (annotations, configuration `[hitl]`, refus par défaut). **C'est ce champ que le front affiche** (icône cadenas), jamais les annotations brutes.
 - Le front vérifie `protocol_version`. Si elle diffère de la version attendue, il affiche « Version de l'interface incompatible, rechargez la page ».
 
 #### `session_reset`
@@ -393,10 +405,12 @@ Les erreurs du moteur (Ollama injoignable, modèle absent, serveur MCP arrêté,
 
 ### 8.2 Action destructive (acte 4) : refus
 
+Le SQL exclut lui-même les clients qui ont des factures : la requête passe, et `blocked` est vide (§5.1).
+
 ```jsonl
 {"type":"user_message","id":"c-5","content":"Supprime les clients inactifs depuis plus de 18 mois."}
 {"type":"turn_started","session_id":"s-1","turn_id":"t-4","ts":1760433100.0,"origin":"user","user_message":"Supprime les clients inactifs depuis plus de 18 mois."}
-{"type":"confirmation_required","session_id":"s-1","turn_id":"t-4","ts":1760433102.1,"action_id":"a-3","tool":"sql_toolbox__execute_write","sql":"DELETE FROM clients WHERE …","impact":{"operation":"DELETE","rows_affected":27,"per_table":{"clients":-27,"contacts":-41},"sample":[{"id":12,"name":"Atelier Morel"}],"blocked":[{"reason":"factures à conserver","count":14}]},"expires_in_s":120}
+{"type":"confirmation_required","session_id":"s-1","turn_id":"t-4","ts":1760433102.1,"action_id":"a-3","tool":"sql_toolbox__execute_write","sql":"DELETE FROM clients WHERE …","impact":{"operation":"DELETE","rows_affected":27,"per_table":{"clients":-27,"contacts":-41},"sample":[{"id":12,"name":"Atelier Morel"}],"blocked":[]},"expires_in_s":120}
 {"type":"confirm","action_id":"a-3","decision":"reject"}
 {"type":"confirmation_resolved","session_id":"s-1","turn_id":"t-4","ts":1760433110.4,"action_id":"a-3","decision":"reject","reason":"user"}
 {"type":"message_done","session_id":"s-1","turn_id":"t-4","ts":1760433112.0,"content":"D'accord, je n'ai rien supprimé …","interrupted":false,"usage":{"prompt_tokens":3100,"completion_tokens":80,"ctx_used":3180,"ctx_max":8192},"duration_ms":12000}
@@ -440,6 +454,7 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 | `GET /api/config` | Valeurs par défaut, bornes et réglages en lecture seule (voir ci-dessous) | Panneau Réglages |
 
 - `supports_tools` vient de `POST /api/show` (champ `capabilities`) d'Ollama.
+- `GET /api/schema` est alimenté par `sql_toolbox` (`list_tables`, `describe_table`) via le registry. **La couche web n'ouvre jamais `business.db` elle-même** : `sql_toolbox` reste le seul accès à la base.
 - En cas d'erreur : statut HTTP 5xx et `{"error": {"code", "message"}}`, avec les codes d'`events.md`. Par exemple, `GET /api/models` répond 503 avec `OLLAMA_UNAVAILABLE` quand Ollama est arrêté.
 
 **Réponse de `GET /api/config`**
@@ -466,18 +481,21 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 
 ## 10. Décisions et points ouverts
 
-### 10.1 Décidé avec P1 et P3 (05/10)
+### 10.1 Décidé avec P1, P2 et P3 (05/10 et 06/10)
 
 | # | Décision | Avec | Reporté dans |
 |---|---|---|---|
 | P-1 | `assumptions: string[]` (3 au maximum, obligatoire, `[]` si aucune) ajouté à `judge_report.v1`. Badge à quatre états, dont « Vérification indisponible ». `claims[].text` copié mot pour mot pour le surlignage. | P3 | §5.1 — `judge.md` (PR EVAL-01) |
 | P-2 | Événement `context_injected {refs: [{kind, ref, label}]}`, émis après `turn_started` seulement s'il y a des entrées choisies par MEM-04. Libellé de l'interface : « Contexte mémoire fourni ». Sert aussi au harness (ablation avec / sans mémoire). | P1, P3 | §5.1, §6.2 — `events.md` |
-| P-3 | `tool_result.data` de `run_select` = `{columns, rows, row_count, truncated}` (c'est le `structuredContent` de l'outil). `row_count` = lignes présentes, pas le total. Avec `truncated`, le juge classe un nombre absent « à vérifier ». | P1, P3 | §5.1 — `tools.md` (P2 à confirmer) |
+| P-3 | `tool_result.data` de `run_select` = `{columns, rows, row_count, truncated}` (c'est le `structuredContent` de l'outil). `row_count` = lignes présentes, pas le total. Avec `truncated`, le juge classe un nombre absent « à vérifier ». | P1, P2, P3 | §5.1 — `tools.md` |
 | P-4 | `message_done.interrupted`, avec `content` = texte partiel ; tour hors historique, pas de juge. Annulation par drapeau `engine.cancel()`. | P1, P3 | §4.4, §6.2 — `events.md` |
 | P-5 | `turn_id` nullable pour les erreurs hors tour. Pas de préfixe `ui-` (identifiants opaques) : un tour lancé par l'interface commence par `turn_started {origin: "ui", user_message: null}`. | P1 | §3, §5.1 — `events.md` |
 | P-6 | `Engine.run_ui_action(tool, arguments)`, générateur traité comme un tour, liste blanche `memory_update {kind, ref, patch}` / `memory_delete {kind, ref}`, HITL (cascades dans l'aperçu) et audit `actor = "user"`, refus `BUSY`, hors historique. Message client `ui_action`. Pas de code WS `memory_not_found` : un `ref` inconnu donne un `tool_result` en échec (`not_found`). | P1, P3 | §4.2 — `tools.md`, `memory.md` |
 | P-7 | Réglages de session modifiables : `temperature`, `num_ctx`, `judge_enabled`, `judge_model`. Copie de la config de session (`model_copy`), jamais écrite dans `config.toml`. Le modèle de l'agent passe uniquement par `set_model`. Jamais `[hitl]`, `[database]`, `[mcp]`, `ollama.host`, `[web]`, ni `eval.numeric_tolerance`. | P1, P3 | §4.7 |
 | P-8 | `kind` : `glossary`, `entity`, `relation`, `fact`. `ref` toujours une chaîne (le terme pour le glossaire, l'id en texte sinon). | P3 | §4.2, §5.1 — `memory.md` |
+| P-15 | `tools[].read_only` et `tools[].destructive` nullables (annotations telles que déclarées) ; ajout de `tools[].requires_confirmation`, calculé par la politique HITL, seul champ affiché par le front. | P2 | §5.2 — `tools.md` |
+| P-16 | `impact.blocked[].count` nullable (`null` en v1, exact avec HITL-03) ; une instruction qui touche une ligne protégée est rejetée en entier. `per_table` = différences de `COUNT(*)`, nulles pour un `UPDATE`. | P2 | §5.1, §8.2 — `tools.md` |
+| P-17 | Noms d'outils toujours préfixés par le serveur, outils natifs sans préfixe, `[A-Za-z0-9_-]{1,64}`. `sql_generated.operation` ∈ `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `OTHER` (garde SQL). `/api/schema` passe par `sql_toolbox`. | P2 | §5.1, §5.2, §9 — `tools.md` |
 
 ### 10.2 Aligné sur TASKS.md (fiches ALL-02, WEB-01, WEB-04, WEB-07, CORE-11)
 
@@ -488,18 +506,17 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 | `confirmation_resolved.decision` (ALL-02, question 6) | `approve`, `reject` ou `timeout` |
 | Codes d'erreur (ALL-02, question 5) | Liste fermée d'`events.md` : `INVALID_MESSAGE`, `MODEL_NOT_FOUND`, `OLLAMA_UNAVAILABLE` |
 | Compte à rebours HITL (WEB-07) | Calculé depuis l'heure de réception, pas depuis `ts` |
-| Noms des outils (ALL-02, question 3) | Définis par `tools.md` |
+| Noms des outils (ALL-02, question 3) | Toujours préfixés (P-17) |
 | Fixtures (WEB-01) | Noms de fichiers de la fiche (§11) |
 
 ### 10.3 Encore ouverts
 
 | # | Question | Avec | Proposition |
 |---|---|---|---|
-| P-3 bis | Confirmer la forme de `data` dans `tools.md` | P2 | Telle que décidée avec P1 et P3 |
 | P-9 | « Basic agent switching » (catalogue X1) : le changement de modèle suffit-il ? | Suivi | Question à poser au suivi ; `set_model` en attendant |
 | P-10 | Comment se termine un tour d'origine `ui` ? | P1 | `message_done` avec `content: ""`, `interrupted: false`, `usage: null` (aucun appel au modèle), pas de juge |
 | P-11 | Ajouter à la liste fermée des codes d'`events.md` : `BUSY`, `UNKNOWN_ACTION`, `INVALID_CONFIG`, `UI_ACTION_FORBIDDEN` | P1 | Les 4 codes du §7.1 marqués ➕ |
-| P-12 | Ajouter `reason` (`user`, `cancelled`, `disconnected`) à `confirmation_resolved` | P1 | Facultatif, pour distinguer les refus dans l'interface et l'audit |
+| P-12 | Ajouter `reason` (`user`, `cancelled`, `disconnected`) à `confirmation_resolved` | P1 | Facultatif, pour distinguer les refus dans l'interface et l'audit. P2 est d'accord. |
 | P-13 | Par quel événement le front apprend-il que la vérification est **indisponible** (rapport invalide après réparation, juge sans réponse) ? | P1, P3 | Un `judge_report` avec un champ `status: "unavailable"` et sans `claims`, pour que le badge suive toujours `judge_started` → `judge_report` |
 | P-14 | Renommer `memory_updated.id` en `ref` dans `events.md` (demandé par P3) | P1 | Même nom partout : outils mémoire, `context_injected`, `memory_updated` |
 
@@ -517,4 +534,5 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 |---|---|---|
 | P4 — propriétaire | | |
 | P1 — moteur | | |
-| P3 — mémoire | | |
+| P2 — outils MCP, HITL | | 06/10 (réserves 1 et 2 intégrées : P-15, P-16) |
+| P3 — mémoire, juge | | |
