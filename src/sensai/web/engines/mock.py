@@ -1,0 +1,407 @@
+"""MockEngine: replays the event fixtures so that the web works without the real engine.
+
+Used by `sensai web --mock` (WEB-04) until the real engine is plugged in (WEB-08). It
+follows tests/fixtures/events/README.md:
+
+- one turn per message, picked by keywords (ROUTES below);
+- ids, `session_id`, `ts` and the user's message are rewritten; pacing is realistic;
+- on `confirmation_required`, it really waits for the decision through the broker, then
+  plays the approve or reject branch (hitl_approve.jsonl / hitl_reject.jsonl);
+- `cancel()` sets a flag: the turn ends with `message_done {interrupted: true}`.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import copy
+import json
+import logging
+import time
+import uuid
+from collections.abc import AsyncIterator, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from sensai.core.config import Config
+from sensai.web.engines.backend import ModelInfo
+from sensai.web.websocket.confirm import Resolution, WebConfirmationBroker
+from sensai.web.paths import FIXTURES_DIR
+from sensai.web.websocket.settings import session_settings
+
+logger = logging.getLogger(__name__)
+
+Event = dict[str, Any]
+Turn = list[Event]
+
+FIXTURES = (
+    "nominal",
+    "memory",
+    "judge_contradiction",
+    "hitl_approve",
+    "hitl_reject",
+    "errors",
+)
+
+
+@dataclass(frozen=True)
+class Route:
+    keywords: tuple[str, ...]
+    fixture: str
+    turn: int | None  # None: cycle through the turns of the fixture
+
+
+# First match wins; the user's message is lowercased. Default: nominal.jsonl (act 1).
+ROUTES = (
+    Route(("supprime",), "hitl", 0),
+    Route(("retiens", "mémorise", "memorise"), "memory", 0),
+    Route(("clients rentables",), "memory", 1),
+    Route(("piège", "piege", "brasserie lemaire"), "judge_contradiction", 0),
+    Route(("erreur", "panne"), "errors", None),
+)
+
+# A cancelled turn stops before any of these (a tool already called runs to completion)
+INTERRUPTIBLE = frozenset({"token", "thinking", "tool_call", "message_done", "error"})
+
+REJECTED_MESSAGES = {
+    "cancelled": "Action annulée.",
+    "disconnected": "Action annulée : l'interface s'est déconnectée.",
+    "timeout": "Délai de confirmation dépassé : action annulée.",
+}
+
+MEMORY_TABLES = {
+    "glossary": "glossary",
+    "entity": "entities",
+    "relation": "relations",
+    "fact": "facts",
+}
+
+MOCK_MODELS: tuple[ModelInfo, ...] = (
+    {"name": "qwen3:8b", "size_bytes": 5_200_000_000, "supports_tools": True},
+    {"name": "llama3.1:8b", "size_bytes": 4_900_000_000, "supports_tools": True},
+    {"name": "gemma2:9b", "size_bytes": 5_400_000_000, "supports_tools": False},
+)
+
+MOCK_SERVERS: tuple[dict[str, Any], ...] = (
+    {"name": "sql_toolbox", "status": "up", "error": None},
+    {"name": "time", "status": "up", "error": None},
+    {
+        "name": "filesystem",
+        "status": "down",
+        "error": "Serveur non lancé en mode démo (MockEngine).",
+    },
+)
+
+
+def _tool(
+    name: str,
+    server: str | None,
+    description: str,
+    read_only: bool | None,
+    destructive: bool | None,
+    requires_confirmation: bool,
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "server": server,
+        "description": description,
+        "read_only": read_only,
+        "destructive": destructive,
+        "requires_confirmation": requires_confirmation,
+    }
+
+
+MOCK_TOOLS = (
+    _tool("sql_toolbox__list_tables", "sql_toolbox", "Liste les tables", True, False, False),
+    _tool("sql_toolbox__describe_table", "sql_toolbox", "Décrit une table", True, False, False),
+    _tool(
+        "sql_toolbox__run_select",
+        "sql_toolbox",
+        "Exécute une requête de lecture",
+        True,
+        False,
+        False,
+    ),
+    _tool("sql_toolbox__execute_write", "sql_toolbox", "Exécute une écriture", False, True, True),
+    _tool("time__get_current_time", "time", "Date et heure actuelles", None, None, False),
+    _tool("memory_search", None, "Cherche dans la mémoire", True, False, False),
+    _tool("glossary_define", None, "Définit un terme métier", False, False, False),
+    _tool("memory_update", None, "Modifie une entrée de la mémoire", False, False, False),
+    _tool("memory_delete", None, "Supprime une entrée de la mémoire", False, True, True),
+)
+
+
+@dataclass(frozen=True)
+class Pacing:
+    """Seconds slept before each event; tests use zero or tiny values."""
+
+    token: float = 0.03
+    tool: float = 0.4
+    judge: float = 1.0
+    other: float = 0.05
+
+    def before(self, kind: str) -> float:
+        if kind == "token":
+            return self.token
+        if kind == "tool_result":
+            return self.tool
+        if kind == "judge_report":
+            return self.judge
+        return self.other
+
+
+def load_turns(path: Path) -> list[Turn]:
+    """Group the events of a fixture by turn, in order."""
+    turns: dict[str, Turn] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            event = json.loads(line)
+            turns.setdefault(event["turn_id"], []).append(event)
+    return list(turns.values())
+
+
+def _new_id() -> str:
+    return str(uuid.uuid4())
+
+
+class MockEngine:
+    def __init__(
+        self,
+        session_id: str,
+        config: Config,
+        broker: WebConfirmationBroker,
+        turns: dict[str, list[Turn]],
+        pacing: Pacing,
+    ) -> None:
+        self.session_id = session_id
+        self.model = config.ollama.model
+        self.session_config = session_settings(config)
+        self._broker = broker
+        self._turns = turns
+        self._pacing = pacing
+        self._confirmation_timeout_s = config.hitl.confirmation_timeout_s
+        self._cancelled = False
+        self._next_error_turn = 0
+
+    # --- WebEngine ----------------------------------------------------------------------
+
+    def describe(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        return [dict(server) for server in MOCK_SERVERS], [dict(tool) for tool in MOCK_TOOLS]
+
+    def run_turn(self, user_message: str) -> AsyncIterator[Event]:
+        prefix, branches = self._pick(user_message)
+        return self._replay(prefix, branches, user_message)
+
+    def run_ui_action(self, tool: str, arguments: dict[str, Any]) -> AsyncIterator[Event]:
+        prefix, branches = _ui_action_turn(tool, arguments)
+        return self._replay(prefix, branches, None)
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+    def reset(self) -> None:
+        self._next_error_turn = 0
+
+    def set_model(self, model: str) -> None:
+        self.model = model
+
+    def set_config(self, patch: dict[str, Any]) -> None:
+        self.session_config.update(patch)
+
+    # --- replay -------------------------------------------------------------------------
+
+    def _pick(self, user_message: str) -> tuple[Turn, dict[str, Turn] | None]:
+        text = user_message.lower()
+        route = next((r for r in ROUTES if any(k in text for k in r.keywords)), None)
+        if route is None:
+            return self._turns["nominal"][0], None
+        if route.fixture == "hitl":
+            approve = self._turns["hitl_approve"][0]
+            reject = self._turns["hitl_reject"][0]
+            pause = [e["type"] for e in approve].index("confirmation_required") + 1
+            return approve[:pause], {"approve": approve[pause:], "reject": reject[pause:]}
+        turns = self._turns[route.fixture]
+        if route.turn is not None:
+            return turns[route.turn], None
+        turn = turns[self._next_error_turn % len(turns)]
+        self._next_error_turn += 1
+        return turn, None
+
+    async def _replay(
+        self,
+        prefix: Sequence[Event],
+        branches: dict[str, Turn] | None,
+        user_message: str | None,
+    ) -> AsyncIterator[Event]:
+        self._cancelled = False
+        started = time.monotonic()
+        turn_id = _new_id()
+        ids: dict[str, str] = {}
+        tokens: list[str] = []
+        resolution: Resolution | None = None
+        queue = list(prefix)
+        index = 0
+        while index < len(queue):
+            template = queue[index]
+            index += 1
+            kind = template["type"]
+            if self._cancelled and kind in INTERRUPTIBLE:
+                yield self._event(
+                    "message_done",
+                    turn_id,
+                    content="".join(tokens),
+                    interrupted=True,
+                    usage=None,
+                    duration_ms=_elapsed_ms(started),
+                )
+                return
+            await asyncio.sleep(self._pacing.before(kind))
+            event = self._instantiate(template, turn_id, ids, user_message, resolution)
+            if kind == "token":
+                tokens.append(event["delta"])
+            elif kind == "message_done":
+                event["duration_ms"] = _elapsed_ms(started)
+            yield event
+            if kind == "confirmation_required" and branches is not None:
+                resolution = await self._broker.request(
+                    event["action_id"], self._confirmation_timeout_s
+                )
+                queue[index:] = branches[
+                    "approve" if resolution.decision == "approve" else "reject"
+                ]
+
+    def _instantiate(
+        self,
+        template: Event,
+        turn_id: str,
+        ids: dict[str, str],
+        user_message: str | None,
+        resolution: Resolution | None,
+    ) -> Event:
+        event = copy.deepcopy(template)
+        event.update(session_id=self.session_id, turn_id=turn_id, ts=time.time())
+        for key in ("call_id", "action_id"):
+            if key in event:
+                event[key] = ids.setdefault(event[key], _new_id())
+        kind = event["type"]
+        if kind == "turn_started" and event["origin"] == "user":
+            event["user_message"] = user_message
+        elif kind == "confirmation_required":
+            event["expires_in_s"] = self._confirmation_timeout_s
+        elif kind == "confirmation_resolved" and resolution is not None:
+            event.update(
+                decision=resolution.decision, reason=resolution.reason, comment=resolution.comment
+            )
+        elif kind == "tool_result" and resolution is not None and not event["ok"]:
+            message = REJECTED_MESSAGES.get(resolution.reason)
+            if message is not None:
+                event["error"] = {"code": "ACTION_REJECTED", "message": message}
+        return event
+
+    def _event(self, kind: str, turn_id: str, **fields: Any) -> Event:
+        return {
+            "type": kind,
+            "session_id": self.session_id,
+            "turn_id": turn_id,
+            "ts": time.time(),
+            **fields,
+        }
+
+
+def _elapsed_ms(started: float) -> int:
+    return int((time.monotonic() - started) * 1000)
+
+
+def _ui_action_turn(tool: str, arguments: dict[str, Any]) -> tuple[Turn, dict[str, Turn] | None]:
+    """Synthetic turn for `ui_action` (websocket.md §4.2, example §8.3)."""
+
+    # Positional-only: memory_updated has its own `kind` field
+    def event(event_type: str, /, **fields: Any) -> Event:
+        return {"type": event_type, "session_id": "", "turn_id": "", "ts": 0.0, **fields}
+
+    def result(ok: bool, summary: str, data: Event | None, error: Event | None) -> Event:
+        return event(
+            "tool_result",
+            call_id="k-ui",
+            ok=ok,
+            summary=summary,
+            data=data,
+            error=error,
+            duration_ms=0 if not ok else 10,
+        )
+
+    done = event("message_done", content="", interrupted=False, usage=None, duration_ms=0)
+    start = [
+        event("turn_started", origin="ui", user_message=None),
+        event("tool_call", call_id="k-ui", server=None, tool=tool, arguments=arguments),
+    ]
+    kind, ref = arguments.get("kind"), arguments.get("ref")
+    if kind not in MEMORY_TABLES or not isinstance(ref, str) or not ref:
+        error = {"code": "INVALID_ARGUMENTS", "message": "Arguments attendus : kind et ref."}
+        return [*start, result(False, "Arguments invalides", None, error), done], None
+
+    if tool == "memory_update":
+        summary = f"Entrée {ref} modifiée"
+        data = {"op": "update", "kind": kind, "ref": ref, "summary": summary}
+        updated = event("memory_updated", op="update", kind=kind, ref=ref, summary=summary)
+        return [*start, result(True, summary, data, None), updated, done], None
+
+    summary = f"Entrée {ref} supprimée"
+    impact = {
+        "operation": "DELETE",
+        "rows_affected": 1,
+        "per_table": {MEMORY_TABLES[kind]: -1},
+        "sample": [{"kind": kind, "ref": ref, "label": f"{kind} {ref}"}],
+        "blocked": [],
+    }
+    pause = event(
+        "confirmation_required",
+        action_id="a-ui",
+        call_id="k-ui",
+        tool=tool,
+        sql=None,
+        impact=impact,
+        expires_in_s=0,
+    )
+    resolved = event(
+        "confirmation_resolved", action_id="a-ui", decision="", reason="", comment=None
+    )
+    rejected = {"code": "ACTION_REJECTED", "message": "Suppression refusée par l'utilisateur."}
+    branches = {
+        "approve": [
+            resolved,
+            result(
+                True, summary, {"op": "delete", "kind": kind, "ref": ref, "summary": summary}, None
+            ),
+            event("memory_updated", op="delete", kind=kind, ref=ref, summary=summary),
+            done,
+        ],
+        "reject": [resolved, result(False, "Action refusée", None, rejected), done],
+    }
+    return [*start, pause], branches
+
+
+class MockBackend:
+    """WebBackend of `sensai web --mock`: no Ollama, no MCP server, no database."""
+
+    def __init__(
+        self, config: Config, *, fixtures_dir: Path = FIXTURES_DIR, pacing: Pacing | None = None
+    ) -> None:
+        self._config = config
+        self._pacing = pacing or Pacing()
+        # Loaded once and shared read-only by every session: a missing fixture fails at startup
+        self._turns = {name: load_turns(fixtures_dir / f"{name}.jsonl") for name in FIXTURES}
+
+    async def list_models(self) -> list[ModelInfo]:
+        models = [ModelInfo(**model) for model in MOCK_MODELS]
+        if all(model["name"] != self._config.ollama.model for model in models):
+            models.insert(
+                0, ModelInfo(name=self._config.ollama.model, size_bytes=0, supports_tools=True)
+            )
+        return models
+
+    async def ollama_available(self) -> bool:
+        return True  # simulated
+
+    def new_engine(self, session_id: str, broker: WebConfirmationBroker) -> MockEngine:
+        return MockEngine(session_id, self._config, broker, self._turns, self._pacing)

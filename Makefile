@@ -3,7 +3,7 @@ PYTHON ?= python3
 PY     := $(VENV)/bin/python
 TAG    ?= dev
 
-.PHONY: help install test test-all lint format chat web web-build seed eval clean
+.PHONY: help install test test-all lint format chat web web-mock web-build seed eval clean
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  make %-10s %s\n", $$1, $$2}'
@@ -34,6 +34,9 @@ chat: ## Start the CLI chatbot
 
 web: ## Start the web server (http://127.0.0.1:8000)
 	$(PY) -m sensai web
+
+web-mock: ## Start the web server on the MockEngine (replays tests/fixtures/events)
+	$(PY) -m sensai web --mock
 
 web-build: ## Build the frontend (web/dist)
 	cd web && npm ci && npm run build
