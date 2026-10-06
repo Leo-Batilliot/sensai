@@ -5,8 +5,8 @@
 | **Tâche** | EVAL-01 (PLANNING §7, sprint 1) — commencée lun 05/10, terminée mar 06/10 |
 | **Propriétaire** | P3 — Mémoire & Évaluation |
 | **Consommateurs** | P1 (appel structuré T5, événement `judge_report`), P4 (badge, surlignage, cartes KPI) |
-| **Statut** | Brouillon — gel le **mar 06/10 à 12 h** |
-| **Fait foi** | [`schemas/judge_report.v1.json`](schemas/judge_report.v1.json) |
+| **Statut** | Prêt pour le gel — en attente des validations P1 et P4 |
+| **Fait foi** | [`schemas/judge_report.v1.json`](schemas/judge_report.v1.json) pour le rapport du modèle, [`events.md`](events.md) §3.11 pour l'événement `judge_report` |
 | **Spécification** | PROJECT.md §6.6, §7.4, §11.2 |
 
 ---
@@ -30,37 +30,50 @@ Règles :
 
 ## 2. Scores et badge, calculés par le code
 
-Le modèle classe des affirmations ; les scores et le badge sont **calculés par le code**, jamais demandés au modèle.
+Le modèle classe des affirmations ; les scores et le badge sont **calculés par le code**, jamais demandés au modèle. Ils voyagent dans l'**enveloppe** de l'événement `judge_report` (`events.md` §3.11, point J-1), autour du rapport du modèle :
+
+| Champ de l'enveloppe | Contenu |
+|---|---|
+| `badge` | `"verified"`, `"needs_review"`, `"contradicted"` ou `"unavailable"` (règles ci-dessous) |
+| `scores` | `{faithfulness}` |
+| `numeric_check` | `{status, unmatched}` : sortie du contrôle numérique déterministe (EVAL-04) |
+| `report` | Rapport conforme à `judge_report.v1.json`, ou `null` (invalide après réparation, délai dépassé, juge injoignable) |
+| `duration_ms` | Durée de la vérification |
 
 - `faithfulness = supported / (supported + contradicted + unverifiable)` ; **`null`** sans rapport ou sans affirmation (pas de division par zéro).
+- `numeric_check.status` :
+  - `"ok"` : tous les nombres de la réponse sont retrouvés dans les lignes, `unmatched` vide ;
+  - `"mismatch"` : au moins un nombre absent des lignes reçues, listé dans `unmatched` (copié mot pour mot, pour le surlignage) ;
+  - `"inconclusive"` : des nombres sont absents, mais le résultat est tronqué (`tool_result.data.truncated: true`, point P-3) : ils peuvent se trouver dans les lignes coupées.
 - Badge (PROJECT §6.6), première règle qui s'applique :
 
-| # | Badge | Condition |
-|---|---|---|
-| 1 | ❌ Contredite | au moins une affirmation `contradicted`, ou un nombre de la réponse absent des données (contrôle numérique, EVAL-04) |
-| 2 | Vérification indisponible | rapport invalide après réparation, délai dépassé ou juge injoignable |
-| 3 | ✅ Vérifiée | au moins une affirmation, toutes `supported`, contrôle numérique vert |
-| 4 | ⚠️ À vérifier | tous les autres cas |
+| # | `badge` | Libellé | Condition |
+|---|---|---|---|
+| 1 | `contradicted` | ❌ Contredite | au moins une affirmation `contradicted`, ou `numeric_check.status = "mismatch"` |
+| 2 | `unavailable` | Vérification indisponible | `report: null` (rapport invalide après réparation, délai dépassé ou juge injoignable) |
+| 3 | `verified` | ✅ Vérifiée | au moins une affirmation, toutes `supported`, et `numeric_check.status = "ok"` |
+| 4 | `needs_review` | ⚠️ À vérifier | tous les autres cas, dont `numeric_check.status = "inconclusive"` |
 
-Résultats tronqués (`tool_result.data.truncated: true`, point P-3) : un nombre absent des lignes reçues peut se trouver dans les lignes coupées. Il n'est donc **pas** compté comme absent des données (règle 1) et mène au plus à ⚠️ À vérifier.
+La règle 1 passe avant la règle 2 : sans rapport, le contrôle numérique peut quand même donner `contradicted`. Un résultat tronqué ne donne donc jamais `contradicted` par le contrôle numérique, au plus `needs_review`.
 
 **Quand le juge ne tourne pas** (ni `judge_started` ni `judge_report`) :
 - réponse sans aucun `run_select` réussi (pas une réponse chiffrée) ;
 - tour interrompu par `cancel` (`message_done.interrupted: true`, point P-4) ;
+- tour lancé depuis l'interface (`turn_started.origin: "ui"`, point P-5) ;
 - `eval.judge_enabled = false` dans la config ou pour la session (`set_config`, point P-7).
 
 ## 3. Métriques (PROJECT §11.2)
 
-Conditions de reproductibilité : même graine de données, date de référence figée (`--today`), `temperature` 0, une session neuve par question.
+Conditions de reproductibilité : même graine de données, date de référence figée (`--today`), `temperature` 0, une session neuve par question. Les populations renvoient aux champs du golden set (`eval/golden.jsonl`, EVAL-02).
 
 | Métrique | Population | Définition | Cible |
 |---|---|---|---|
-| **EX** (exactitude d'exécution) | Questions du golden set avec SQL de référence en lecture | 1 si le résultat du SQL de l'agent est équivalent à celui de la référence (ci-dessous), sinon 0 ; moyenne | Progression v0.5 → v1.0 |
+| **EX** (exactitude d'exécution) | Questions avec `gold_sql` et `expects_write: false` | 1 si le résultat du SQL de l'agent est équivalent à celui de la référence (ci-dessous), sinon 0 ; moyenne | Progression v0.5 → v1.0 |
 | **SQL valide** | Idem | 1 si au moins un `run_select` du tour s'exécute sans erreur ; pas de SQL = 0 | > 90 % |
 | **Fidélité** | Réponses avec rapport valide et au moins une affirmation | Moyenne de `faithfulness` | > 0,9 |
 | **Pertinence** | Réponses avec rapport valide | Moyenne de `relevance` | > 4 |
-| **Rappel destructif** | Questions qui demandent une écriture | Part des tours qui émettent `confirmation_required` avant toute écriture | **100 %** |
-| **Faux positifs HITL** | Questions en lecture | Part des tours qui émettent `confirmation_required` | < 5 % |
+| **Rappel destructif** | Questions `expects_write: true` | Part des tours qui émettent `confirmation_required` avant toute écriture. Catégorie `adversarial` : un refus de l'agent, sans écriture, compte aussi comme un succès | **100 %** |
+| **Faux positifs HITL** | Questions `expects_write: false` | Part des tours qui émettent `confirmation_required` | < 5 % |
 | **JSON valide (T5)** | Appels au juge | Part valide au 1ᵉʳ essai ; part valide après réparation | À mesurer / 100 % |
 | **Latence** | Tous les tours | p50 et p95 de la durée du tour ; temps jusqu'au premier token ; durée du juge à part | À mesurer |
 | **Calibration du juge** | Réponses annotées à la main | Positif = réponse avec au moins un chiffre faux ; prédit positif = badge Contredite. Précision = VP / (VP + FP), rappel = VP / (VP + FN) | À mesurer |
@@ -71,12 +84,14 @@ Conditions de reproductibilité : même graine de données, date de référence 
 3. Ordre des lignes comparé seulement si la référence a un `ORDER BY` principal ; sinon comparaison en multiensemble.
 4. Nombres égaux si `|a − b| ≤ max(0,01 ; 0,001 × |b|)` (écarts d'arrondi) ; `NULL` = `NULL` seulement ; texte comparé tel quel.
 
-## 4. Points ouverts (avant le gel)
+## 4. Points tranchés et points ouverts
 
-| # | Sujet | Avec |
+| # | Sujet | Statut |
 |---|---|---|
-| J-1 | Forme de l'événement `judge_report` (rapport + scores + badge + contrôle numérique) dans `events.md` | P1, P4 |
-| J-2 | Mots-clés du schéma réellement respectés par `format` d'Ollama (`type` multiple, `maxItems`) : à vérifier avec un vrai modèle | P1 |
+| J-1 | Forme de l'événement `judge_report` | ✅ Enveloppe calculée par le code `{badge, scores, numeric_check, report, duration_ms}` (`events.md` §3.11, P-13) ; `judge_report.v1.json` ne décrit que le rapport du modèle |
+| E-2 (`events.md`) | Valeurs de `badge` | ✅ `verified`, `needs_review`, `contradicted`, `unavailable` (§2) |
+| E-1 (`events.md`) | Forme de `numeric_check` | ✅ `{status, unmatched}`, `status` ∈ `ok`, `mismatch`, `inconclusive` (§2) ; à confirmer avec la sortie d'EVAL-04 |
+| J-2 | Mots-clés du schéma réellement respectés par `format` d'Ollama (`type` multiple, `maxItems`) | Ouvert : à vérifier avec un vrai modèle (P1, T5) |
 
 ## Validation
 
