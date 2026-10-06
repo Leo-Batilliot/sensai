@@ -31,7 +31,7 @@ Maquettes de la Web UI (fonctionnalité **X1**) du copilote BI SENSAI. Tâche **
 | 1. Question métier | Conversation, Timeline, BlocSQL, TableauResultats, FicheIndicateurs, BadgeJuge |
 | 2. Mémoire métier | PanneauMemoire (nouvelle entrée), BlocSQL (« mémoire appliquée ») |
 | 3. Hallucination attrapée | BadgeJuge (état contredit, surlignage) |
-| 4. Action destructive | ModaleHITL (refus puis confirmation), toasts |
+| 4. Action destructive | ModaleHITL (refus puis confirmation), toasts. En v1 (mid-term), pas de compteur de clients protégés : il arrive avec HITL-03 (S3). À signaler dans KEY-00. |
 | 5. Ouverture | BarreEtat (nouveau serveur MCP), ModaleHITL sur écriture de fichier |
 | 6. Preuve chiffrée | hors Web UI (slides) |
 
