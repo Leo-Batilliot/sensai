@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ws_server.v1",
+  "title": "Message propre au WebSocket, serveur → client (websocket.md §5.2)",
+  "description": "Messages émis par la couche web, pas par le moteur : ils n'ont pas de turn_id. Les événements du moteur sont définis par events.md.",
+  "type": "object",
+  "required": ["type", "session_id", "ts"],
+  "properties": {
+    "type": {"enum": ["session_ready", "session_reset", "model_changed", "config_updated"]},
+    "session_id": {"type": "string", "minLength": 1},
+    "ts": {"type": "number"},
+    "reply_to": {"type": "string", "minLength": 1, "maxLength": 64}
+  },
+  "not": {"required": ["turn_id"]},
+  "oneOf": [
+    {"$ref": "#/$defs/session_ready"},
+    {"$ref": "#/$defs/session_reset"},
+    {"$ref": "#/$defs/model_changed"},
+    {"$ref": "#/$defs/config_updated"}
+  ],
+  "$defs": {
+    "session_config": {
+      "description": "Valeurs de la session pour les clés modifiables (§4.7)",
+      "type": "object",
+      "required": ["temperature", "num_ctx", "judge_enabled", "judge_model"],
+      "additionalProperties": false,
+      "properties": {
+        "temperature": {"type": "number", "minimum": 0, "maximum": 1},
+        "num_ctx": {"type": "integer", "minimum": 2048, "maximum": 32768},
+        "judge_enabled": {"type": "boolean"},
+        "judge_model": {"type": ["string", "null"]}
+      }
+    },
+    "server": {
+      "type": "object",
+      "required": ["name", "status"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "status": {"enum": ["up", "down"]},
+        "error": {"type": ["string", "null"]}
+      }
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "server", "description", "read_only", "destructive", "requires_confirmation"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+        "server": {"type": ["string", "null"]},
+        "description": {"type": "string"},
+        "read_only": {"type": ["boolean", "null"]},
+        "destructive": {"type": ["boolean", "null"]},
+        "requires_confirmation": {"type": "boolean"}
+      }
+    },
+    "session_ready": {
+      "required": ["type", "protocol_version", "server_version", "resumed", "history", "model",
+                   "supports_tools", "ctx_max", "config", "servers", "tools"],
+      "properties": {
+        "type": {"const": "session_ready"},
+        "protocol_version": {"const": 1},
+        "server_version": {"type": "string"},
+        "resumed": {"type": "boolean"},
+        "history": {
+          "description": "Événements de la session depuis le dernier reset, sans token ni thinking (§5.2)",
+          "type": "array",
+          "items": {"type": "object", "required": ["type"]}
+        },
+        "model": {"type": "string", "minLength": 1},
+        "supports_tools": {"type": "boolean"},
+        "ctx_max": {"type": "integer", "minimum": 1},
+        "config": {"$ref": "#/$defs/session_config"},
+        "servers": {"type": "array", "items": {"$ref": "#/$defs/server"}},
+        "tools": {"type": "array", "items": {"$ref": "#/$defs/tool"}}
+      }
+    },
+    "session_reset": {
+      "required": ["type"],
+      "properties": {"type": {"const": "session_reset"}}
+    },
+    "model_changed": {
+      "required": ["type", "model", "supports_tools", "ctx_max"],
+      "properties": {
+        "type": {"const": "model_changed"},
+        "model": {"type": "string", "minLength": 1},
+        "supports_tools": {"type": "boolean"},
+        "ctx_max": {"type": "integer", "minimum": 1}
+      }
+    },
+    "config_updated": {
+      "required": ["type", "config", "changed"],
+      "properties": {
+        "type": {"const": "config_updated"},
+        "config": {"$ref": "#/$defs/session_config"},
+        "changed": {
+          "type": "array",
+          "items": {"enum": ["temperature", "num_ctx", "judge_enabled", "judge_model"]},
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{"type":"turn_started","session_id":"s-fixture","turn_id":"t-1","ts":1760433200.0,"origin":"user","user_message":"Quelle est la marge de Brasserie Lemaire ce trimestre ?"}
+{"type":"tool_call","session_id":"s-fixture","turn_id":"t-1","ts":1760433200.4,"call_id":"k-1","server":"sql_toolbox","tool":"sql_toolbox__run_select","arguments":{"sql":"SELECT c.name, ROUND(SUM(ol.quantity * (ol.unit_price - ol.unit_cost)), 2) AS marge_eur FROM orders o JOIN order_lines ol ON ol.order_id = o.id JOIN clients c ON c.id = o.client_id WHERE c.name = 'Brasserie Lemaire' AND o.order_date >= '2026-10-01' AND o.status <> 'cancelled' GROUP BY c.name","purpose":"Marge de Brasserie Lemaire sur le trimestre"}}
+{"type":"sql_generated","session_id":"s-fixture","turn_id":"t-1","ts":1760433200.4,"call_id":"k-1","sql":"SELECT c.name, ROUND(SUM(ol.quantity * (ol.unit_price - ol.unit_cost)), 2) AS marge_eur FROM orders o JOIN order_lines ol ON ol.order_id = o.id JOIN clients c ON c.id = o.client_id WHERE c.name = 'Brasserie Lemaire' AND o.order_date >= '2026-10-01' AND o.status <> 'cancelled' GROUP BY c.name","operation":"SELECT"}
+{"type":"tool_result","session_id":"s-fixture","turn_id":"t-1","ts":1760433200.5,"call_id":"k-1","ok":true,"summary":"1 ligne","data":{"columns":["name","marge_eur"],"rows":[["Brasserie Lemaire",48712.4]],"row_count":1,"truncated":false},"error":null,"duration_ms":150}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433200.53,"delta":"Ce trimestre, "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433200.56,"delta":"Brasserie Lemaire "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433200.59,"delta":"a dégagé "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433200.62,"delta":"52 300 "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433200.65,"delta":"€ de "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433200.68,"delta":"marge brute, "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433200.71,"delta":"ce qui "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433200.74,"delta":"en fait "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433200.77,"delta":"votre client "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433200.8,"delta":"le plus "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433200.83,"delta":"rentable."}
+{"type":"message_done","session_id":"s-fixture","turn_id":"t-1","ts":1760433200.88,"content":"Ce trimestre, Brasserie Lemaire a dégagé 52 300 € de marge brute, ce qui en fait votre client le plus rentable.","interrupted":false,"usage":{"prompt_tokens":2400,"completion_tokens":45,"ctx_used":2445,"ctx_max":8192},"duration_ms":2600}
+{"type":"judge_started","session_id":"s-fixture","turn_id":"t-1","ts":1760433200.88}
+{"type":"judge_report","session_id":"s-fixture","turn_id":"t-1","ts":1760433202.78,"badge":"contradicted","scores":{"faithfulness":0.0},"numeric_check":{"status":"mismatch","unmatched":["52 300 €"]},"report":{"claims":[{"text":"Brasserie Lemaire a dégagé 52 300 € de marge brute","verdict":"contradicted","evidence":"marge_eur = 48712.4 pour Brasserie Lemaire","expected_value":"48 712,40 €"},{"text":"votre client le plus rentable","verdict":"unverifiable","evidence":"la requête ne porte que sur Brasserie Lemaire","expected_value":null}],"relevance":5,"sql_answers_question":true,"key_figures":[{"label":"Marge brute de Brasserie Lemaire","value":48712.4,"unit":"€","source_column":"marge_eur"}],"assumptions":[],"followups":["Comparer avec les autres clients ce trimestre ?"]},"duration_ms":1900}
