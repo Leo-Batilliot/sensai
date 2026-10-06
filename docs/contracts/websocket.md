@@ -130,7 +130,7 @@ client                                   serveur
   | <--- confirmation_resolved ----------- |
   | <--- tool_result --------------------- |
   | <--- memory_updated (op = delete) ---- |   seulement si approve
-  | <--- message_done -------------------- |   fin du tour (point ouvert P-10)
+  | <--- message_done -------------------- |   fin du tour : content "", usage null (P-10)
 ```
 
 ### 4.3 `confirm`
@@ -224,10 +224,10 @@ Leur définition fait foi dans `events.md` (propriétaire P1). Ce contrat n'en r
 | `tool_result` (`run_select`) | `data` = le `structuredContent` de l'outil : `{columns, rows, row_count, truncated}`. `rows` est une liste de listes, dans l'ordre de `columns`. `row_count` est le nombre de lignes **présentes dans `rows`**, pas le total. `truncated: true` signifie qu'il y avait d'autres lignes (le serveur en lit `row_limit + 1` et n'en renvoie que `row_limit`). Les valeurs sont des scalaires JSON (nombre, chaîne, `null`). Le front affiche « 200 lignes affichées · résultat tronqué », jamais un total. |
 | `sql_generated` | `operation` : `"SELECT"`, `"INSERT"`, `"UPDATE"`, `"DELETE"` ou `"OTHER"`. Valeur produite par la garde SQL (SEC-01), jamais par le modèle. |
 | `confirmation_required` | `impact = {operation, rows_affected, per_table, sample, blocked}` (`tools.md`, P2) :<br>• `per_table` : différences signées de `COUNT(*)` par table, cascades incluses (négatif = lignes supprimées). Pour un `UPDATE`, elles valent 0 : le front affiche alors `rows_affected` sous la forme « N lignes modifiées » au lieu de lire `per_table`.<br>• `blocked: [{reason, count}]` : avec `ON DELETE RESTRICT`, SQLite **rejette toute l'instruction** dès qu'une ligne est protégée. Dans ce cas, `rows_affected` vaut 0, `per_table` vaut `{}`, et `blocked` dit pourquoi. `count` vaut `null` en v1 (MCP-05) ; le comptage exact arrive avec l'aperçu riche (HITL-03).<br>• Une requête qui exclut elle-même les lignes protégées (acte 4 : `NOT IN (SELECT client_id FROM invoices)`) passe : `blocked` est alors vide. |
-| `memory_updated` | Identifie l'entrée par `kind` et `ref`, comme les outils mémoire (renommage de `id` en `ref` demandé par P3 à P1, point ouvert P-14). |
-| `judge_report` | Schéma `judge_report.v1.json` (P3). `key_figures[]` (0 à 5 : `label`, `value`, `unit`, `source_column`) → cartes KPI. `assumptions[]` (3 au maximum, toujours présent, `[]` si aucune) → hypothèses. `followups[]` (3 au maximum) → boutons de relance. `claims[].text` est un **extrait copié mot pour mot** de la réponse : le front le cherche pour le surligner, et s'il est introuvable, l'affirmation reste listée sous le badge sans surlignage. Le badge et les scores sont **calculés par le code**, jamais par le modèle. Quatre états : Vérifiée, À vérifier, Contredite, **Vérification indisponible** (rapport invalide après réparation, ou juge sans réponse : voir P-13). Si `truncated: true`, un nombre absent des lignes reçues est classé « à vérifier », pas « contredit ». |
-| `confirmation_resolved` | `decision` : `"approve"`, `"reject"` ou `"timeout"` (ALL-02, question 6). `reason` facultatif : `"user"`, `"cancelled"` ou `"disconnected"`. |
-| `message_done` | `interrupted: true` après un `cancel`, avec `content` = le texte partiel. |
+| `memory_updated` | Identifie l'entrée par `kind` et `ref` (une chaîne), comme les outils mémoire (P-14). |
+| `judge_report` | **Enveloppe** calculée par le code (P-13, `events.md` §3.11) : `badge`, `scores`, `numeric_check`, `report`, `duration_ms`.<br>• `badge` : `"verified"`, `"needs_review"`, `"contradicted"` ou `"unavailable"`, affichés « Vérifiée », « À vérifier », « Contredite », « Vérification indisponible ». Le badge et les scores sont **calculés par le code**, jamais par le modèle.<br>• `report` : le rapport produit par le modèle, conforme à `judge_report.v1.json` (P3), ou `null` (rapport invalide après réparation, ou juge sans réponse). `judge_started` est donc **toujours** suivi d'un `judge_report`. Sans rapport, le contrôle numérique peut quand même donner `"contradicted"`.<br>• `numeric_check.unmatched` : nombres de la réponse absents des données, à surligner comme les affirmations contredites.<br>• Dans `report` : `key_figures[]` (0 à 5 : `label`, `value`, `unit`, `source_column`) → cartes KPI ; `assumptions[]` (3 au maximum, `[]` si aucune) → hypothèses ; `followups[]` (3 au maximum) → boutons de relance ; `claims[].text` est un **extrait copié mot pour mot** de la réponse, que le front cherche pour le surligner (s'il est introuvable, l'affirmation reste listée sous le badge sans surlignage).<br>• Si `truncated: true`, un nombre absent des lignes reçues est classé « à vérifier », pas « contredit ». |
+| `confirmation_resolved` | `decision` : `"approve"`, `"reject"` ou `"timeout"` (ALL-02, question 6). `reason` **obligatoire**, liste fermée (P-12) : `"user"` (clic sur un bouton), `"cancelled"` (`cancel` ou `reset`), `"disconnected"` (déconnexion), `"timeout"` (délai dépassé, avec `decision: "timeout"`). |
+| `message_done` | `interrupted: true` après un `cancel`, avec `content` = le texte partiel. Pour un tour d'origine `ui` : `content: ""` et `usage: null` (P-10) ; **la jauge de contexte garde alors sa dernière valeur**. |
 | `error` | `turn_id` vaut `null` pour une erreur hors tour. `code` fait partie de la liste fermée d'`events.md`. |
 
 ### 5.2 Messages propres au WebSocket
@@ -336,7 +336,7 @@ Le juge du tour précédent ne compte pas comme un tour en cours.
 2. `context_injected`, s'il est émis, vient **juste après** `turn_started`.
 3. Viennent ensuite, dans un ordre quelconque et éventuellement répété : `thinking`, `tool_call`, `sql_generated`, `tool_result`, `confirmation_required`, `confirmation_resolved`, `memory_updated`, `token`.
 4. Pour un même `call_id`, `tool_call` précède `sql_generated`, qui précède `tool_result`.
-5. Le tour se termine par **`message_done` (éventuellement `interrupted: true`), ou par `error` avec `recoverable: false`**. Après cela, la session repasse en IDLE.
+5. Le tour se termine par **`message_done` (éventuellement `interrupted: true`), ou par un `error` qui porte son `turn_id`**, récupérable ou non (`events.md` §3.12). Après cela, la session repasse en IDLE. `recoverable` dit seulement si la session reste utilisable.
 6. `judge_started` puis `judge_report` arrivent **après** `message_done`, éventuellement **après le `turn_started` du tour suivant**. Ils ne sont jamais émis pour un tour interrompu, pour un tour d'origine `ui`, ou quand `judge_enabled` vaut `false`.
 
 **Règle pour le front** : chaque événement est rattaché à son tour par `turn_id`, jamais par son ordre d'arrivée.
@@ -344,7 +344,7 @@ Le juge du tour précédent ne compte pas comme un tour en cours.
 ### 6.3 Délai de confirmation
 
 - Le décompte est géré **par le moteur**. Le front affiche un compte à rebours de `expires_in_s` secondes **à partir de l'heure de réception** de l'événement (pas de `ts`), mais ne décide rien.
-- À l'expiration, le moteur émet `confirmation_resolved` avec `decision: "timeout"` (US-A3-03). Le front affiche « Délai dépassé, action annulée ».
+- À l'expiration, le moteur émet `confirmation_resolved` avec `decision: "timeout"` et `reason: "timeout"` (US-A3-03). Le front affiche « Délai dépassé, action annulée ».
 - Une déconnexion refuse immédiatement la confirmation (`decision: "reject"`, `reason: "disconnected"`, §2.4).
 
 ---
@@ -353,7 +353,7 @@ Le juge du tour précédent ne compte pas comme un tour en cours.
 
 ### 7.1 Erreurs de protocole (émises par la couche web)
 
-Elles utilisent la forme de l'événement `error` d'`events.md` (`code`, `message`, `recoverable`), avec `turn_id: null` et `reply_to` si le message du client avait un `id`. La connexion reste ouverte. Les codes appartiennent à la **liste fermée d'`events.md`** (ALL-02, question 5) ; ceux marqués ➕ sont à y ajouter (point ouvert P-11).
+Elles utilisent la forme de l'événement `error` d'`events.md` (`code`, `message`, `recoverable`), avec `turn_id: null` et `reply_to` si le message du client avait un `id`. La connexion reste ouverte. Les codes appartiennent à la **liste fermée d'`events.md`** (ALL-02, question 5) ; ceux marqués ➕ y ont été ajoutés pour ce contrat (P-11). Toutes ces erreurs ont `recoverable: true` et `turn_id: null`.
 
 | Code | Quand | `recoverable` |
 |---|---|---|
@@ -391,16 +391,16 @@ Les erreurs du moteur (Ollama injoignable, modèle absent, serveur MCP arrêté,
 ```jsonl
 {"type":"user_message","id":"c-1","content":"Quels sont nos 5 clients les plus rentables ce trimestre ?"}
 {"type":"turn_started","session_id":"s-1","turn_id":"t-1","ts":1760433000.0,"origin":"user","user_message":"Quels sont nos 5 clients les plus rentables ce trimestre ?"}
-{"type":"context_injected","session_id":"s-1","turn_id":"t-1","ts":1760433000.1,"refs":[{"kind":"glossary","ref":"client rentable","label":"client rentable = marge brute > 25 %"}]}
+{"type":"context_injected","session_id":"s-1","turn_id":"t-1","ts":1760433000.1,"refs":[{"kind":"glossary","ref":"client rentable","label":"client rentable"}]}
 {"type":"tool_call","session_id":"s-1","turn_id":"t-1","ts":1760433000.4,"call_id":"k-1","server":"time","tool":"time__get_current_time","arguments":{"timezone":"Europe/Paris"}}
-{"type":"tool_result","session_id":"s-1","turn_id":"t-1","ts":1760433000.5,"call_id":"k-1","ok":true,"summary":"2026-10-14","duration_ms":120}
+{"type":"tool_result","session_id":"s-1","turn_id":"t-1","ts":1760433000.5,"call_id":"k-1","ok":true,"summary":"2026-10-14","data":null,"error":null,"duration_ms":120}
 {"type":"tool_call","session_id":"s-1","turn_id":"t-1","ts":1760433001.2,"call_id":"k-2","server":"sql_toolbox","tool":"sql_toolbox__run_select","arguments":{"sql":"WITH margin AS (…) SELECT …","purpose":"top 5 marge"}}
 {"type":"sql_generated","session_id":"s-1","turn_id":"t-1","ts":1760433001.2,"call_id":"k-2","sql":"WITH margin AS (…) SELECT …","operation":"SELECT"}
-{"type":"tool_result","session_id":"s-1","turn_id":"t-1","ts":1760433001.6,"call_id":"k-2","ok":true,"summary":"5 lignes","data":{"columns":["name","marge_eur","delai_moyen_jours"],"rows":[["Brasserie Lemaire",48712.4,47.3],["Imprimerie Vasseur",41208.15,31.0],["Cabinet Roussel",37950.0,28.4],["Garage Delmas",29880.6,null],["Atelier Morel",26011.0,52.9]],"row_count":5,"truncated":false},"duration_ms":380}
-{"type":"token","session_id":"s-1","turn_id":"t-1","ts":1760433002.0,"delta":"Voici les 5 clients"}
-{"type":"message_done","session_id":"s-1","turn_id":"t-1","ts":1760433004.1,"content":"Voici les 5 clients …","interrupted":false,"usage":{"prompt_tokens":2900,"completion_tokens":512,"ctx_used":3412,"ctx_max":8192},"duration_ms":4100}
+{"type":"tool_result","session_id":"s-1","turn_id":"t-1","ts":1760433001.6,"call_id":"k-2","ok":true,"summary":"5 lignes","data":{"columns":["name","marge_eur","delai_moyen_jours"],"rows":[["Brasserie Lemaire",48712.4,47.3],["Imprimerie Vasseur",41208.15,31.0],["Cabinet Roussel",37950.0,28.4],["Garage Delmas",29880.6,null],["Atelier Morel",26011.0,52.9]],"row_count":5,"truncated":false},"error":null,"duration_ms":380}
+{"type":"token","session_id":"s-1","turn_id":"t-1","ts":1760433002.0,"delta":"Voici les 5 clients les plus rentables depuis le 1er octobre."}
+{"type":"message_done","session_id":"s-1","turn_id":"t-1","ts":1760433004.1,"content":"Voici les 5 clients les plus rentables depuis le 1er octobre.","interrupted":false,"usage":{"prompt_tokens":2900,"completion_tokens":512,"ctx_used":3412,"ctx_max":8192},"duration_ms":4100}
 {"type":"judge_started","session_id":"s-1","turn_id":"t-1","ts":1760433004.1}
-{"type":"judge_report","session_id":"s-1","turn_id":"t-1","ts":1760433006.2,"…":"voir judge_report.v1.json"}
+{"type":"judge_report","session_id":"s-1","turn_id":"t-1","ts":1760433006.2,"badge":"verified","scores":{"faithfulness":1.0},"numeric_check":{"status":"ok","unmatched":[]},"report":{"…":"voir judge_report.v1.json"},"duration_ms":2100}
 ```
 
 ### 8.2 Action destructive (acte 4) : refus
@@ -410,24 +410,28 @@ Le SQL exclut lui-même les clients qui ont des factures : la requête passe, et
 ```jsonl
 {"type":"user_message","id":"c-5","content":"Supprime les clients inactifs depuis plus de 18 mois."}
 {"type":"turn_started","session_id":"s-1","turn_id":"t-4","ts":1760433100.0,"origin":"user","user_message":"Supprime les clients inactifs depuis plus de 18 mois."}
-{"type":"confirmation_required","session_id":"s-1","turn_id":"t-4","ts":1760433102.1,"action_id":"a-3","tool":"sql_toolbox__execute_write","sql":"DELETE FROM clients WHERE …","impact":{"operation":"DELETE","rows_affected":27,"per_table":{"clients":-27,"contacts":-41},"sample":[{"id":12,"name":"Atelier Morel"}],"blocked":[]},"expires_in_s":120}
+{"type":"tool_call","session_id":"s-1","turn_id":"t-4","ts":1760433101.8,"call_id":"k-7","server":"sql_toolbox","tool":"sql_toolbox__execute_write","arguments":{"sql":"DELETE FROM clients WHERE status = 'inactive' AND id NOT IN (SELECT client_id FROM invoices)"}}
+{"type":"sql_generated","session_id":"s-1","turn_id":"t-4","ts":1760433101.8,"call_id":"k-7","sql":"DELETE FROM clients WHERE status = 'inactive' AND id NOT IN (SELECT client_id FROM invoices)","operation":"DELETE"}
+{"type":"confirmation_required","session_id":"s-1","turn_id":"t-4","ts":1760433102.1,"action_id":"a-3","call_id":"k-7","tool":"sql_toolbox__execute_write","sql":"DELETE FROM clients WHERE status = 'inactive' AND id NOT IN (SELECT client_id FROM invoices)","impact":{"operation":"DELETE","rows_affected":27,"per_table":{"clients":-27,"contacts":-41},"sample":[{"id":12,"name":"Atelier Morel"}],"blocked":[]},"expires_in_s":120}
 {"type":"confirm","action_id":"a-3","decision":"reject"}
-{"type":"confirmation_resolved","session_id":"s-1","turn_id":"t-4","ts":1760433110.4,"action_id":"a-3","decision":"reject","reason":"user"}
-{"type":"message_done","session_id":"s-1","turn_id":"t-4","ts":1760433112.0,"content":"D'accord, je n'ai rien supprimé …","interrupted":false,"usage":{"prompt_tokens":3100,"completion_tokens":80,"ctx_used":3180,"ctx_max":8192},"duration_ms":12000}
+{"type":"confirmation_resolved","session_id":"s-1","turn_id":"t-4","ts":1760433110.4,"action_id":"a-3","decision":"reject","reason":"user","comment":null}
+{"type":"tool_result","session_id":"s-1","turn_id":"t-4","ts":1760433110.4,"call_id":"k-7","ok":false,"summary":"Action refusée","data":null,"error":{"code":"ACTION_REJECTED","message":"Suppression refusée par l'utilisateur."},"duration_ms":0}
+{"type":"token","session_id":"s-1","turn_id":"t-4","ts":1760433111.0,"delta":"D'accord, je n'ai rien supprimé."}
+{"type":"message_done","session_id":"s-1","turn_id":"t-4","ts":1760433112.0,"content":"D'accord, je n'ai rien supprimé.","interrupted":false,"usage":{"prompt_tokens":3100,"completion_tokens":80,"ctx_used":3180,"ctx_max":8192},"duration_ms":12000}
 ```
 
 ### 8.3 Suppression d'une entrée mémoire depuis le panneau (`ui_action`)
 
-La fin de ce tour (`message_done` avec `content` vide et `usage` à `null`) est une **proposition** (point ouvert P-10).
+Le tour se termine par `message_done` avec `content` vide et `usage` à `null`, sans juge (P-10). Le front n'affiche pas de bulle pour ce tour.
 
 ```jsonl
 {"type":"ui_action","id":"c-31","tool":"memory_delete","arguments":{"kind":"fact","ref":"17"}}
 {"type":"turn_started","session_id":"s-1","turn_id":"t-5","ts":1760433150.0,"origin":"ui","user_message":null}
 {"type":"tool_call","session_id":"s-1","turn_id":"t-5","ts":1760433150.0,"call_id":"k-9","server":null,"tool":"memory_delete","arguments":{"kind":"fact","ref":"17"}}
-{"type":"confirmation_required","session_id":"s-1","turn_id":"t-5","ts":1760433150.1,"action_id":"a-4","tool":"memory_delete","impact":{"operation":"DELETE","rows_affected":1,"per_table":{"facts":-1},"sample":[{"id":17,"content":"Claire veut les montants en k€"}]},"expires_in_s":120}
+{"type":"confirmation_required","session_id":"s-1","turn_id":"t-5","ts":1760433150.1,"action_id":"a-4","call_id":"k-9","tool":"memory_delete","sql":null,"impact":{"operation":"DELETE","rows_affected":1,"per_table":{"facts":-1},"sample":[{"kind":"fact","ref":"17","label":"Claire veut les montants en k€"}],"blocked":[]},"expires_in_s":120}
 {"type":"confirm","action_id":"a-4","decision":"approve"}
-{"type":"confirmation_resolved","session_id":"s-1","turn_id":"t-5","ts":1760433153.2,"action_id":"a-4","decision":"approve"}
-{"type":"tool_result","session_id":"s-1","turn_id":"t-5","ts":1760433153.3,"call_id":"k-9","ok":true,"summary":"Fait n°17 supprimé","duration_ms":12}
+{"type":"confirmation_resolved","session_id":"s-1","turn_id":"t-5","ts":1760433153.2,"action_id":"a-4","decision":"approve","reason":"user","comment":null}
+{"type":"tool_result","session_id":"s-1","turn_id":"t-5","ts":1760433153.3,"call_id":"k-9","ok":true,"summary":"Fait n°17 supprimé","data":null,"error":null,"duration_ms":12}
 {"type":"memory_updated","session_id":"s-1","turn_id":"t-5","ts":1760433153.3,"op":"delete","kind":"fact","ref":"17","summary":"Claire veut les montants en k€"}
 {"type":"message_done","session_id":"s-1","turn_id":"t-5","ts":1760433153.3,"content":"","interrupted":false,"usage":null,"duration_ms":3300}
 ```
@@ -495,6 +499,11 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 | P-8 | `kind` : `glossary`, `entity`, `relation`, `fact`. `ref` toujours une chaîne (le terme pour le glossaire, l'id en texte sinon). | P3 | §4.2, §5.1 — `memory.md` |
 | P-15 | `tools[].read_only` et `tools[].destructive` nullables (annotations telles que déclarées) ; ajout de `tools[].requires_confirmation`, calculé par la politique HITL, seul champ affiché par le front. | P2 | §5.2 — `tools.md` |
 | P-16 | `impact.blocked[].count` nullable (`null` en v1, exact avec HITL-03) ; une instruction qui touche une ligne protégée est rejetée en entier. `per_table` = différences de `COUNT(*)`, nulles pour un `UPDATE`. | P2 | §5.1, §8.2 — `tools.md` |
+| P-10 | Un tour d'origine `ui` se termine par `message_done` avec `content: ""`, `interrupted: false`, `usage: null`, sans juge. La règle « un tour finit par `message_done` ou `error` » reste vraie. | P1 | §4.2, §5.1, §8.3 — `events.md` |
+| P-11 | `BUSY`, `UNKNOWN_ACTION`, `INVALID_CONFIG`, `UI_ACTION_FORBIDDEN` ajoutés à la liste fermée des codes, tous `recoverable: true`, `turn_id: null`. | P1 | §7.1 — `events.md` |
+| P-12 | `confirmation_resolved.reason` **obligatoire**, liste fermée : `user`, `cancelled`, `disconnected`, `timeout`. | P1, P2 | §5.1, §6.3 — `events.md` |
+| P-13 | `judge_started` est toujours suivi d'un `judge_report`. Le badge est dans l'**enveloppe** de l'événement (`badge`, `report` nullable), pas dans `judge_report.v1.json`, qui ne décrit que ce que le modèle produit (`additionalProperties: false`). | P1 | §5.1 — `events.md`, `judge.md` (J-1) |
+| P-14 | `memory_updated` identifie l'entrée par `ref` (une chaîne), pas `id`. | P1, P3 | §5.1 — `events.md` |
 | P-17 | Noms d'outils toujours préfixés par le serveur, outils natifs sans préfixe, `[A-Za-z0-9_-]{1,64}`. `sql_generated.operation` ∈ `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `OTHER` (garde SQL). `/api/schema` passe par `sql_toolbox`. | P2 | §5.1, §5.2, §9 — `tools.md` |
 
 ### 10.2 Aligné sur TASKS.md (fiches ALL-02, WEB-01, WEB-04, WEB-07, CORE-11)
@@ -514,11 +523,8 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 | # | Question | Avec | Proposition |
 |---|---|---|---|
 | P-9 | « Basic agent switching » (catalogue X1) : le changement de modèle suffit-il ? | Suivi | Question à poser au suivi ; `set_model` en attendant |
-| P-10 | Comment se termine un tour d'origine `ui` ? | P1 | `message_done` avec `content: ""`, `interrupted: false`, `usage: null` (aucun appel au modèle), pas de juge |
-| P-11 | Ajouter à la liste fermée des codes d'`events.md` : `BUSY`, `UNKNOWN_ACTION`, `INVALID_CONFIG`, `UI_ACTION_FORBIDDEN` | P1 | Les 4 codes du §7.1 marqués ➕ |
-| P-12 | Ajouter `reason` (`user`, `cancelled`, `disconnected`) à `confirmation_resolved` | P1 | Facultatif, pour distinguer les refus dans l'interface et l'audit. P2 est d'accord. |
-| P-13 | Par quel événement le front apprend-il que la vérification est **indisponible** (rapport invalide après réparation, juge sans réponse) ? | P1, P3 | Un `judge_report` avec un champ `status: "unavailable"` et sans `claims`, pour que le badge suive toujours `judge_started` → `judge_report` |
-| P-14 | Renommer `memory_updated.id` en `ref` dans `events.md` (demandé par P3) | P1 | Même nom partout : outils mémoire, `context_injected`, `memory_updated` |
+| P-13 bis | Valeurs de `badge` et forme de `numeric_check` dans l'enveloppe de `judge_report` (`events.md` E-1, E-2 ; `judge.md` J-1) | P3 | Celles d'`events.md` §3.11 |
+| P-18 | `events.md` rédigé en brouillon (avec toutes les décisions P-2 à P-17) : à relire et valider par son propriétaire | P1 | Brouillon proposé par P4 le 06/10 |
 
 ---
 
