@@ -1,0 +1,220 @@
+/* Conversation thread (docs/keynote/ui/Chat) */
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: var(--chat-max-w);
+  margin: 0 auto;
+}
+
+.turn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.bubble-user {
+  align-self: flex-end;
+  max-width: 80%;
+  margin: 0;
+  padding: 10px 14px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-md) var(--radius-md) 2px var(--radius-md);
+  background: var(--fill-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ui-action {
+  align-self: center;
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.assistant {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.avatar {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--fill-1);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 21px;
+  text-align: center;
+}
+
+.assistant-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 1;
+}
+
+.activity {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.thinking {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.thinking summary {
+  cursor: pointer;
+}
+
+.thinking p {
+  margin: var(--space-1) 0 0;
+  white-space: pre-wrap;
+}
+
+.interrupted {
+  margin: 0;
+  font-size: 12px;
+  color: var(--warn);
+}
+
+.turn-error {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1.5px solid var(--bad);
+  border-radius: var(--radius-sm);
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+
+/* Markdown of the answer */
+.markdown {
+  overflow-wrap: anywhere;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown p,
+.markdown ul,
+.markdown ol {
+  margin: 0 0 var(--space-2);
+}
+
+.markdown code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  background: var(--fill-1);
+}
+
+.markdown table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0 0 var(--space-2);
+}
+
+.markdown th,
+.markdown td {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+
+.cursor {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  margin-left: 2px;
+  vertical-align: -2px;
+  background: var(--ink);
+  animation: blink 1s steps(1) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor {
+    animation: none;
+  }
+}
+
+/* Empty state: example questions */
+.examples {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 460px;
+  margin: var(--space-6) auto 0;
+}
+
+.example {
+  padding: 8px 12px;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.example:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Banners: connection state and errors outside a turn */
+.banners {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) 0;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: var(--chat-max-w);
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-2) var(--space-3);
+  border: 1.5px solid var(--warn);
+  border-radius: var(--radius-sm);
+  background: var(--warn-bg);
+  color: var(--ink);
+}
+
+.banner.bad {
+  border-color: var(--bad);
+  background: var(--bad-bg);
+}
+
+.banner p {
+  margin: 0;
+  flex: 1;
+}
+
+.banner button {
+  border: 0;
+  background: none;
+  font-weight: 600;
+  cursor: pointer;
+}

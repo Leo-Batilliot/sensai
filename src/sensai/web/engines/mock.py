@@ -182,7 +182,7 @@ class MockEngine:
         self._pacing = pacing
         self._confirmation_timeout_s = config.hitl.confirmation_timeout_s
         self._cancelled = False
-        self._running = False
+        self._active_turn: object | None = None  # the turn that cancel() would stop
         self._next_error_turn = 0
 
     # --- WebEngine ----------------------------------------------------------------------
@@ -200,7 +200,7 @@ class MockEngine:
 
     def cancel(self) -> bool:
         """Same contract as Engine.cancel(): False (ignored) when no turn is running."""
-        if not self._running:
+        if self._active_turn is None:
             return False
         self._cancelled = True
         return True
@@ -240,12 +240,21 @@ class MockEngine:
         user_message: str | None,
     ) -> AsyncIterator[Event]:
         self._cancelled = False
-        self._running = True
+        turn = object()
+        self._active_turn = turn
         try:
             async for event in self._play(prefix, branches, user_message):
+                if event["type"] in ("message_done", "error"):
+                    self._end(turn)  # the judge may follow, but the turn can no longer be cancelled
                 yield event
         finally:
-            self._running = False
+            self._end(turn)
+
+    def _end(self, turn: object) -> None:
+        # Only the turn itself clears the flag: the judge of the previous turn may finish
+        # while a newer turn runs, and must not make that newer turn uncancellable.
+        if self._active_turn is turn:
+            self._active_turn = None
 
     async def _play(
         self,
