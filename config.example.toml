@@ -42,7 +42,8 @@ judge_enabled = true
 numeric_tolerance = 0.01       # 1 %
 
 # MCP servers started at launch. Adding a [mcp.servers.<name>] table is enough to
-# plug in a new server; <name> prefixes its tools on collision (time__get_current_time).
+# plug in a new server. <name> always prefixes its tools (time__get_current_time);
+# native tools (memory) are never prefixed.
 [mcp.servers.sql_toolbox]
 command = "python"
 args = ["-m", "sensai.mcp_servers.sql_toolbox", "--db", "data/business.db"]
