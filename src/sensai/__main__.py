@@ -34,6 +34,11 @@ def _add_web_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", help="fichier de configuration (défaut : ./config.toml)")
     parser.add_argument("--host", help="adresse d'écoute (défaut : [web] host)")
     parser.add_argument("--port", type=int, help="port d'écoute (défaut : [web] port)")
+    parser.add_argument(
+        "--mock",
+        action="store_true",
+        help="rejoue les scénarios de tests/fixtures/events au lieu d'appeler le moteur",
+    )
 
 
 def _run_web(args: argparse.Namespace) -> int:
@@ -41,15 +46,24 @@ def _run_web(args: argparse.Namespace) -> int:
     import uvicorn
 
     from sensai.core.config import ConfigError, load_config
+    from sensai.web.engines.mock import MockBackend
     from sensai.web.server import create_app
 
+    if not args.mock:
+        print(
+            "Le moteur réel n'est pas encore branché sur le web (WEB-08) : "
+            "lancez `sensai web --mock` pour rejouer les scénarios de démonstration.",
+            file=sys.stderr,
+        )
+        return 1
     try:
         config = load_config(args.config, overrides={"web.host": args.host, "web.port": args.port})
     except ConfigError as exc:
         print(exc, file=sys.stderr)
         return 1
-    # Default single worker: web sessions will live in memory (WEB-04)
-    uvicorn.run(create_app(config), host=config.web.host, port=config.web.port)
+    # Single worker: web sessions live in memory
+    app = create_app(config, MockBackend(config))
+    uvicorn.run(app, host=config.web.host, port=config.web.port)
     return 0
 
 

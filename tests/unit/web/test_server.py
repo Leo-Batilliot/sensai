@@ -8,7 +8,10 @@ from fastapi.testclient import TestClient
 from sensai import __version__
 from sensai.__main__ import main
 from sensai.core.config import Config
+from sensai.web.engines.mock import MockBackend, Pacing
 from sensai.web.server import create_app
+
+INSTANT = Pacing(token=0, tool=0, judge=0, other=0)
 
 
 @pytest.fixture
@@ -20,30 +23,42 @@ def dist(tmp_path: Path) -> Path:
     return directory
 
 
+def make_client(static_dir: Path) -> TestClient:
+    config = Config()
+    return TestClient(create_app(config, MockBackend(config, pacing=INSTANT), static_dir=static_dir))
+
+
 # --- application ----------------------------------------------------------------------
 
 
 def test_health(dist: Path) -> None:
-    client = TestClient(create_app(Config(), static_dir=dist))
-    response = client.get("/api/health")
+    response = make_client(dist).get("/api/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "version": __version__}
+    assert response.json() == {"status": "ok", "ollama": "up", "version": __version__}
+
+
+def test_models_lists_the_default_and_the_tool_support(dist: Path) -> None:
+    body = make_client(dist).get("/api/models").json()
+    assert body["default"] == Config().ollama.model
+    names = {model["name"]: model["supports_tools"] for model in body["models"]}
+    assert names[Config().ollama.model] is True
+    assert False in names.values()  # one model without tools, to show the warning
 
 
 def test_serves_the_built_frontend(dist: Path) -> None:
-    client = TestClient(create_app(Config(), static_dir=dist))
-    response = client.get("/")
+    response = make_client(dist).get("/")
     assert response.status_code == 200
     assert "<title>SENSAI</title>" in response.text
 
 
 def test_static_mount_does_not_shadow_the_api(dist: Path) -> None:
-    client = TestClient(create_app(Config(), static_dir=dist))
+    client = make_client(dist)
     assert client.get("/api/health").headers["content-type"] == "application/json"
+    assert client.get("/api/models").headers["content-type"] == "application/json"
 
 
 def test_missing_build_explains_how_to_fix(tmp_path: Path) -> None:
-    client = TestClient(create_app(Config(), static_dir=tmp_path / "absent"))
+    client = make_client(tmp_path / "absent")
     response = client.get("/")
     assert response.status_code == 503
     assert "make web-build" in response.text
@@ -62,24 +77,29 @@ def isolated_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.usefixtures("isolated_env")
-def test_web_command_starts_uvicorn_with_the_configured_address(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_web_command_starts_uvicorn_with_the_mock(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: dict[str, object] = {}
 
     def fake_run(app: FastAPI, *, host: str, port: int) -> None:
         calls.update(app=app, host=host, port=port)
 
     monkeypatch.setattr(uvicorn, "run", fake_run)
-    assert main(["web", "--port", "9001"]) == 0
+    assert main(["web", "--mock", "--port", "9001"]) == 0
     assert calls["host"] == "127.0.0.1"  # [web] host default
     assert calls["port"] == 9001  # --port wins over the default
     assert isinstance(calls["app"], FastAPI)
 
 
 @pytest.mark.usefixtures("isolated_env")
+def test_web_command_without_mock_explains_why(capsys: pytest.CaptureFixture[str]) -> None:
+    # The real engine is plugged in by WEB-08: until then, only the mock is available
+    assert main(["web"]) == 1
+    assert "--mock" in capsys.readouterr().err
+
+
+@pytest.mark.usefixtures("isolated_env")
 def test_web_command_reports_a_bad_config(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert main(["web", "--config", str(tmp_path / "absent.toml")]) == 1
+    assert main(["web", "--mock", "--config", str(tmp_path / "absent.toml")]) == 1
     assert "introuvable" in capsys.readouterr().err
