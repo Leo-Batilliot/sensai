@@ -341,6 +341,74 @@ def test_delete_a_term(store: MemoryStore) -> None:
     assert (delete["op"], delete["before"]["definition"], delete["after"]) == ("delete", RULE, None)
 
 
+def test_delete_impact_of_an_entity_counts_the_cascades(
+    store: MemoryStore, lemaire: str, julien: str
+) -> None:
+    relation = store.relate("Lemaire", "managed_by", "Julien").ref
+    fact = store.add_fact("Compte stratégique", "note", entity="Lemaire").ref
+    store.add_fact("Montants en k€", "preference")
+    audit_before = store.audit_log()
+
+    impact = store.delete_impact("entity", lemaire)
+
+    assert impact == {
+        "operation": "DELETE",
+        "rows_affected": 1,
+        "per_table": {"entities": -1, "relations": -1, "facts": -1},
+        "sample": [
+            {"kind": "entity", "ref": lemaire, "label": "Brasserie Lemaire"},
+            {
+                "kind": "relation",
+                "ref": relation,
+                "label": "Brasserie Lemaire —managed_by→ Julien Marchand",
+            },
+            {"kind": "fact", "ref": fact, "label": "Compte stratégique"},
+        ],
+        "blocked": [],
+    }
+    # a preview writes nothing
+    assert store.audit_log() == audit_before
+    assert len(store.dump()["facts"]) == 2
+
+
+def test_delete_impact_matches_what_delete_removes(
+    store: MemoryStore, lemaire: str, julien: str
+) -> None:
+    store.relate("Lemaire", "managed_by", "Julien")
+    for index in range(6):
+        store.add_fact(f"Note {index}", "note", entity="Julien")
+    impact = store.delete_impact("entity", julien)
+    before = {table: len(rows) for table, rows in store.dump().items()}
+
+    store.delete("entity", julien)
+
+    after = {table: len(rows) for table, rows in store.dump().items()}
+    assert {
+        table: after[table] - before[table] for table in before if after[table] != before[table]
+    } == impact["per_table"]
+    assert len(impact["sample"]) == 5
+
+
+@pytest.mark.parametrize(
+    ("kind", "label"), [("glossary", "Client rentable"), ("fact", "Montants en k€")]
+)
+def test_delete_impact_of_a_single_entry(store: MemoryStore, kind: Kind, label: str) -> None:
+    ref = (
+        store.define_term("Client rentable", RULE).ref
+        if kind == "glossary"
+        else store.add_fact("Montants en k€", "preference").ref
+    )
+    table = "glossary" if kind == "glossary" else "facts"
+    impact = store.delete_impact(kind, ref.lower() if kind == "glossary" else ref)
+    assert impact["per_table"] == {table: -1}
+    assert impact["sample"] == [{"kind": kind, "ref": ref, "label": label}]
+
+
+def test_delete_impact_of_a_missing_entry(store: MemoryStore) -> None:
+    with pytest.raises(NotFound):
+        store.delete_impact("entity", "42")
+
+
 def test_deleting_an_entity_audits_every_cascaded_entry(
     store: MemoryStore, lemaire: str, julien: str
 ) -> None:

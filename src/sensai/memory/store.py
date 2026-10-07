@@ -10,9 +10,11 @@ term for the glossary and the integer id as text for the other kinds.
 - Case-insensitive comparisons use str.casefold() in Python: COLLATE NOCASE only folds
   ASCII ('ÉLAN' != 'élan' for SQLite).
 - Raw text never reaches MATCH: search() goes through fts.build_fts_query().
+- delete_impact() previews a deletion, cascades included, for the HITL confirmation of
+  memory_delete (tools.md, point T-4).
 
-The store is synchronous and owns its connection. Tool wrappers, annotations and the
-HITL preview of memory_delete come with MEM-03.
+The store is synchronous and owns its connection. Tool wrappers and annotations come
+with MEM-03.
 """
 
 from __future__ import annotations
@@ -43,6 +45,7 @@ Actor = Literal["agent", "user"]
 
 DEFAULT_SEARCH_LIMIT = 5
 LABEL_MAX_CHARS = 60
+IMPACT_SAMPLE_SIZE = 5  # confirmation_required.impact.sample holds 5 entries at most
 
 # Fields a patch may replace, per kind (memory.md §2)
 PATCHABLE: dict[str, frozenset[str]] = {
@@ -423,26 +426,51 @@ class MemoryStore:
 
     # --- delete -------------------------------------------------------------------------
 
+    def _cascade(self, kind: Kind, row: dict[str, Any]) -> list[tuple[Kind, dict[str, Any]]]:
+        """Entries that ON DELETE CASCADE removes with this one: an entity's links and facts."""
+        if kind != "entity":
+            return []
+        entity_id = row["id"]
+        relations = self._rows(
+            "SELECT * FROM relations WHERE src_id = ? OR dst_id = ? ORDER BY id",
+            (entity_id, entity_id),
+        )
+        facts = self._rows("SELECT * FROM facts WHERE entity_id = ? ORDER BY id", (entity_id,))
+        return [("relation", r) for r in relations] + [("fact", f) for f in facts]
+
+    def delete_impact(self, kind: Kind, ref: str) -> dict[str, Any]:
+        """Preview of delete(), in the shape of confirmation_required.impact (memory.md §4).
+
+        Read only. per_table counts the cascades; sample lists the entry, then the
+        cascaded ones, 5 at most. Nothing blocks a memory deletion: blocked is empty.
+        """
+        before = self._require(kind, ref)
+        entries = [(kind, before), *self._cascade(kind, before)]
+        per_table: dict[str, int] = {}
+        for entry_kind, _ in entries:
+            table = _TABLES[entry_kind]
+            per_table[table] = per_table.get(table, 0) - 1
+        sample = [
+            {
+                "kind": entry_kind,
+                "ref": row["term"] if entry_kind == "glossary" else str(row["id"]),
+                "label": self._short_label(entry_kind, row),
+            }
+            for entry_kind, row in entries[:IMPACT_SAMPLE_SIZE]
+        ]
+        return {
+            "operation": "DELETE",
+            "rows_affected": 1,
+            "per_table": per_table,
+            "sample": sample,
+            "blocked": [],
+        }
+
     def delete(self, kind: Kind, ref: str, ctx: AuditContext = AGENT) -> WriteResult:
         """Delete an entry. An entity takes its relations and facts with it, each audited."""
         before = self._require(kind, ref)
         label = self._label(kind, before)
-        cascade: list[tuple[Kind, dict[str, Any]]] = []
-        if kind == "entity":
-            entity_id = before["id"]
-            cascade += [
-                ("relation", row)
-                for row in self._rows(
-                    "SELECT * FROM relations WHERE src_id = ? OR dst_id = ? ORDER BY id",
-                    (entity_id, entity_id),
-                )
-            ]
-            cascade += [
-                ("fact", row)
-                for row in self._rows(
-                    "SELECT * FROM facts WHERE entity_id = ? ORDER BY id", (entity_id,)
-                )
-            ]
+        cascade = self._cascade(kind, before)
         key, key_value = ("term", before["term"]) if kind == "glossary" else ("id", before["id"])
         ref = before["term"] if kind == "glossary" else ref
         with self._transaction():
@@ -527,6 +555,17 @@ class MemoryStore:
             src, dst = self._entity_name(row["src_id"]), self._entity_name(row["dst_id"])
             return f"Relation {src} —{row['type']}→ {dst}"
         return f"Fait « {_truncate(row['content'])} »"
+
+    def _short_label(self, kind: Kind, row: dict[str, Any]) -> str:
+        """Label without prefix, as in search results and context_injected (memory.md §4)."""
+        if kind == "glossary":
+            return row["term"]
+        if kind == "entity":
+            return row["name"]
+        if kind == "relation":
+            src, dst = self._entity_name(row["src_id"]), self._entity_name(row["dst_id"])
+            return f"{src} —{row['type']}→ {dst}"
+        return _truncate(row["content"])
 
     def _search_result(self, kind: Kind, ref: str, row: dict[str, Any]) -> dict[str, Any]:
         if kind == "glossary":
