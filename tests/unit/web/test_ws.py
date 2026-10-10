@@ -178,6 +178,20 @@ def test_cancel_interrupts_the_answer() -> None:
     assert after["type"] == "session_reset"  # no judge for an interrupted turn
 
 
+def test_cancel_works_while_the_previous_judge_is_still_running() -> None:
+    # Regression: the judge of turn 1 ending during turn 2 made turn 2 uncancellable
+    with make_client(SLOW) as client, client.websocket_connect(f"/ws/{SESSION}") as ws:
+        ws.receive_json()
+        ws.send_json({"type": "user_message", "content": ACT_1})
+        until(ws, of_type("message_done"))  # turn 1 answered, its judge still runs
+        ws.send_json({"type": "user_message", "content": ACT_1})
+        second = until(ws, lambda m: m["type"] == "turn_started")[-1]["turn_id"]
+        until(ws, lambda m: m["type"] == "token" and m["turn_id"] == second)
+        ws.send_json({"type": "cancel"})
+        done = until(ws, lambda m: m["type"] == "message_done" and m["turn_id"] == second)[-1]
+    assert done["interrupted"] is True
+
+
 def test_cancel_refuses_a_pending_confirmation(client: TestClient) -> None:
     with client.websocket_connect(f"/ws/{SESSION}") as ws:
         ws.receive_json()

@@ -1,34 +1,33 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import './App.css'
+import './chat/chat.css'
+import { ChatInput } from './chat/ChatInput'
+import { EmptyState } from './chat/EmptyState'
+import { MessageList } from './chat/MessageList'
+import type { ConnectionStatus } from './session/reducer'
+import { useSession } from './session/useSession'
 
-type BackendStatus = 'checking' | 'up' | 'down'
 type SideTab = 'timeline' | 'memory'
 
-const BACKEND_LABELS: Record<BackendStatus, string> = {
-  checking: 'Connexion…',
-  up: 'Serveur connecté',
-  down: 'Serveur injoignable',
+const CONNECTION: Record<ConnectionStatus, { label: string; tone: string }> = {
+  connecting: { label: 'Connexion…', tone: '' },
+  open: { label: 'Connecté', tone: 'chip-up' },
+  reconnecting: { label: 'Reconnexion…', tone: 'chip-down' },
+  replaced: { label: 'Ouverte ailleurs', tone: 'chip-down' },
 }
 
-function useBackendStatus(): BackendStatus {
-  const [status, setStatus] = useState<BackendStatus>('checking')
+const numbers = new Intl.NumberFormat('fr-FR')
 
-  useEffect(() => {
-    const controller = new AbortController()
-    fetch('/api/health', { signal: controller.signal })
-      .then((response) => setStatus(response.ok ? 'up' : 'down'))
-      .catch(() => {
-        if (!controller.signal.aborted) setStatus('down')
-      })
-    return () => controller.abort()
-  }, [])
-
-  return status
-}
-
+// Layout of the main screen (docs/keynote/ui/EcranPrincipal). Still to come: SQL and
+// results (WEB-06), HITL modal (WEB-07), judge badge (WEB-09), status bar (WEB-10),
+// memory panel (WEB-11).
 export default function App() {
-  const backend = useBackendStatus()
+  const session = useSession()
+  const { state } = session
   const [tab, setTab] = useState<SideTab>('timeline')
+  const connection = CONNECTION[state.connection]
+  const servers = state.session?.servers ?? []
+  const usage = state.lastUsage
 
   return (
     <div className="app">
@@ -41,35 +40,65 @@ export default function App() {
           <span className="muted">Nordvent Distribution</span>
         </div>
         <div className="statusbar-items">
-          <span className="chip">Modèle : —</span>
-          <span className="chip">Serveurs MCP : —</span>
-          <span className="chip">Contexte : —</span>
-          <span className={`chip chip-${backend}`} role="status">
-            {BACKEND_LABELS[backend]}
+          <span className="chip">Modèle : {state.session?.model ?? '—'}</span>
+          <span className="chip">
+            Serveurs MCP : {servers.filter((server) => server.status === 'up').length}/
+            {servers.length}
+          </span>
+          <span className="chip">
+            Contexte :{' '}
+            {usage === null
+              ? '—'
+              : `${numbers.format(usage.ctx_used)} / ${numbers.format(usage.ctx_max)}`}
+          </span>
+          <span className={`chip ${connection.tone}`} role="status">
+            {connection.label}
           </span>
         </div>
       </header>
 
       <main className="conversation" aria-label="Conversation">
-        <div className="messages">
-          <div className="empty-state">
-            <h1>Que voulez-vous savoir sur vos données ?</h1>
-            <p className="muted">
-              Les réponses sont vérifiées contre la base. Rien ne quitte cette machine.
-            </p>
-          </div>
+        <div className="banners">
+          {state.incompatible && (
+            <div className="banner bad" role="alert">
+              <p>Version de l'interface incompatible : rechargez la page.</p>
+            </div>
+          )}
+          {state.connection === 'replaced' && (
+            <div className="banner bad" role="alert">
+              <p>Cette conversation est ouverte dans un autre onglet.</p>
+            </div>
+          )}
+          {state.connection === 'reconnecting' && (
+            <div className="banner" role="status">
+              <p>Connexion au serveur perdue, reconnexion en cours…</p>
+            </div>
+          )}
+          {state.notices.map((notice) => (
+            <div key={notice.id} className="banner" role="alert">
+              <p>{notice.message}</p>
+              <button type="button" onClick={() => session.dismissNotice(notice.id)}>
+                Fermer
+              </button>
+            </div>
+          ))}
         </div>
-        <form className="composer" onSubmit={(event) => event.preventDefault()}>
-          <input
-            type="text"
-            aria-label="Question"
-            placeholder="Posez une question sur vos données…"
-            disabled
+
+        {state.turns.length === 0 ? (
+          <EmptyState
+            disabled={!session.connected || session.busy}
+            onAsk={session.sendMessage}
           />
-          <button type="submit" disabled>
-            Envoyer
-          </button>
-        </form>
+        ) : (
+          <MessageList turns={state.turns} />
+        )}
+
+        <ChatInput
+          busy={session.busy}
+          connected={session.connected}
+          onSend={session.sendMessage}
+          onCancel={session.cancel}
+        />
       </main>
 
       <aside className="sidepanel" aria-label="Étapes de l'agent et mémoire">
