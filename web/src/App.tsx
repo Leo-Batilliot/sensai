@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import './App.css'
 import './chat/chat.css'
+import './results/results.css'
+import './sql/sql.css'
+import './timeline/timeline.css'
 import { ChatInput } from './chat/ChatInput'
 import { EmptyState } from './chat/EmptyState'
 import { MessageList } from './chat/MessageList'
 import type { ConnectionStatus } from './session/reducer'
 import { useSession } from './session/useSession'
+import { Timeline } from './timeline/Timeline'
 
 type SideTab = 'timeline' | 'memory'
 
@@ -18,16 +22,29 @@ const CONNECTION: Record<ConnectionStatus, { label: string; tone: string }> = {
 
 const numbers = new Intl.NumberFormat('fr-FR')
 
-// Layout of the main screen (docs/keynote/ui/EcranPrincipal). Still to come: SQL and
-// results (WEB-06), HITL modal (WEB-07), judge badge (WEB-09), status bar (WEB-10),
-// memory panel (WEB-11).
+// Layout of the main screen (docs/keynote/ui/EcranPrincipal). Still to come: HITL modal
+// (WEB-07), judge badge (WEB-09), status bar (WEB-10), memory panel (WEB-11).
 export default function App() {
   const session = useSession()
   const { state } = session
   const [tab, setTab] = useState<SideTab>('timeline')
+  // Turn shown in the timeline: the one picked from a message, otherwise the last one
+  const [pinnedTurnId, setPinnedTurnId] = useState<string | null>(null)
   const connection = CONNECTION[state.connection]
   const servers = state.session?.servers ?? []
   const usage = state.lastUsage
+  const pinned = state.turns.findIndex((turn) => turn.id === pinnedTurnId)
+  const timelineIndex = pinned !== -1 ? pinned : state.turns.length - 1
+
+  const ask = (content: string) => {
+    setPinnedTurnId(null) // the timeline follows the new turn
+    session.sendMessage(content)
+  }
+
+  const showSteps = (turnId: string) => {
+    setPinnedTurnId(turnId)
+    setTab('timeline')
+  }
 
   return (
     <div className="app">
@@ -87,16 +104,16 @@ export default function App() {
         {state.turns.length === 0 ? (
           <EmptyState
             disabled={!session.connected || session.busy}
-            onAsk={session.sendMessage}
+            onAsk={ask}
           />
         ) : (
-          <MessageList turns={state.turns} />
+          <MessageList turns={state.turns} onShowSteps={showSteps} />
         )}
 
         <ChatInput
           busy={session.busy}
           connected={session.connected}
-          onSend={session.sendMessage}
+          onSend={ask}
           onCancel={session.cancel}
         />
       </main>
@@ -130,11 +147,13 @@ export default function App() {
           id="panel-side"
           aria-labelledby={tab === 'timeline' ? 'tab-timeline' : 'tab-memory'}
         >
-          <p className="muted">
-            {tab === 'timeline'
-              ? "Les étapes de l'agent s'afficheront ici pendant qu'il travaille."
-              : "Le glossaire, les entités et les faits retenus par l'agent s'afficheront ici."}
-          </p>
+          {tab === 'timeline' ? (
+            <Timeline turn={state.turns[timelineIndex] ?? null} number={timelineIndex + 1} />
+          ) : (
+            <p className="muted">
+              Le glossaire, les entités et les faits retenus par l'agent s'afficheront ici.
+            </p>
+          )}
         </div>
       </aside>
     </div>

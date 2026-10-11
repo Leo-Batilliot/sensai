@@ -1,6 +1,10 @@
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { ResultTable } from '../results/ResultTable'
+import { asRowSet } from '../results/table'
 import type { Turn } from '../session/reducer'
+import { messageQueries, stepStatus, stepsSummary } from '../session/steps'
+import { SqlBlock } from '../sql/SqlBlock'
 
 // What the agent is doing, shown above the answer while it works
 function activity(turn: Turn): string | null {
@@ -11,7 +15,12 @@ function activity(turn: Turn): string | null {
   return null
 }
 
-export function AssistantMessage({ turn }: { turn: Turn }) {
+interface Props {
+  turn: Turn
+  onShowSteps: (turnId: string) => void
+}
+
+export function AssistantMessage({ turn, onShowSteps }: Props) {
   const streaming = turn.status === 'running'
   const label = activity(turn)
 
@@ -21,6 +30,11 @@ export function AssistantMessage({ turn }: { turn: Turn }) {
         S
       </span>
       <div className="assistant-body">
+        {turn.steps.length > 0 && (
+          <button type="button" className="steps-link" onClick={() => onShowSteps(turn.id)}>
+            <span aria-hidden="true">▶</span> {stepsSummary(turn)}
+          </button>
+        )}
         {label !== null && (
           <p className="activity" role="status">
             {label}
@@ -44,6 +58,16 @@ export function AssistantMessage({ turn }: { turn: Turn }) {
             {turn.error.message}
           </p>
         )}
+        {messageQueries(turn).map((step) => {
+          const rowSet = step.result === null ? null : asRowSet(step.result.data)
+          const resultId = rowSet === null ? null : `result-${turn.id}-${step.callId}`
+          return (
+            <div key={step.callId} className="query">
+              <SqlBlock step={step} status={stepStatus(turn, step)} resultId={resultId} />
+              {rowSet !== null && resultId !== null && <ResultTable id={resultId} rowSet={rowSet} />}
+            </div>
+          )
+        })}
       </div>
     </article>
   )

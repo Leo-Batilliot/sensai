@@ -34,6 +34,17 @@ Le serveur de développement de Vite redirige `/api` et `/ws` vers le backend (`
 | `npm test` | Tests Vitest (le reducer rejoue les fixtures de `tests/fixtures/events/`) |
 | `npm run preview` | Sert le build localement (sans backend) |
 
+## Structure de `src/`
+
+| Dossier | Contenu |
+|---|---|
+| `session/` | Connexion WebSocket (`useSession`), état de la conversation (`reducer`), statut des appels d'outils (`steps`) |
+| `chat/` | Fil de conversation : messages, saisie, état vide |
+| `sql/` | Bloc SQL sous la réponse : coloration, copier, lien vers le tableau |
+| `results/` | Tableau de résultats de `run_select` : tri et format français |
+| `timeline/` | Étapes de l'agent dans le panneau de droite |
+| `shared/` | Composants communs (bouton Copier) |
+
 ## Conventions
 
 - Les variables CSS de `src/index.css` reprennent les noms des tokens des maquettes ([docs/keynote/ui](../docs/keynote/ui/)).

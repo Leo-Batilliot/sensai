@@ -1,0 +1,84 @@
+/* SQL block under the answer (docs/keynote/ui/BlocSQL) */
+.query {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.sql-block {
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.sql-write {
+  border-color: var(--bad);
+}
+
+.sql-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 36px;
+  padding: var(--space-1) var(--space-2);
+}
+
+.sql-toggle {
+  flex: none;
+  border: 0;
+  background: none;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sql-preview,
+.sql-meta {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sql-preview {
+  font-family: var(--font-mono);
+  color: var(--ink-muted);
+}
+
+.sql-actions {
+  display: flex;
+  flex: none;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.sql-code {
+  margin: 0;
+  padding: var(--space-3);
+  border-top: 1px solid var(--line);
+  overflow-x: auto;
+  font: 12px/18px var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sql-keyword {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.sql-function {
+  color: var(--ok);
+}
+
+.sql-string,
+.sql-number {
+  color: var(--warn);
+}
+
+.sql-comment {
+  color: var(--ink-muted);
+  font-style: italic;
+}

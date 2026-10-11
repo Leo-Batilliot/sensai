@@ -1,0 +1,86 @@
+/* Results table (docs/keynote/ui/TableauResultats) */
+.results {
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.results-header,
+.results-note {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: 12px;
+}
+
+.results-header {
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.results-note {
+  border-top: 1px solid var(--line);
+}
+
+.results-scroll {
+  max-height: 360px;
+  overflow: auto;
+}
+
+.results table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.results th {
+  position: sticky;
+  top: 0;
+  padding: 0;
+  border-bottom: 1.5px solid var(--line-strong);
+  background: var(--fill-1);
+  text-align: left;
+}
+
+.results th button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.results th.num button {
+  justify-content: flex-end;
+}
+
+.sort-mark {
+  color: var(--ink-muted);
+  font-size: 10px;
+}
+
+.results td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.results tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.results td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.results td.empty {
+  color: var(--ink-muted);
+}
