@@ -9,7 +9,16 @@ from pathlib import Path
 import pytest
 from rich.console import Console
 
-from fakes import CTRL_C, HANG, MODEL, OTHER_MODEL, FakeClient, answer
+from fakes import (
+    CTRL_C,
+    HANG,
+    MODEL,
+    OTHER_MODEL,
+    FakeClient,
+    FakeToolRegistry,
+    answer,
+    tool_request,
+)
 from sensai.cli.app import ChatSession, run_chat, run_interruptible, run_repl
 from sensai.cli.render import Renderer
 from sensai.core import engine as engine_module
@@ -395,3 +404,28 @@ def test_invalid_config_stops_with_exit_code_1(
 
     assert code == 1
     assert "Fichier de configuration introuvable" in capsys.readouterr().err
+
+
+async def test_tool_steps_are_shown_as_a_timeline() -> None:
+    top = "SELECT name, marge_eur\n  FROM clients ORDER BY marge_eur DESC LIMIT 2"
+    client = FakeClient(
+        tool_request("sql_toolbox__run_select", sql=top),
+        tool_request("weather__forecast", city="Lille"),
+        answer("Brasserie Lemaire arrive en tête."),
+    )
+    out = io.StringIO()
+    console = Console(file=out, width=200, color_system=None, highlight=False)
+    engine = Engine(Config(), client, registry=FakeToolRegistry(), session_id="s-1")
+    session = ChatSession(engine, Renderer(console))
+
+    await session.handle("Nos 2 meilleurs clients ?")
+
+    assert out.getvalue() == (
+        "• sql_toolbox__run_select\n"
+        "  SELECT : SELECT name, marge_eur FROM clients ORDER BY marge_eur DESC LIMIT 2\n"
+        "  résultat : 2 lignes\n"
+        "• weather__forecast\n"
+        "  échec : Outil inconnu : weather__forecast. Outils disponibles : "
+        "time__get_current_time, sql_toolbox__run_select.\n"
+        "Brasserie Lemaire arrive en tête.\n"
+    )
