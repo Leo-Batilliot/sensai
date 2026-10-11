@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { formatDuration, shortToolName, type QueryStep, type StepStatus } from '../session/steps'
 import { CopyButton } from '../shared/CopyButton'
-import { layoutSql } from './highlight'
+import { SqlCode } from './SqlCode'
 
 interface Props {
   step: QueryStep
@@ -14,7 +14,6 @@ export function SqlBlock({ step, status, resultId }: Props) {
   const [open, setOpen] = useState(false)
   const { sql, operation } = step.sql
   const write = operation !== 'SELECT'
-  const tokens = useMemo(() => layoutSql(sql), [sql])
 
   const showResults = () => {
     if (resultId === null) return
@@ -58,21 +57,7 @@ export function SqlBlock({ step, status, resultId }: Props) {
           )}
         </span>
       </div>
-      {open && (
-        <pre className="sql-code">
-          <code>
-            {tokens.map((token, index) =>
-              token.kind === 'space' || token.kind === 'punctuation' ? (
-                token.text
-              ) : (
-                <span key={index} className={`sql-${token.kind}`}>
-                  {token.text}
-                </span>
-              ),
-            )}
-          </code>
-        </pre>
-      )}
+      {open && <SqlCode sql={sql} />}
     </section>
   )
 }

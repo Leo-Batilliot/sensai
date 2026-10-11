@@ -1,18 +1,7 @@
-import { readdirSync, readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { EngineEvent, ServerMessage, SessionReady } from '../protocol'
+import { FIXTURE_FILES, fixture } from '../test/fixtures'
 import { chatReducer, initialState, isBusy, type ChatState } from './reducer'
-
-// The same fixtures as the MockEngine and the contract tests (tests/fixtures/events)
-const FIXTURES = fileURLToPath(new URL('../../../tests/fixtures/events/', import.meta.url))
-
-function fixture(name: string): EngineEvent[] {
-  return readFileSync(`${FIXTURES}${name}`, 'utf-8')
-    .split('\n')
-    .filter((line) => line.trim() !== '')
-    .map((line) => JSON.parse(line) as EngineEvent)
-}
 
 function ready(history: EngineEvent[] = [], protocolVersion = 1): SessionReady {
   return {
@@ -41,10 +30,9 @@ function playOneByOne(messages: ServerMessage[]): ChatState {
   return messages.reduce((state, message) => play([message], state), play([ready()]))
 }
 
-const FILES = readdirSync(FIXTURES).filter((name) => name.endsWith('.jsonl'))
 
 describe('replaying the fixtures', () => {
-  it.each(FILES)('%s: the text shown is the final answer of each turn', (name) => {
+  it.each(FIXTURE_FILES)('%s: the text shown is the final answer of each turn', (name) => {
     const events = fixture(name)
     const state = play([ready(), ...events])
     const done = events.filter((event) => event.type === 'message_done')

@@ -43,7 +43,9 @@ Le serveur de développement de Vite redirige `/api` et `/ws` vers le backend (`
 | `sql/` | Bloc SQL sous la réponse : coloration, copier, lien vers le tableau |
 | `results/` | Tableau de résultats de `run_select` : tri et format français |
 | `timeline/` | Étapes de l'agent dans le panneau de droite |
+| `hitl/` | Modale de confirmation d'une action destructive, notification après la décision |
 | `shared/` | Composants communs (bouton Copier) |
+| `test/` | Outils des tests seulement (lecture des fixtures), exclus du build |
 
 ## Conventions
 

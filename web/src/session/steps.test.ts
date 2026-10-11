@@ -1,28 +1,8 @@
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { EngineEvent } from '../protocol'
 import { asRowSet } from '../results/table'
-import { chatReducer, initialState, type Turn } from './reducer'
+import { fixture, turnsOf as turns, until } from '../test/fixtures'
 import { formatDuration, messageQueries, shortToolName, stepStatus, stepsSummary } from './steps'
-
-const FIXTURES = fileURLToPath(new URL('../../../tests/fixtures/events/', import.meta.url))
-
-function fixture(name: string): EngineEvent[] {
-  return readFileSync(`${FIXTURES}${name}`, 'utf-8')
-    .split('\n')
-    .filter((line) => line.trim() !== '')
-    .map((line) => JSON.parse(line) as EngineEvent)
-}
-
-function turns(events: EngineEvent[]): Turn[] {
-  return chatReducer(initialState, { type: 'server', messages: events }).turns
-}
-
-// Events of the fixture up to (and including) the first one matching the predicate
-function until(events: EngineEvent[], predicate: (event: EngineEvent) => boolean): EngineEvent[] {
-  return events.slice(0, events.findIndex(predicate) + 1)
-}
 
 describe('nominal fixture (act 1)', () => {
   const [turn] = turns(fixture('nominal.jsonl'))
