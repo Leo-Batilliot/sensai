@@ -5,7 +5,12 @@ import { AssistantMessage } from './AssistantMessage'
 // Below this distance from the bottom, the list follows the new tokens
 const STICK_THRESHOLD_PX = 48
 
-export function MessageList({ turns }: { turns: Turn[] }) {
+interface Props {
+  turns: Turn[]
+  onShowSteps: (turnId: string) => void
+}
+
+export function MessageList({ turns, onShowSteps }: Props) {
   const listRef = useRef<HTMLDivElement>(null)
   const followBottom = useRef(true)
 
@@ -34,7 +39,7 @@ export function MessageList({ turns }: { turns: Turn[] }) {
                 Action depuis l'interface : <code>{turn.steps[0]?.tool ?? 'outil'}</code>
               </p>
             )}
-            {turn.origin === 'user' && <AssistantMessage turn={turn} />}
+            {turn.origin === 'user' && <AssistantMessage turn={turn} onShowSteps={onShowSteps} />}
           </section>
         ))}
       </div>

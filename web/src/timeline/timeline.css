@@ -1,0 +1,142 @@
+/* Timeline of the agent in the side panel (docs/keynote/ui/Timeline) */
+.timeline-header {
+  margin: 0 0 var(--space-3);
+  font-size: 12px;
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  padding: var(--space-2);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  font-size: 12px;
+}
+
+.step summary,
+.step-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.step summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.step summary::-webkit-details-marker {
+  display: none;
+}
+
+.step-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.step-duration {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.step-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  background: var(--fill-1);
+  color: var(--ink-muted);
+}
+
+.step-ok {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.step-error,
+.step-rejected {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+
+.step-confirmation {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.step-detail {
+  margin: var(--space-1) 0 0 26px;
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.step-detail-error {
+  color: var(--bad);
+}
+
+.step-arguments {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0 26px;
+}
+
+.step-arguments p {
+  margin: 0;
+}
+
+.step-arguments pre {
+  align-self: stretch;
+  max-height: 108px; /* 6 lines, then it scrolls */
+  margin: 0;
+  padding: var(--space-2);
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: var(--fill-1);
+  font: 11px/18px var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Link from a message to its turn in the timeline */
+.steps-link {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.steps-link:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .step-running span[aria-hidden] {
+    display: inline-block;
+    animation: spin 1.2s linear infinite;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
