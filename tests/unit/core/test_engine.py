@@ -2,14 +2,12 @@
 
 import asyncio
 import contextlib
-import json
 import logging
-from pathlib import Path
 from typing import Any
 
 import pytest
-from jsonschema import Draft202012Validator
 
+from event_checks import check_turn
 from fakes import HANG, MODEL, OTHER_MODEL, FakeClient, StreamItem, answer
 from sensai.core import events
 from sensai.core.config import Config, HitlConfig, OllamaConfig
@@ -17,12 +15,6 @@ from sensai.core.confirm import AutoRejectBroker, Decision, PendingAction
 from sensai.core.engine import Engine
 from sensai.core.errors import OllamaUnavailable, StreamInterrupted
 from sensai.llm.ollama_client import Chunk, OllamaClient
-
-SCHEMAS_DIR = Path(__file__).resolve().parents[3] / "docs/contracts/schemas/events"
-VALIDATORS = {
-    path.stem: Draft202012Validator(json.loads(path.read_text(encoding="utf-8")))
-    for path in SCHEMAS_DIR.glob("*.json")
-}
 
 
 def make_engine(*replies: list[StreamItem], config: Config | None = None) -> Engine:
@@ -43,22 +35,6 @@ def types(emitted: list[events.Event]) -> list[str]:
     return [event.type for event in emitted]
 
 
-def check_contract(emitted: list[events.Event]) -> None:
-    """Schemas and invariants of docs/contracts/events.md §4.3 for one user turn."""
-    for event in emitted:
-        data = json.loads(json.dumps(event.to_dict()))
-        problems = [error.message for error in VALIDATORS[event.type].iter_errors(data)]
-        assert problems == [], event.type
-    assert emitted[0].type == "turn_started"
-    assert len({event.turn_id for event in emitted}) == 1
-    ends = [event for event in emitted if event.type in ("message_done", "error")]
-    assert len(ends) == 1 and ends[0] is emitted[-1]
-    if isinstance(ends[0], events.MessageDone):
-        tokens = "".join(event.delta for event in emitted if isinstance(event, events.Token))
-        assert tokens == ends[0].content
-        assert (ends[0].usage is None) == ends[0].interrupted
-
-
 # --- Nominal turn ---
 
 
@@ -67,7 +43,7 @@ async def test_nominal_turn() -> None:
 
     emitted = await run(engine, "Salut")
 
-    check_contract(emitted)
+    check_turn(emitted)
     assert types(emitted) == ["turn_started", "token", "token", "message_done"]
     started, done = emitted[0], emitted[-1]
     assert isinstance(started, events.TurnStarted) and isinstance(done, events.MessageDone)
@@ -99,7 +75,7 @@ async def test_thinking_is_emitted_but_never_recorded() -> None:
 
     emitted = await run(engine, "17 × 3 ?")
 
-    check_contract(emitted)
+    check_turn(emitted)
     assert types(emitted) == ["turn_started", "thinking", "token", "message_done"]
     assert engine.history.messages[-1] == {"role": "assistant", "content": "51."}
 
@@ -121,7 +97,7 @@ async def test_ollama_down_ends_the_turn_with_a_recoverable_error() -> None:
 
     emitted = await run(engine, "Salut")
 
-    check_contract(emitted)
+    check_turn(emitted)
     assert types(emitted) == ["turn_started", "error"]
     error = emitted[-1]
     assert isinstance(error, events.Error)
@@ -135,7 +111,7 @@ async def test_cut_stream_ends_the_turn_and_is_not_recorded() -> None:
 
     emitted = await run(engine, "Quel chiffre ?")
 
-    check_contract(emitted)
+    check_turn(emitted)
     assert types(emitted) == ["turn_started", "token", "error"]
     assert emitted[-1].to_dict()["code"] == "STREAM_INTERRUPTED"
     assert len(engine.history) == 0
@@ -149,7 +125,7 @@ async def test_unexpected_failure_is_internal_and_not_recoverable(
     with caplog.at_level(logging.ERROR, logger="sensai.core.engine"):
         emitted = await run(engine, "Salut")
 
-    check_contract(emitted)
+    check_turn(emitted)
     error = emitted[-1]
     assert isinstance(error, events.Error)
     assert (error.code, error.recoverable) == ("INTERNAL", False)
@@ -217,7 +193,7 @@ async def test_cancel_stops_the_turn_at_the_next_chunk() -> None:
             if event.type == "token":
                 assert engine.cancel() is True
 
-    check_contract(emitted)
+    check_turn(emitted)
     assert types(emitted) == ["turn_started", "token", "message_done"]
     done = emitted[-1]
     assert isinstance(done, events.MessageDone)

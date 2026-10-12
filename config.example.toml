@@ -23,6 +23,8 @@ num_ctx = 8192                 # 2048 to 32768
 [agent]
 temperature = 0.1              # 0 to 1
 max_tool_iterations = 6
+max_result_rows = 50           # rows of a tool result sent to the model
+max_result_chars = 8000        # characters of a tool result sent to the model
 max_sql_retries = 2
 language = "fr"
 

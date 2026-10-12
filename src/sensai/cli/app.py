@@ -101,7 +101,19 @@ class ChatSession:
                 self.render.warning(f"{event.message} {NOT_KEPT}")
             else:
                 self.render.error(event.message)
-        # Tool, HITL and judge events are displayed from CORE-06 on
+        # Tool steps, as a timeline (plain characters: they must exist in cp1252)
+        elif isinstance(event, events.ToolCall):
+            self.render.hint(f"• {event.tool}")
+        elif isinstance(event, events.SqlGenerated):
+            self.render.hint(f"  {event.operation} : {' '.join(event.sql.split())}")
+        elif isinstance(event, events.ToolResult):
+            if event.error is None:
+                self.render.hint(f"  résultat : {event.summary}")
+            else:
+                self.render.warning(f"  échec : {event.error.message}")
+        elif isinstance(event, events.MemoryUpdated):
+            self.render.hint(f"  mémoire : {event.summary}")
+        # HITL and judge events are displayed from HITL-02 and EVAL-05 on
 
     async def _command(self, text: str) -> bool:
         name, _, argument = text.partition(" ")

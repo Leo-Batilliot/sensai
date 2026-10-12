@@ -80,6 +80,9 @@ class OllamaConfig(_Section):
 class AgentConfig(_Section):
     temperature: float = Field(default=0.1, ge=0, le=1)
     max_tool_iterations: int = Field(default=6, ge=1)
+    # Size of a tool result as sent to the model (the UI still gets the full result)
+    max_result_rows: int = Field(default=50, ge=1)
+    max_result_chars: int = Field(default=8000, ge=500)
     max_sql_retries: int = Field(default=2, ge=0)
     language: str = Field(default="fr", min_length=1)
 
