@@ -13,8 +13,8 @@ term for the glossary and the integer id as text for the other kinds.
 - delete_impact() previews a deletion, cascades included, for the HITL confirmation of
   memory_delete (tools.md, point T-4).
 
-The store is synchronous and owns its connection. Tool wrappers and annotations come
-with MEM-03.
+The store is synchronous and owns its connection. The agent reaches it through the
+memory tools of sensai.tools.memory_tools (MEM-03).
 """
 
 from __future__ import annotations
