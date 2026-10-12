@@ -12,7 +12,7 @@ import json
 import logging
 import re
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -34,6 +34,11 @@ TRUSTED_SERVERS = frozenset({"sql_toolbox"})
 MAX_VALIDATION_ERRORS = 3
 SUMMARY_LENGTH = 80
 NON_TEXT_BLOCK = "[contenu non textuel ignoré]"
+# Tool of an SQL server that previews a write without keeping it (MCP-05)
+PREVIEW_TOOL = "preview_write"
+IMPACT_KEYS = {"operation", "rows_affected", "per_table", "sample", "blocked"}
+
+Previewer = Callable[[dict[str, Any]], dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -51,9 +56,12 @@ class Registry:
         native_tools: Sequence[Tool] = (),
         *,
         trusted_servers: Iterable[str] = TRUSTED_SERVERS,
+        previewers: Mapping[str, Previewer] | None = None,
     ) -> None:
         self.manager = manager
         self.native_tools = list(native_tools)
+        # Native tool name -> impact of a call, e.g. memory_delete -> MemoryStore.delete_impact
+        self.previewers = dict(previewers or {})
         self.trusted_servers = frozenset(trusted_servers)
         self._validators: dict[str, Draft202012Validator] = {}
 
@@ -100,6 +108,31 @@ class Registry:
             logger.warning("Invalid inputSchema for tool %s, arguments not checked", name)
             return []
         return [_error_text(error) for error in errors[:MAX_VALIDATION_ERRORS]]
+
+    async def preview(self, name: str, arguments: dict[str, Any]) -> dict[str, Any] | None:
+        """Impact of a call before it runs, in the shape of confirmation_required.impact.
+
+        Native tools use their previewer; an SQL tool asks its server's preview_write.
+        None when there is no preview, or when it fails: the confirmation is then asked
+        without figures. Never raises.
+        """
+        entry = self._entries().get(name)
+        if entry is None:
+            return None
+        try:
+            if entry.native is not None:
+                previewer = self.previewers.get(name)
+                return _valid_impact(previewer(arguments)) if previewer else None
+            server, sql = entry.info.server, arguments.get("sql")
+            if self.manager is None or server is None or not isinstance(sql, str):
+                return None
+            if not any(tool.name == PREVIEW_TOOL for tool in self.manager.tools()[server]):
+                return None
+            result = await self.manager.call(server, PREVIEW_TOOL, {"sql": sql})
+            return None if result.is_error else _valid_impact(result.structured)
+        except Exception:
+            logger.warning("No preview for %s", name, exc_info=True)
+            return None
 
     # ---- calls ---------------------------------------------------------------------------
 
@@ -237,6 +270,13 @@ def _ollama_parameters(schema: dict[str, Any]) -> dict[str, Any]:
 def _error_text(error: jsonschema.ValidationError) -> str:
     path = ".".join(str(part) for part in error.path)
     return f"{path} : {error.message}" if path else error.message
+
+
+def _valid_impact(impact: Any) -> dict[str, Any] | None:
+    """The impact if it has the fields of confirmation_required.impact, else None."""
+    if not isinstance(impact, dict) or not set(impact) >= IMPACT_KEYS:
+        return None
+    return {key: impact[key] for key in IMPACT_KEYS}
 
 
 def _ms(started: float) -> int:
