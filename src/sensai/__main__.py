@@ -104,10 +104,52 @@ def _run_seed(args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_eval_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "compare",
+        nargs="*",
+        metavar="compare AVANT APRÈS",
+        help="compare deux rapports (tags ou chemins .json) au lieu de lancer le jeu",
+    )
+    parser.add_argument("--suite", default="eval/golden.jsonl", help="jeu de questions")
+    parser.add_argument("--tag", help="nom de la version mesurée, ex. v0.5")
+    parser.add_argument(
+        "--today", type=_iso_date, help="date de référence AAAA-MM-JJ (défaut : 2026-10-20)"
+    )
+    parser.add_argument("--seed", type=int, default=42, help="graine des données (défaut : 42)")
+    parser.add_argument("--config", help="fichier de configuration (défaut : ./config.toml)")
+
+
+def _run_eval(args: argparse.Namespace) -> int:
+    from sensai.eval.report import ReportError, compare, find_report, load_report
+
+    if args.compare:
+        if len(args.compare) != 3 or args.compare[0] != "compare":
+            print("usage : sensai eval compare AVANT APRÈS", file=sys.stderr)
+            return 2
+        try:
+            before, after = (load_report(find_report(arg)) for arg in args.compare[1:])
+        except ReportError as exc:
+            print(exc, file=sys.stderr)
+            return 1
+        print(compare(before, after), end="")
+        return 0
+    # The harness (sensai.eval.harness) needs an engine on the real tools: the MCP
+    # registry (MCP-04) and the engine assembly (CORE-10) provide its EngineFactory
+    print(
+        "sensai eval : le moteur branché sur les outils MCP n'est pas encore assemblé "
+        "(MCP-04, CORE-10). Le harness est prêt (sensai.eval.harness) ; "
+        "`sensai eval compare AVANT APRÈS` fonctionne déjà sur des rapports existants.",
+        file=sys.stderr,
+    )
+    return 1
+
+
 # Subcommands already implemented; the others print "pas encore implémenté"
 HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "chat": _run_chat,
     "web": _run_web,
+    "eval": _run_eval,
     "seed": _run_seed,
 }
 
@@ -122,6 +164,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_chat_arguments(command)
         elif name == "web":
             _add_web_arguments(command)
+        elif name == "eval":
+            _add_eval_arguments(command)
         elif name == "seed":
             _add_seed_arguments(command)
     return parser

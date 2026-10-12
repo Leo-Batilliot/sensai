@@ -1,0 +1,12 @@
+[
+  {
+    "term": "client rentable",
+    "definition": "Client dont la marge brute dépasse 25 % de son chiffre d'affaires HT sur la période, commandes annulées exclues.",
+    "sql_hint": "HAVING SUM(ol.quantity * (ol.unit_price - ol.unit_cost)) > 0.25 * SUM(ol.quantity * ol.unit_price)"
+  },
+  {
+    "term": "mauvais payeur",
+    "definition": "Client dont le délai moyen de paiement dépasse 60 jours, sur tout l'historique.",
+    "sql_hint": "HAVING AVG(julianday(p.paid_on) - julianday(i.issued_on)) > 60"
+  }
+]
