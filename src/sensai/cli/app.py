@@ -15,6 +15,7 @@ from collections.abc import Callable, Coroutine
 from types import FrameType
 from typing import Any, TypeVar
 
+from sensai.cli.confirm import CliConfirmationBroker
 from sensai.cli.render import Renderer
 from sensai.core import events
 from sensai.core.config import ConfigError, load_config
@@ -45,9 +46,18 @@ NOT_KEPT = "Elle n'est pas conservée dans l'historique."
 class ChatSession:
     """One CLI conversation: an Engine and the terminal it is displayed on."""
 
-    def __init__(self, engine: Engine, renderer: Renderer) -> None:
+    def __init__(
+        self, engine: Engine, renderer: Renderer, broker: CliConfirmationBroker | None = None
+    ) -> None:
         self.engine = engine
         self.render = renderer
+        self.broker = broker
+
+    def interrupt(self) -> bool:
+        """Ctrl+C during a turn: refuse a pending confirmation, else stop the answer."""
+        if self.broker is not None and self.broker.interrupt():
+            return True
+        return self.engine.cancel()
 
     async def check_model(self) -> bool:
         """Startup check. False when the model is not installed: the chat cannot start."""
@@ -113,7 +123,14 @@ class ChatSession:
                 self.render.warning(f"  échec : {event.error.message}")
         elif isinstance(event, events.MemoryUpdated):
             self.render.hint(f"  mémoire : {event.summary}")
-        # HITL and judge events are displayed from HITL-02 and EVAL-05 on
+        elif isinstance(event, events.ConfirmationRequired):
+            self.render.confirmation(event.tool, event.sql, event.impact, event.expires_in_s)
+        elif isinstance(event, events.ConfirmationResolved):
+            if event.decision == "approve":
+                self.render.info("  confirmé : exécution")
+            else:
+                self.render.warning("  refusé : rien n'est exécuté")
+        # Judge events are displayed from EVAL-05 on
 
     async def _command(self, text: str) -> bool:
         name, _, argument = text.partition(" ")
@@ -211,7 +228,7 @@ def run_repl(
             session.render.info("")  # the shell prompt must not follow "> " on the same line
             return
         try:
-            keep_going = run_interruptible(loop, session.handle(line), session.engine.cancel)
+            keep_going = run_interruptible(loop, session.handle(line), session.interrupt)
         except asyncio.CancelledError:
             continue  # Ctrl+C during a command: back to the prompt
         if not keep_going:
@@ -233,8 +250,9 @@ def run_chat(
         return 1
 
     renderer = Renderer()
-    engine = Engine(config)
-    session = ChatSession(engine, renderer)
+    broker = CliConfirmationBroker(renderer, read_line)
+    engine = Engine(config, broker=broker)
+    session = ChatSession(engine, renderer, broker)
     loop = asyncio.new_event_loop()
     try:
         renderer.hint(
