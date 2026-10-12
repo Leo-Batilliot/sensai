@@ -1,0 +1,44 @@
+# EV1 — Automated Eval & Hallucination Detection
+
+Deux volets. **En ligne** : chaque réponse chiffrée est vérifiée après coup, sans bloquer l'utilisateur, par un contrôle numérique déterministe et un juge LLM ; le badge est calculé par le code. **Hors ligne** : un harness rejoue le golden set et mesure le système, pour comparer deux versions.
+
+Chaque critère est relié à un test (`pytest <chemin>::<test>`, sans Ollama, lancé par la CI) ou à une étape de démo. Tâches : EVAL-03 (juge), EVAL-04 (contrôle numérique), EVAL-05 (juge en ligne), EVAL-02/02b (golden set), EVAL-06a/06 (harness), EVAL-07 (calibration), WEB-09 (badge). Contrat : [`docs/contracts/judge.md`](../contracts/judge.md).
+
+## US-EV1-01
+En tant que **contrôleuse de gestion**, je veux **savoir si les chiffres annoncés sont confirmés par les données**, afin de **ne pas présenter un chiffre faux en comité**.
+
+**Critères d'acceptation**
+- Chaque réponse chiffrée (au moins un `run_select` réussi dans le tour) reçoit un badge Vérifiée / À vérifier / Contredite, ou « Vérification indisponible » si le juge ne répond pas.
+  — vérifié par : `tests/unit/core/test_engine_judge.py::test_a_numeric_answer_gets_a_badge_after_message_done`, `tests/unit/core/test_engine_judge.py::test_a_contradicted_answer`, `tests/unit/core/test_engine_judge.py::test_a_failing_judge_still_reports`, `tests/unit/eval/test_judge.py::test_badge_rules` ; pas de badge sans chiffre, `tests/unit/core/test_engine_judge.py::test_no_run_select_no_judge`. Badge dans le navigateur avec WEB-09, moteur réel avec CORE-10. *Affichage à faire.*
+- Une affirmation contredite est surlignée avec la valeur réelle : le rapport cite l'extrait mot pour mot et sa `expected_value`, le contrôle numérique liste les nombres absents des données.
+  — vérifié par : `tests/unit/eval/test_judge.py::test_numeric_check_catches_what_a_blind_judge_misses`, `tests/unit/eval/test_numeric_check.py::test_mentions_are_copied_verbatim`, `tests/unit/contracts/test_judge_contract.py::test_valid_report_is_accepted`. Surlignage dans le front : WEB-09. *À faire.*
+- Le badge arrive quelques secondes après la réponse sans bloquer la lecture : le juge tourne après `message_done`, la session est libre pendant ce temps.
+  — vérifié par : `tests/unit/core/test_engine_judge.py::test_the_session_is_free_while_the_judge_runs`.
+
+**Statut** : en cours (moteur fait, affichage à faire)
+
+## US-EV1-02
+En tant que **membre de l'équipe de développement**, je veux **comparer deux versions du système sur un jeu de questions de référence**, afin de **vérifier qu'un changement améliore réellement la qualité avant de le livrer**.
+
+**Critères d'acceptation**
+- Une commande exécute le golden set (25 questions) et produit un rapport horodaté (JSON + Markdown).
+  — vérifié par : `tests/unit/eval/test_harness.py::test_run_and_report_writes_both_reports`, `tests/unit/eval/test_harness.py::test_ex_and_sql_valid_per_question`, `tests/unit/eval/test_golden.py::test_gold_sql_gives_rows_on_the_demo_data`. La commande `sensai eval --tag …` attend le moteur branché sur MCP (MCP-04, CORE-10) : `tests/unit/eval/test_report.py::test_eval_run_says_what_it_waits_for`. *Premier chiffre d'EX réel à publier après CORE-10.*
+- Une commande compare deux rapports et affiche les écarts par métrique.
+  — vérifié par : `tests/unit/eval/test_report.py::test_compare_shows_deltas_and_changed_questions`, `tests/unit/eval/test_report.py::test_eval_compare_command` ; démo : `sensai eval compare v0.5 v1.0`.
+- Deux exécutions identiques donnent les mêmes résultats (graine, date figée, température 0) ; seule la latence change.
+  — vérifié par : `tests/unit/eval/test_harness.py::test_two_identical_runs_give_the_same_figures`, `tests/unit/eval/test_harness.py::test_each_question_gets_a_fresh_memory_with_the_rules`.
+
+**Statut** : en cours
+
+## US-EV1-03
+En tant que **responsable qualité**, je veux **mesurer la fiabilité du juge lui-même**, afin de **savoir si je peux faire confiance à ses badges**.
+
+**Critères d'acceptation**
+- Un jeu de réponses annotées à la main contient des erreurs injectées.
+  — vérifié par : premiers cas dans `tests/fixtures/judge/cases.jsonl`, `tests/unit/eval/test_judge.py::test_judge_gives_the_expected_badge` ; jeu de 20 réponses annotées : EVAL-07. *À faire.*
+- Le rapport indique la précision et le rappel du juge.
+  — vérifié par : EVAL-07 (définitions dans `judge.md` §3, ligne « Calibration du juge »). *À faire.*
+- Les cas où le juge se trompe sont listés et analysés dans `docs/EVALUATION.md`.
+  — vérifié par : DOC-07. *À faire.*
+
+**Statut** : à faire
