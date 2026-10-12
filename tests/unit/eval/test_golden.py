@@ -1,10 +1,13 @@
-"""Golden set checks (EVAL-02): format of eval/golden.jsonl and executable SQL.
+"""Golden set checks (EVAL-02, EVAL-02b): format of eval/golden.jsonl and executable SQL.
 
 The SQL is run against an empty business.db built from business_schema.sql: it proves
-that every table, column and parameter exists. The expected values need the seeded
-demo database (DATA-02) and are the harness's job (EVAL-06a).
+that every table, column and parameter exists. It is then run on the seeded demo
+database (DATA-02) at the evaluation reference date: every reference gives rows, so that
+EX never compares two empty results. Comparing with the agent is the harness's job
+(EVAL-06a).
 """
 
+import dataclasses
 import json
 import re
 import sqlite3
@@ -16,6 +19,8 @@ from typing import Any
 import pytest
 
 from sensai.data.schema import connect, create_schema
+from sensai.data.seed import generate
+from sensai.eval.golden import REFERENCE_DATE, GoldenEntry, load_golden, reference_params
 
 GOLDEN_PATH = Path(__file__).resolve().parents[3] / "eval/golden.jsonl"
 ENTRIES: list[dict[str, Any]] = [
@@ -37,27 +42,7 @@ CATEGORIES = {
 }
 # Categories where no reference SQL makes sense: the expected behaviour is in notes
 NO_SQL_CATEGORIES = {"out_of_scope", "adversarial"}
-REFERENCE_DATE = date(2026, 10, 20)  # PROJECT §6.6: --today 2026-10-20
-MIN_ENTRIES = 15  # golden set v0 (EVAL-02), 25 with EVAL-02b, 40 with EVAL-02c
-
-
-def shift_months(day: date, months: int) -> date:
-    """First day of the month `months` away from the month of `day`."""
-    index = day.year * 12 + day.month - 1 + months
-    return date(index // 12, index % 12 + 1, 1)
-
-
-def reference_params(today: date) -> dict[str, str]:
-    """Named parameters of gold_sql, derived from the reference date (eval/README.md)."""
-    quarter_start = date(today.year, (today.month - 1) // 3 * 3 + 1, 1)
-    return {
-        "today": today.isoformat(),
-        "m_start": today.replace(day=1).isoformat(),
-        "prev_m_start": shift_months(today, -1).isoformat(),
-        "q_start": quarter_start.isoformat(),
-        "prev_q_start": shift_months(quarter_start, -3).isoformat(),
-        "y_start": date(today.year, 1, 1).isoformat(),
-    }
+MIN_ENTRIES = 25  # golden set v0 (EVAL-02) 15, v1 (EVAL-02b) 25, v2 (EVAL-02c) 40
 
 
 PARAMS = reference_params(REFERENCE_DATE)
@@ -68,6 +53,16 @@ WITH_SQL = [entry for entry in ENTRIES if entry["gold_sql"] is not None]
 def business() -> Iterator[sqlite3.Connection]:
     conn = connect(":memory:")
     create_schema(conn)
+    yield conn
+    conn.close()
+
+
+@pytest.fixture(scope="module")
+def demo(tmp_path_factory: pytest.TempPathFactory) -> Iterator[sqlite3.Connection]:
+    """The demo database of the evaluation: seed 42, reference date REFERENCE_DATE."""
+    path = tmp_path_factory.mktemp("golden") / "business.db"
+    generate(path, seed=42, today=REFERENCE_DATE)
+    conn = connect(path)
     yield conn
     conn.close()
 
@@ -118,6 +113,62 @@ def test_gold_sql_runs_on_the_business_schema(
 ) -> None:
     business.execute(entry["gold_sql"], PARAMS).fetchall()
     business.rollback()  # writes run in an implicit transaction: leave the schema empty
+
+
+@pytest.mark.parametrize("entry", WITH_SQL, ids=lambda entry: entry["id"])
+def test_gold_sql_gives_rows_on_the_demo_data(
+    demo: sqlite3.Connection, entry: dict[str, Any]
+) -> None:
+    cursor = demo.execute(entry["gold_sql"], PARAMS)
+    if entry["expects_write"]:
+        assert cursor.rowcount > 0  # the impact preview has something to show
+        demo.rollback()
+    else:
+        assert cursor.fetchall()
+
+
+TOP_N = [entry for entry in WITH_SQL if re.search(r"\bLIMIT\s+\d+\s*$", entry["gold_sql"])]
+
+
+@pytest.mark.parametrize("entry", TOP_N, ids=lambda entry: entry["id"])
+def test_no_tie_at_the_last_rank_of_a_top_n(
+    demo: sqlite3.Connection, entry: dict[str, Any]
+) -> None:
+    """With a tie, the N-th row of the agent could rightly differ from the reference."""
+    limit = int(re.search(r"(\d+)\s*$", entry["gold_sql"]).group(1))
+    one_more = re.sub(r"\d+\s*$", str(limit + 1), entry["gold_sql"])
+    rows = demo.execute(one_more, PARAMS).fetchall()
+
+    def numbers(row: tuple[Any, ...]) -> list[Any]:
+        return [value for value in row if isinstance(value, (int, float))]
+
+    assert len(rows) == limit + 1
+    assert numbers(rows[limit - 1]) != numbers(rows[limit])
+
+
+def test_category_mix_heads_for_the_final_set() -> None:
+    """PROJECT §11.1: every category is present, none beyond its final target (40)."""
+    final_targets = {
+        "aggregate": 6,
+        "join": 6,
+        "time_filter": 6,
+        "top_n": 5,
+        "glossary": 5,
+        "write": 5,
+        "out_of_scope": 4,
+        "adversarial": 3,
+    }
+    counts = {category: 0 for category in final_targets}
+    for entry in ENTRIES:
+        counts[entry["category"]] += 1
+    assert all(0 < counts[category] <= final_targets[category] for category in final_targets)
+
+
+def test_load_golden_reads_every_entry() -> None:
+    entries = load_golden(GOLDEN_PATH)
+
+    assert [dataclasses.asdict(entry) for entry in entries] == ENTRIES
+    assert all(isinstance(entry, GoldenEntry) for entry in entries)
 
 
 def test_demo_questions_are_in_the_golden_set() -> None:
