@@ -85,6 +85,10 @@ def test_mentions_are_copied_verbatim(text: str, verbatim: str) -> None:
         "le 3e client",
         "le 2026-10-01",
         "le 01/10/2026",
+        "échue le 14 août",
+        "le 31 décembre 2026",
+        f"le 2{NBSP}oct. 2026",
+        "le 3 Mars",
         "en 2026",
         "avec qwen3",
         "1. Brasserie Lemaire",
@@ -94,6 +98,25 @@ def test_mentions_are_copied_verbatim(text: str, verbatim: str) -> None:
 )
 def test_dates_ordinals_and_identifiers_are_not_checked(text: str) -> None:
     assert extract_numbers(text) == []
+
+
+@pytest.mark.parametrize(
+    ("text", "texts"),
+    [
+        ("14 jours", ["14"]),
+        ("32 août", ["32"]),
+        ("14 k€ en août", ["14 k€"]),
+        ("14 octets", ["14"]),
+    ],
+)
+def test_only_a_day_before_a_month_is_a_date(text: str, texts: list[str]) -> None:
+    assert [mention.text for mention in extract_numbers(text)] == texts
+
+
+def test_a_date_written_in_words_is_not_a_mismatch() -> None:
+    rows = [("F-2026-0412", "Brasserie Lemaire", 12480.0, "2026-08-14")]
+    answer = "La facture F-2026-0412 de Brasserie Lemaire (12 480 €) est échue depuis le 14 août."
+    assert check_numbers(answer, rows) == NumericCheck("ok")
 
 
 def test_numbers_are_found_in_a_markdown_answer() -> None:

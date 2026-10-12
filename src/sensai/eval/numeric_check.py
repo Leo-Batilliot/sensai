@@ -9,9 +9,9 @@ LLM: it is fast, and it catches what a judge model misses on figures.
   larger of the relative tolerance (eval.numeric_tolerance) and half a unit of the
   last digit written.
 - '45 %' matches 45 as well as the ratio 0.45. Signs are ignored ('une baisse de 5 %').
-- Not checked: dates, years, ordinals ('1er', '3e'), list markers ('1.'), numbers glued
-  to letters ('T4', 'qwen3'), and numbers already in the question or the SQL ('top 5',
-  'plus de 18 mois').
+- Not checked: dates ('2026-10-01', '14 août'), years, ordinals ('1er', '3e'), list
+  markers ('1.'), numbers glued to letters ('T4', 'qwen3'), and numbers already in the
+  question or the SQL ('top 5', 'plus de 18 mois').
 - Also accepted: the row count and the sum of each numeric column ('au total').
 
 Result, as in judge.md §2 and the judge_report event: status 'ok', 'mismatch' (a number
@@ -52,6 +52,12 @@ _NUMBER = re.compile(
     re.VERBOSE,
 )
 _LIST_MARKER = re.compile(r"[.)]\s")
+# A day before a month name: "le 14 août", "le 2 oct. 2026"
+_MONTH = re.compile(
+    rf"[{_SPACES}]+(?:janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[ûu]t|septembre"
+    r"|octobre|novembre|d[ée]cembre|janv|f[ée]vr|avr|juil|sept|oct|nov|d[ée]c)\b",
+    re.IGNORECASE,
+)
 _SQL_NUMBER = re.compile(r"(?<![\w.])\d+(?:\.\d+)?(?![\w.])")
 
 _MULTIPLIERS = {"k": 1e3, "mille": 1e3, "m": 1e6, "million": 1e6, "md": 1e9, "milliard": 1e9}
@@ -104,9 +110,11 @@ def _unit_factors(unit: str) -> tuple[float, bool]:
 
 
 def _is_skipped(text: str, match: re.Match[str]) -> bool:
-    """Years and list markers are not claims about the data."""
+    """Years, days of a date and list markers are not claims about the data."""
     core, unit = match.group("core"), match.group("unit")
     if not unit and core.isdigit() and len(core) == 4 and 1900 <= int(core) <= 2100:
+        return True
+    if not unit and core.isdigit() and 1 <= int(core) <= 31 and _MONTH.match(text, match.end()):
         return True
     line_start = text.rfind("\n", 0, match.start()) + 1
     return not text[line_start : match.start()].strip() and bool(
