@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -14,8 +16,8 @@ from sensai import __version__
 from sensai.core.config import Config
 from sensai.web.engines.backend import WebBackend
 from sensai.web.paths import STATIC_DIR
-from sensai.web.websocket.session import SessionManager
 from sensai.web.websocket.endpoint import install_websocket
+from sensai.web.websocket.session import SessionManager
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,18 @@ def create_app(
     config: Config, backend: WebBackend, *, static_dir: Path = DEFAULT_STATIC_DIR
 ) -> FastAPI:
     """Build the web application. API routes must be declared before the static mount."""
-    app = FastAPI(title="SENSAI", version=__version__)
+
+    # Shared services (MCP servers, memory) start once with the application, not per session
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        await backend.start()
+        try:
+            yield
+        finally:
+            await app.state.sessions.close_all()
+            await backend.stop()
+
+    app = FastAPI(title="SENSAI", version=__version__, lifespan=lifespan)
     app.state.config = config
     app.state.sessions = SessionManager(backend)
 

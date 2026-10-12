@@ -26,8 +26,8 @@ from typing import Any
 from sensai.core.config import Config
 from sensai.core.confirm import ConfirmationBroker, Decision, PendingAction
 from sensai.web.engines.backend import ModelInfo
-from sensai.web.websocket.confirm import WebConfirmationBroker
 from sensai.web.paths import FIXTURES_DIR
+from sensai.web.websocket.confirm import WebConfirmationBroker
 from sensai.web.websocket.settings import session_settings
 
 logger = logging.getLogger(__name__)
@@ -213,6 +213,9 @@ class MockEngine:
 
     def set_config(self, patch: dict[str, Any]) -> None:
         self.session_config.update(patch)
+
+    async def aclose(self) -> None:
+        return None  # nothing to release: no client, no connection
 
     # --- replay -------------------------------------------------------------------------
 
@@ -433,6 +436,12 @@ class MockBackend:
         self._pacing = pacing or Pacing()
         # Loaded once and shared read-only by every session: a missing fixture fails at startup
         self._turns = {name: load_turns(fixtures_dir / f"{name}.jsonl") for name in FIXTURES}
+
+    async def start(self) -> None:
+        return None  # no server to start
+
+    async def stop(self) -> None:
+        return None
 
     async def list_models(self) -> list[ModelInfo]:
         models = [ModelInfo(**model) for model in MOCK_MODELS]

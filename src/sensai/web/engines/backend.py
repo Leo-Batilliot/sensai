@@ -1,9 +1,9 @@
 """What the web layer needs from the engine side.
 
-The real `Engine` (CORE-05) does not exist yet: these protocols describe what the
-WebSocket and REST code use, so that the MockEngine (WEB-04) and the real engine
-(WEB-08) are interchangeable. Events are plain dicts, or objects with a `to_dict()`
-method (events.md §6).
+These protocols describe what the WebSocket and REST code use, so that the MockEngine
+(WEB-04, `sensai web --mock`) and the real Engine (WEB-08, `sensai web`) are
+interchangeable. Events are plain dicts, or objects with a `to_dict()` method
+(events.md §6).
 """
 
 from __future__ import annotations
@@ -47,9 +47,19 @@ class WebEngine(Protocol):
 
     def set_config(self, patch: dict[str, Any]) -> None: ...
 
+    async def aclose(self) -> None:
+        """Release what the session owns (Ollama client, connections) when it expires."""
+        ...
+
 
 class WebBackend(Protocol):
     """Shared by every session: creates the engines and answers the REST routes."""
+
+    async def start(self) -> None:
+        """Start the shared services once, before the first connection (FastAPI lifespan)."""
+        ...
+
+    async def stop(self) -> None: ...
 
     async def list_models(self) -> list[ModelInfo]: ...
 

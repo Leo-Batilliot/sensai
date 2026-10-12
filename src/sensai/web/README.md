@@ -3,7 +3,7 @@
 Le serveur FastAPI qui relie le front React au moteur : routes REST, WebSocket `/ws/{session_id}`, et la page construite (`web/dist`). Il ne contient **aucune logique métier** : il transmet les messages du navigateur au moteur et renvoie les événements du moteur au navigateur.
 
 - Contrat à respecter : [`docs/contracts/websocket.md`](../../../docs/contracts/websocket.md) (messages) et [`docs/contracts/events.md`](../../../docs/contracts/events.md) (événements).
-- Lancer : `make web-mock` (http://127.0.0.1:8000). Jusqu'à WEB-08, le serveur tourne sur le `MockEngine`.
+- Lancer : `make web` sur le vrai moteur (il faut `make seed` et Ollama), ou `make web-mock` sur le `MockEngine` (http://127.0.0.1:8000).
 - Tester : `make test`.
 
 ## L'arborescence
@@ -20,10 +20,13 @@ web/
 │   └── settings.py    réglages modifiables par set_config, bornes, validation
 └── engines/           le côté moteur
     ├── backend.py     l'interface que le moteur doit respecter (WebEngine, WebBackend)
-    └── mock.py        le faux moteur : rejoue tests/fixtures/events/
+    ├── real.py        le vrai moteur : Engine, serveurs MCP, mémoire, juge (sensai web)
+    └── mock.py        le faux moteur : rejoue tests/fixtures/events/ (sensai web --mock)
 ```
 
-**Règle des deux dossiers** : `websocket/` parle au navigateur, `engines/` parle au moteur. Le jour de WEB-08, le vrai moteur arrive dans `engines/`, à côté de `mock.py`, sans rien changer dans `websocket/`.
+**Règle des deux dossiers** : `websocket/` parle au navigateur, `engines/` parle au moteur. Le vrai moteur et le faux respectent la même interface : `websocket/` ne sait pas lequel tourne.
+
+**Services partagés** (`real.py`) : les serveurs MCP, la mémoire et le prompt système démarrent **une seule fois**, au lancement de l'application (`lifespan` de FastAPI dans `server.py`), et s'arrêtent avec elle. Chaque session a son propre `Engine` : son client Ollama, son historique, son registre d'outils et son `WebConfirmationBroker`. Une session expirée (1 h sans connexion) ferme son moteur.
 
 ## Le trajet d'un message
 
@@ -49,7 +52,7 @@ navigateur ──user_message──▶ websocket/endpoint.py ──▶ websocket
 | Changer la façon dont la réponse du navigateur arrive au moteur | `websocket/confirm.py` (le délai, lui, vient de `[hitl] confirmation_timeout_s` et c'est le moteur qui l'applique) |
 | Rendre un réglage modifiable depuis l'interface | `websocket/settings.py`, et d'abord le contrat (§4.7) |
 | Changer le scénario rejoué pour un message, ou le rythme du faux moteur | `engines/mock.py` (`ROUTES`, `Pacing`) |
-| Brancher le vrai moteur (WEB-08) | `engines/backend.py` (interface à respecter), puis un nouveau fichier dans `engines/` à côté de `mock.py` |
+| Changer l'assemblage du vrai moteur (outils, mémoire, juge) | `engines/real.py` (`RealBackend.new_engine`) |
 
 ## Tests
 
@@ -58,5 +61,6 @@ navigateur ──user_message──▶ websocket/endpoint.py ──▶ websocket
 | `tests/unit/web/test_server.py` | Routes REST, page construite, commande `sensai web` |
 | `tests/unit/web/test_ws.py` | Le WebSocket de bout en bout : tours, confirmation, `BUSY`, `cancel`, `reset`, reconnexion, erreurs |
 | `tests/unit/web/test_mock_engine.py` | Choix du scénario, identifiants réécrits, pannes en boucle |
+| `tests/unit/web/test_real_engine.py` | Le vrai moteur derrière le WebSocket (Ollama simulé) : tour, confirmation acceptée, déconnexion pendant une confirmation, réglages, fermeture |
 | `tests/unit/web/test_confirm.py` | Le broker seul, et branché sur le vrai `Engine` de P1 (décision transmise, délai) |
 | `tests/contract_rules.py` | Règles du contrat partagées : chaque événement envoyé est vérifié avec |

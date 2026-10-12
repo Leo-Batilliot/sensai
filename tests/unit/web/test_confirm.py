@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 
 from fakes import FakeClient
-
 from sensai.core.config import Config
 from sensai.core.confirm import ConfirmationBroker, PendingAction
 from sensai.core.engine import Engine
@@ -18,14 +17,20 @@ def pending(action_id: str = "a-1", expires_in_s: float = 120) -> PendingAction:
         call_id="k-1",
         tool="sql_toolbox__execute_write",
         sql="DELETE FROM clients WHERE status = 'inactive'",
-        impact={"operation": "DELETE", "rows_affected": 27, "per_table": {}, "sample": [], "blocked": []},
+        impact={
+            "operation": "DELETE",
+            "rows_affected": 27,
+            "per_table": {},
+            "sample": [],
+            "blocked": [],
+        },
         expires_in_s=expires_in_s,
     )
 
 
 async def answer_soon(broker: WebConfirmationBroker, action_id: str, decision: str) -> bool:
     """Plays the WebSocket receive loop: a concurrent task answers once the request is pending."""
-    while action_id not in broker.pending:
+    while action_id not in broker.pending:  # noqa: ASYNC110 - lets the requesting task run
         await asyncio.sleep(0)
     return broker.resolve(action_id, decision, "vu")  # type: ignore[arg-type]
 
@@ -56,14 +61,14 @@ async def test_an_action_is_resolved_only_once() -> None:
 async def test_reject_all_refuses_every_pending_action() -> None:
     broker = WebConfirmationBroker()
     requests = [asyncio.create_task(broker.request(pending(f"a-{i}"))) for i in range(2)]
-    while len(broker.pending) < 2:
+    while len(broker.pending) < 2:  # noqa: ASYNC110 - lets the requesting tasks run
         await asyncio.sleep(0)
     broker.reject_all("disconnected")
     decisions = await asyncio.gather(*requests)
     assert {(d.decision, d.reason) for d in decisions} == {("reject", "disconnected")}
 
 
-# --- with the real Engine of P1 (what WEB-08 will plug) -----------------------------------
+# --- with the real Engine of P1 (plugged by WEB-08) -----------------------------------
 
 
 async def test_engine_gets_the_decision_sent_over_the_websocket() -> None:

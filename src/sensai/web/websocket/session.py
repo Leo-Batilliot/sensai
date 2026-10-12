@@ -155,7 +155,7 @@ class SessionManager:
 
     async def open(self, session_id: str) -> tuple[Session, bool]:
         """Return the session and whether it already existed. Closes a previous socket (4409)."""
-        self._purge()
+        await self._purge()
         session = self._sessions.get(session_id)
         if session is None:
             broker = WebConfirmationBroker()
@@ -171,7 +171,13 @@ class SessionManager:
                 logger.debug("Ancienne connexion déjà fermée (session %s)", session_id)
         return session, True
 
-    def _purge(self) -> None:
+    async def close_all(self) -> None:
+        """Application shutdown: release every engine."""
+        sessions, self._sessions = list(self._sessions.values()), {}
+        for session in sessions:
+            await _close_engine(session)
+
+    async def _purge(self) -> None:
         now = time.monotonic()
         expired = [
             session_id
@@ -182,4 +188,11 @@ class SessionManager:
             and not session.turn_active
         ]
         for session_id in expired:
-            del self._sessions[session_id]
+            await _close_engine(self._sessions.pop(session_id))
+
+
+async def _close_engine(session: Session) -> None:
+    try:
+        await session.engine.aclose()
+    except Exception:  # a session that fails to close must not block the others
+        logger.exception("Fermeture du moteur impossible (session %s)", session.id)
