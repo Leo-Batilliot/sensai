@@ -1,5 +1,6 @@
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { confirmationOutcome } from '../hitl/confirmation'
 import { ResultTable } from '../results/ResultTable'
 import { asRowSet } from '../results/table'
 import type { Turn } from '../session/reducer'
@@ -23,6 +24,7 @@ interface Props {
 export function AssistantMessage({ turn, onShowSteps }: Props) {
   const streaming = turn.status === 'running'
   const label = activity(turn)
+  const outcome = confirmationOutcome(turn)
 
   return (
     <article className="assistant" aria-busy={streaming}>
@@ -51,6 +53,13 @@ export function AssistantMessage({ turn, onShowSteps }: Props) {
             <Markdown remarkPlugins={[remarkGfm]}>{turn.content}</Markdown>
             {streaming && <span className="cursor" aria-hidden="true" />}
           </div>
+        )}
+        {outcome !== null && (
+          // Kept in the message: the toast disappears, this stays
+          <p className={`hitl-outcome tone-${outcome.tone}`}>
+            <strong>{outcome.title}</strong> · {outcome.detail}
+            {outcome.comment !== null && <span className="muted"> · « {outcome.comment} »</span>}
+          </p>
         )}
         {turn.status === 'interrupted' && <p className="interrupted">Réponse interrompue.</p>}
         {turn.error !== null && (

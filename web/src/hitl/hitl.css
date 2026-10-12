@@ -1,0 +1,300 @@
+/* HITL confirmation modal (docs/keynote/ui/ModaleHITL) */
+.hitl {
+  width: min(var(--modal-w), calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  padding: 0;
+  border: 1.5px solid var(--bad);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.hitl[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.hitl::backdrop {
+  background: var(--scrim);
+}
+
+.hitl-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+  background: var(--bad-bg);
+}
+
+.hitl-header h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--bad);
+}
+
+.hitl-alert {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  background: var(--bad);
+  color: var(--paper);
+  font-size: 13px;
+  line-height: 22px;
+  text-align: center;
+}
+
+.hitl-timer {
+  margin-left: auto;
+  padding: 2px 10px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.hitl-timer.urgent {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.hitl-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+.hitl-body p {
+  margin: 0;
+}
+
+.hitl-body code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.hitl-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.hitl-section h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.hitl-section h3 .muted {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.hitl-section .sql-code {
+  max-height: 160px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.hitl-impact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hitl-impact li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.hitl-impact strong {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hitl-impact .minus {
+  color: var(--bad);
+}
+
+.hitl-blocked {
+  padding: var(--space-3);
+  border: 1.5px solid var(--warn);
+  border-radius: var(--radius-sm);
+  background: var(--warn-bg);
+}
+
+.hitl-blocked ul {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
+.hitl-sample {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.hitl-sample table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.hitl-sample th,
+.hitl-sample td {
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.hitl-sample th {
+  background: var(--fill-1);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.hitl-sample tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.hitl-sample .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.hitl-comment {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.hitl-comment textarea {
+  padding: var(--space-2);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--ink);
+  resize: vertical;
+}
+
+.hitl-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.hitl-footer p {
+  flex: 1 1 100%; /* own line, the two buttons below on the right */
+  margin: 0;
+  font-size: 12px;
+}
+
+.hitl-footer button {
+  height: 36px;
+  padding: 0 var(--space-4);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hitl-reject {
+  margin-left: auto;
+  background: var(--paper);
+}
+
+.hitl-approve {
+  border-color: var(--bad);
+  background: var(--bad);
+  color: var(--paper);
+}
+
+.hitl-footer button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* What happened to the action, kept in the message */
+.hitl-outcome {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 13px;
+}
+
+/* Toast after the decision, above the composer */
+.toast {
+  position: absolute;
+  bottom: 96px;
+  left: 50%;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: min(460px, calc(100% - 32px));
+  padding: var(--space-3) var(--space-4);
+  transform: translateX(-50%);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.toast p {
+  flex: 1;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.toast button {
+  border: 0;
+  background: none;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tone-ok {
+  border-color: var(--ok);
+  background: var(--ok-bg);
+}
+
+.tone-warn {
+  border-color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.tone-bad {
+  border-color: var(--bad);
+  background: var(--bad-bg);
+}

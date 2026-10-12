@@ -1,12 +1,16 @@
 import { useState } from 'react'
 import './App.css'
 import './chat/chat.css'
+import './hitl/hitl.css'
 import './results/results.css'
 import './sql/sql.css'
 import './timeline/timeline.css'
 import { ChatInput } from './chat/ChatInput'
 import { EmptyState } from './chat/EmptyState'
 import { MessageList } from './chat/MessageList'
+import { ConfirmationModal } from './hitl/ConfirmationModal'
+import { pendingConfirmation } from './hitl/confirmation'
+import { useOutcomeToast } from './hitl/useOutcomeToast'
 import type { ConnectionStatus } from './session/reducer'
 import { useSession } from './session/useSession'
 import { Timeline } from './timeline/Timeline'
@@ -22,8 +26,8 @@ const CONNECTION: Record<ConnectionStatus, { label: string; tone: string }> = {
 
 const numbers = new Intl.NumberFormat('fr-FR')
 
-// Layout of the main screen (docs/keynote/ui/EcranPrincipal). Still to come: HITL modal
-// (WEB-07), judge badge (WEB-09), status bar (WEB-10), memory panel (WEB-11).
+// Layout of the main screen (docs/keynote/ui/EcranPrincipal). Still to come: judge badge
+// (WEB-09), status bar (WEB-10), memory panel (WEB-11).
 export default function App() {
   const session = useSession()
   const { state } = session
@@ -33,6 +37,8 @@ export default function App() {
   const connection = CONNECTION[state.connection]
   const servers = state.session?.servers ?? []
   const usage = state.lastUsage
+  const confirmation = pendingConfirmation(state.turns)
+  const { toast, dismiss: dismissToast } = useOutcomeToast(state.turns)
   const pinned = state.turns.findIndex((turn) => turn.id === pinnedTurnId)
   const timelineIndex = pinned !== -1 ? pinned : state.turns.length - 1
 
@@ -110,6 +116,17 @@ export default function App() {
           <MessageList turns={state.turns} onShowSteps={showSteps} />
         )}
 
+        {toast !== null && (
+          <div className={`toast tone-${toast.tone}`} role="status">
+            <p>
+              <strong>{toast.title}</strong> {toast.detail}
+            </p>
+            <button type="button" onClick={dismissToast} aria-label="Fermer la notification">
+              ×
+            </button>
+          </div>
+        )}
+
         <ChatInput
           busy={session.busy}
           connected={session.connected}
@@ -156,6 +173,15 @@ export default function App() {
           )}
         </div>
       </aside>
+
+      {confirmation !== null && (
+        <ConfirmationModal
+          key={confirmation.action_id}
+          confirmation={confirmation}
+          connected={session.connected}
+          onAnswer={(decision, comment) => session.confirm(confirmation.action_id, decision, comment)}
+        />
+      )}
     </div>
   )
 }

@@ -81,6 +81,7 @@
 /* Conversation */
 .conversation {
   grid-area: conversation;
+  position: relative; /* anchor of the toasts */
   display: flex;
   flex-direction: column;
   min-height: 0;
