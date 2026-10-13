@@ -14,6 +14,7 @@ from jsonschema import Draft202012Validator
 
 from sensai.core.errors import ModelNotFound
 from sensai.llm.ollama_client import Chunk, Message, ModelDetails, ToolCall, Usage
+from sensai.llm.structured import schema_errors
 from sensai.tools.base import ServerStatus, ToolAnnotations, ToolInfo, ToolResult
 
 MODEL = "qwen3:8b"
@@ -258,8 +259,8 @@ class FakeToolRegistry:
         return [ServerStatus(name=name, status="up") for name in names]
 
     def validate_arguments(self, name: str, arguments: dict[str, Any]) -> list[str]:
-        validator = Draft202012Validator(self._tools[name].info.input_schema)
-        return [error.message for error in validator.iter_errors(arguments)][:3]
+        # Same formatting as the real registry (MCP-04): best match first, 3 at most
+        return schema_errors(Draft202012Validator(self._tools[name].info.input_schema), arguments)
 
     async def call(self, name: str, arguments: dict[str, Any]) -> ToolResult:
         self.calls.append((name, arguments))

@@ -47,6 +47,7 @@ from sensai.llm.ollama_client import (
     ToolCall,
     Usage,
 )
+from sensai.llm.structured import RepairStats
 from sensai.memory.context import EMPTY, MemoryContext
 from sensai.tools.base import TOOL_NAME, ToolInfo, ToolRegistry, ToolResult
 from sensai.tools.policy import DatabaseClassifier, SqlClassifier, evaluate
@@ -131,6 +132,8 @@ class Engine:
         self.session_id = session_id or new_id()
         self.model = config.ollama.model
         self.history = History()
+        # T5 counters of the tool arguments over the session, read by the harness (EVAL-06)
+        self.argument_stats = RepairStats()
         self._running = False
         self._cancel_requested = False
         # Bumped by reset(): a turn that was running during a reset is not recorded
@@ -207,6 +210,7 @@ class Engine:
         model, epoch = self.model, self._epoch
         started = time.monotonic()
         released = False  # the session is freed at message_done, before the judge
+        repairs = _ArgumentRepairs(self.argument_stats)
         try:
             yield events.TurnStarted(
                 session_id=self.session_id,
@@ -266,7 +270,7 @@ class Engine:
                     messages.append(_assistant_message("".join(text), calls))
                     for call in calls:
                         async with contextlib.aclosing(
-                            self._run_tool(turn_id, call, previous, messages, selects)
+                            self._run_tool(turn_id, call, previous, messages, selects, repairs)
                         ) as steps:
                             async for event in steps:
                                 yield event
@@ -312,6 +316,7 @@ class Engine:
                     async for event in steps:
                         yield event
         finally:
+            repairs.close()
             if not released:
                 self._release()
 
@@ -337,6 +342,7 @@ class Engine:
         previous: str | None,
         messages: list[Message],
         selects: list[SelectResult],
+        repairs: _ArgumentRepairs,
     ) -> AsyncGenerator[events.Event, None]:
         """One tool call asked by the model (tools.md §4): its events, then the tool
         message appended to `messages` for the next model call. A successful run_select
@@ -352,7 +358,7 @@ class Engine:
             tool=call.name if TOOL_NAME.match(call.name) else "unknown_tool",
             arguments=call.arguments,
         )
-        result = self._check_call(call, info is not None, previous)
+        result = self._check_call(call, info is not None, previous, repairs)
         if result is None:
             sql = call.arguments.get("sql")
             if isinstance(sql, str) and sql.strip():
@@ -430,7 +436,9 @@ class Engine:
             {"role": "tool", "tool_name": call.name, "content": self._for_model(call.name, result)}
         )
 
-    def _check_call(self, call: ToolCall, known: bool, previous: str | None) -> ToolResult | None:
+    def _check_call(
+        self, call: ToolCall, known: bool, previous: str | None, repairs: _ArgumentRepairs
+    ) -> ToolResult | None:
         """Checks before running a call (tools.md §4, steps 1-3); None when it may run."""
         if not known or self.registry is None:
             available = (
@@ -446,12 +454,20 @@ class Engine:
                 "Appel identique au précédent, non exécuté : utilise le résultat déjà obtenu.",
             )
         errors = self.registry.validate_arguments(call.name, call.arguments)
-        if errors:
+        if not errors:
+            repairs.valid(call.name)
+            return None
+        listed = " ; ".join(errors)
+        if repairs.invalid(call.name):
             return ToolResult.failure(
                 "INVALID_ARGUMENTS",
-                f"Arguments invalides : {' ; '.join(errors)}. Corrige-les et rappelle l'outil.",
+                f"Arguments invalides : {listed}. Corrige-les et rappelle l'outil.",
             )
-        return None
+        return ToolResult.failure(
+            "INVALID_ARGUMENTS",
+            f"Arguments toujours invalides : {listed}. "
+            "Ne rappelle plus cet outil ; explique le problème dans ta réponse.",
+        )
 
     async def _call_tool(self, call: ToolCall) -> ToolResult:
         assert self.registry is not None  # _check_call refuses calls without a registry
@@ -538,6 +554,45 @@ class Engine:
             message=message,
             recoverable=recoverable,
         )
+
+
+class _ArgumentRepairs:
+    """Invalid tool arguments within one turn: one repair per tool (tools.md §4, step 3).
+
+    The first invalid call of a tool asks the model for a repair. If the next call of
+    that tool is valid, the repair worked; if not, the tool gets no more repair in this
+    turn. The outcomes feed the session counters (Engine.argument_stats).
+    """
+
+    def __init__(self, stats: RepairStats) -> None:
+        self.stats = stats
+        self._pending: set[str] = set()  # invalid once, repair asked for
+        self._exhausted: set[str] = set()  # repair failed: no more repair in this turn
+
+    def valid(self, tool: str) -> None:
+        if tool in self._pending:
+            self._pending.discard(tool)
+            self.stats.repaired += 1
+            logger.info("Arguments of %s repaired", tool)
+        else:
+            self.stats.first_try += 1
+
+    def invalid(self, tool: str) -> bool:
+        """Record an invalid call. True when the model may still repair it."""
+        if tool in self._pending or tool in self._exhausted:
+            self._pending.discard(tool)
+            self._exhausted.add(tool)
+            self.stats.failed += 1
+            logger.info("Arguments of %s still invalid: no more repair", tool)
+            return False
+        self._pending.add(tool)
+        logger.info("Arguments of %s invalid: repair asked", tool)
+        return True
+
+    def close(self) -> None:
+        """End of the turn: a repair the model never attempted is a failure."""
+        self.stats.failed += len(self._pending)
+        self._pending.clear()
 
 
 def _assistant_message(text: str, calls: list[ToolCall]) -> Message:

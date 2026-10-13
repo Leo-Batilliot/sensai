@@ -20,12 +20,11 @@ from importlib import resources
 from pathlib import Path
 from typing import Any, Protocol
 
-from jsonschema import Draft202012Validator
-
 from sensai.core.errors import SensaiError
 from sensai.core.events import Badge
 from sensai.eval.numeric_check import DEFAULT_TOLERANCE, NumericCheck, check_numbers
 from sensai.llm.ollama_client import Chunk, Message
+from sensai.llm.structured import generate_structured
 
 logger = logging.getLogger(__name__)
 
@@ -58,66 +57,6 @@ class ChatClient(Protocol):
         format: dict[str, Any] | str | None = None,
         options: dict[str, Any] | None = None,
     ) -> Chunk: ...
-
-
-# --- structured call: stand-in for llm/structured.py (CORE-07) ---------------------------
-
-
-@dataclass(frozen=True)
-class StructuredResult:
-    """Same fields as StructuredResult of PROJECT §6.2."""
-
-    ok: bool
-    data: dict[str, Any] | None
-    raw: str
-    errors: tuple[str, ...]
-    attempts: int
-
-
-def _schema_errors(raw: str, validator: Draft202012Validator) -> tuple[Any, list[str]]:
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        return None, [f"JSON invalide : {exc}"]
-    errors = [
-        f"{'/'.join(str(part) for part in error.absolute_path) or '(racine)'} : {error.message}"
-        for error in validator.iter_errors(data)
-    ]
-    return data, errors
-
-
-async def generate_structured(
-    client: ChatClient,
-    messages: list[Message],
-    schema: dict[str, Any],
-    model: str,
-    max_repairs: int = MAX_REPAIRS,
-    options: dict[str, Any] | None = None,
-) -> StructuredResult:
-    """Call with format=schema, validate, repair once with the exact errors.
-
-    Minimal stand-in until CORE-07 delivers llm/structured.py, with the same signature.
-    """
-    validator = Draft202012Validator(schema)
-    history = list(messages)
-    raw, errors = "", ["aucun appel"]
-    for attempt in range(1, max_repairs + 2):
-        chunk = await client.chat(model, history, format=schema, options=options)
-        raw = chunk.content
-        data, errors = _schema_errors(raw, validator)
-        if not errors:
-            return StructuredResult(True, data, raw, (), attempt)
-        history = [
-            *history,
-            {"role": "assistant", "content": raw},
-            {
-                "role": "user",
-                "content": "Ta réponse ne respecte pas le schéma JSON demandé :\n- "
-                + "\n- ".join(errors)
-                + "\nRenvoie uniquement l'objet JSON corrigé.",
-            },
-        ]
-    return StructuredResult(False, None, raw, tuple(errors), max_repairs + 1)
 
 
 # --- scores and badge, computed by the code (judge.md §2) --------------------------------
@@ -240,7 +179,12 @@ class Judge:
         messages = build_messages(case, self._prompt, self.max_rows)
         try:
             result = await generate_structured(
-                self.client, messages, self._schema, self.model, options=self.options
+                self.client,
+                messages,
+                self._schema,
+                self.model,
+                max_repairs=MAX_REPAIRS,
+                options=self.options,
             )
         except SensaiError as exc:
             # Never log the answer or the rows: they may hold confidential business data

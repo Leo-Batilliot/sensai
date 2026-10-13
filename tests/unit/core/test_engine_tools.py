@@ -279,6 +279,95 @@ async def test_invalid_arguments_are_refused_before_running() -> None:
     assert registry(engine).calls == []
 
 
+# --- Repair of invalid arguments (CORE-07, T5) ---
+
+
+@pytest.mark.parametrize(
+    ("arguments", "expected"),
+    [
+        ({"purpose": "top"}, "'sql' is a required property"),
+        ({"sql": 42}, "sql : 42 is not of type 'string'"),
+        ({"sql": "SELECT 1", "limit": 5}, "('limit' was unexpected)"),
+    ],
+    ids=["missing", "wrong type", "extra property"],
+)
+async def test_each_kind_of_invalid_arguments_is_refused(
+    arguments: dict[str, Any], expected: str
+) -> None:
+    engine = make_engine(tool_request(SELECT, **arguments), answer("Je corrige."))
+
+    emitted = await run(engine)
+
+    error = tool_results(emitted)[0].error
+    assert error is not None and error.code == "INVALID_ARGUMENTS"
+    assert expected in error.message
+    assert registry(engine).calls == []
+
+
+async def test_corrected_arguments_are_run_after_one_repair() -> None:
+    engine = make_engine(
+        tool_request(SELECT, query=TOP_CLIENTS),
+        tool_request(SELECT, sql=TOP_CLIENTS),
+        answer("Brasserie Lemaire arrive en tête."),
+    )
+
+    emitted = await run(engine)
+
+    check_turn(emitted)
+    refused, executed = tool_results(emitted)
+    assert refused.error is not None and refused.error.code == "INVALID_ARGUMENTS"
+    assert executed.ok is True
+    assert registry(engine).calls == [(SELECT, {"sql": TOP_CLIENTS})]
+    repair_request = fake(engine).calls[1][1][-1]["content"]
+    assert "Corrige-les et rappelle l'outil." in repair_request
+    assert engine.argument_stats.to_dict() == {"first_try": 0, "repaired": 1, "failed": 0}
+
+
+async def test_a_second_invalid_call_gets_no_more_repair() -> None:
+    engine = make_engine(
+        tool_request(SELECT, query=TOP_CLIENTS),
+        tool_request(SELECT, request=TOP_CLIENTS),
+        answer("Je n'arrive pas à interroger la base."),
+    )
+
+    emitted = await run(engine)
+
+    check_turn(emitted)
+    second = tool_results(emitted)[1]
+    assert second.error is not None and second.error.code == "INVALID_ARGUMENTS"
+    assert second.error.message.startswith("Arguments toujours invalides")
+    assert "Ne rappelle plus cet outil" in second.error.message
+    assert registry(engine).calls == []
+    assert emitted[-1].type == "message_done"
+    assert engine.argument_stats.to_dict() == {"first_try": 0, "repaired": 0, "failed": 1}
+
+
+async def test_a_repair_never_attempted_counts_as_failed() -> None:
+    engine = make_engine(tool_request(SELECT, query=TOP_CLIENTS), answer("Tant pis."))
+
+    await run(engine)
+
+    assert engine.argument_stats.to_dict() == {"first_try": 0, "repaired": 0, "failed": 1}
+
+
+async def test_repairs_are_counted_per_tool_and_per_turn() -> None:
+    engine = make_engine(
+        # Turn 1: the time tool is fine, run_select is repaired
+        tool_requests((TIME, {"timezone": "Europe/Paris"}), (SELECT, {"query": TOP_CLIENTS})),
+        tool_request(SELECT, sql=TOP_CLIENTS),
+        answer("Voilà."),
+        # Turn 2: a new turn gives run_select a new repair
+        tool_request(SELECT, query="SELECT 1"),
+        tool_request(SELECT, sql="SELECT 1"),
+        answer("1."),
+    )
+
+    await run(engine)
+    await run(engine)
+
+    assert engine.argument_stats.to_dict() == {"first_try": 1, "repaired": 2, "failed": 0}
+
+
 # --- What the model gets back ---
 
 
