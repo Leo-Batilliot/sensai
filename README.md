@@ -66,61 +66,112 @@ cd web; npm ci; npm run build; cd ..    # construit web/dist
 - `.venv\Scripts\python -m pytest -m "not ollama and not external"` lance les tests. Sous Windows, 4 tests MCP de fin de processus échouent (`test_close_*`, `test_unsupported_version_is_refused`, `test_missing_base_stops_the_server`) : c'est connu, ils passent sous Linux.
 - Pour la démo mid-term : [`docs/keynote/demo-script-midterm.md`](docs/keynote/demo-script-midterm.md).
 
-## Installation sous WSL2 (développement)
+## Installation sous Linux (Ubuntu, Arch) ou WSL2
 
-Pour développer, **WSL2** (Ubuntu) est le plus confortable : le `Makefile` y fonctionne, comme sous Linux et macOS. Cloner le dépôt **dans le système de fichiers de WSL** (`~/…`), pas sous `/mnt/c` : c'est plus rapide et cela évite de mélanger un `.venv` Windows et un `.venv` Linux.
+Le `Makefile` fonctionne directement. Il faut Python 3.10 ou plus : la CI teste 3.10 et 3.12.
+
+Sous **WSL2** (Ubuntu), suivre les commandes Ubuntu, et cloner le dépôt **dans le système de fichiers de WSL** (`~/…`), pas sous `/mnt/c` : c'est plus rapide et cela évite de mélanger un `.venv` Windows et un `.venv` Linux.
 
 ### 1. Outils système
 
+Ubuntu, Debian ou WSL2 :
+
 ```bash
 sudo apt update
-sudo apt install -y git make python3 python3-venv python3-pip
-python3 --version   # 3.10 ou plus (l'équipe est sur 3.12)
+sudo apt install -y git make curl python3 python3-venv python3-pip
 ```
+
+Arch :
+
+```bash
+sudo pacman -Syu --needed git make curl python
+```
+
+Vérifier : `python3 --version` affiche 3.10 ou plus.
 
 ### 2. Ollama et le modèle
 
+Ubuntu, Debian ou WSL2 :
+
 ```bash
-curl -fsSL https://ollama.com/install.sh | sh
-ollama serve &                 # inutile si Ollama tourne déjà en service
-ollama pull qwen3:8b           # plusieurs Go : à lancer en avance
+curl -fsSL https://ollama.com/install.sh | sh    # installe aussi le service systemd
+```
+
+Arch (choisir le paquet selon la carte graphique) :
+
+```bash
+sudo pacman -S --needed ollama        # ou ollama-cuda (NVIDIA), ollama-rocm (AMD)
+sudo systemctl enable --now ollama
+```
+
+Puis, quelle que soit la distribution :
+
+```bash
+ollama pull qwen3:8b           # environ 5 Go : à lancer en avance
 ollama show qwen3:8b           # « Capabilities » doit contenir « tools »
 ```
+
+Sans systemd (certaines installations WSL2), lancer `ollama serve &` avant d'utiliser le projet.
 
 Le modèle doit **gérer les outils** : sans cela, l'agent ne peut pas interroger la base. Le modèle par défaut est celui de `[ollama] model` dans [`config.example.toml`](config.example.toml).
 
 ### 3. `uv` (pour `uvx` et le serveur MCP de date)
 
+Ubuntu, Debian ou WSL2 :
+
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source $HOME/.local/bin/env    # ou rouvrir le terminal
-uvx mcp-server-time --help     # télécharge le serveur une première fois, pour ne pas attendre au lancement
 ```
 
-### 4. Node.js 22 LTS (interface web)
+Arch :
+
+```bash
+sudo pacman -S --needed uv
+```
+
+Puis : `uvx mcp-server-time --help`. Le serveur est téléchargé une première fois et mis en cache, pour ne pas attendre au lancement.
+
+### 4. Node.js 22 ou plus (interface web)
+
+Ubuntu, Debian ou WSL2 :
 
 ```bash
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 source ~/.bashrc
 nvm install 22
-node --version                 # v22.x
 ```
 
-Node n'est nécessaire que pour construire le front (`make web-build`) et pour MCP Inspector.
+Arch :
+
+```bash
+sudo pacman -S --needed nodejs npm
+```
+
+Vérifier : `node --version` affiche v22 ou plus. Node n'est nécessaire que pour construire le front (`make web-build`) et pour MCP Inspector.
 
 ### 5. Le projet
 
 ```bash
-git clone git@github.com:EpitechPGE3-2026/G-AIA-500-LIL-5-1-sensai-4.git sensai
+git clone https://github.com/EpitechPGE3-2026/G-AIA-500-LIL-5-1-sensai-4.git sensai   # ou git@github.com:… avec une clé SSH
 cd sensai
+git checkout v0.5.0 # la version de la mid-term (sinon rester sur main)
 make install        # crée .venv et installe les dépendances (dev incluses)
+make seed           # base de démo, date de référence = aujourd'hui
+make web-build      # construit web/dist
 make test           # tests sans Ollama ni outils externes, comme la CI
 make help           # toutes les commandes
 ```
 
-Sans `make` : `python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt`.
+- Sans `make` : `python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt`.
+- Si la version de Python de la distribution est trop récente pour une dépendance (Arch suit toujours la dernière version), installer une 3.12 avec uv : `uv python install 3.12`, puis `rm -rf .venv && make install PYTHON="$(uv python find 3.12)"`.
 
-Sous PowerShell, le `Makefile` ne fonctionne pas : chaque cible `make` correspond à une commande `.venv\Scripts\python -m …` (voir l'installation Windows ci-dessus et le `Makefile`).
+### 6. Vérifier
+
+```bash
+make chat           # puis /tools : sql_toolbox et time « en ligne », /exit pour quitter
+make web            # puis ouvrir http://127.0.0.1:8000
+```
 
 ## Configuration
 
