@@ -14,7 +14,7 @@ Les commandes sont écrites pour PowerShell sous Windows (`.venv\Scripts\python`
 |---|---|---|
 | 1 | `ollama pull qwen3:8b` | `ollama list` affiche le modèle |
 | 2 | Installer `uv`, puis `uvx mcp-server-time --help` | Le serveur de date est en cache : aucun téléchargement pendant la démo |
-| 3 | `.venv\Scripts\python -m sensai seed` | Base générée avec la date du jour comme date de référence, la même que celle que renvoie l'outil de date |
+| 3 | `.venv\Scripts\python -m sensai seed` | Base générée avec la date du jour comme date de référence, la même que celle que renvoie l'outil de date. **À refaire après chaque répétition de l'acte 4** (la suppression est réelle) |
 | 4 | `Remove-Item data\memory.db` | Mémoire vide : l'acte 2 part d'un glossaire vide |
 | 5 | `cd web; npm ci; npm run build; cd ..` | Une seule fois : construit `web/dist` |
 | 6 | `.venv\Scripts\python -m sensai web` | http://127.0.0.1:8000 : barre d'état avec `sql_toolbox` et `time` en ligne |
@@ -61,23 +61,27 @@ En CLI, la même session démarre avec `.venv\Scripts\python -m sensai chat`. Ta
 
 ## 4. Acte 4 — Action destructive (2 min 30, P2)
 
-> ⚠️ **État au 13/10, 15 h :** les outils d'écriture SQL (`preview_write` et `execute_write`, MCP-05) ne sont pas encore livrés. Si c'est toujours le cas au freeze, jouer la **variante A3 sur la mémoire** (plan B §8.4, ligne 4), qui montre la même mécanique : politique déterministe, aperçu d'impact, confirmation, refus puis accord.
+Les outils d'écriture SQL sont livrés (MCP-05, dans `v0.5.0`) : `sql_toolbox__preview_write` calcule l'impact dans une transaction annulée, et `sql_toolbox__execute_write` exécute la requête après confirmation, avec une trace dans `write_audit`.
 
-**Version prévue (si MCP-05 est livré)**, taper :
+> ⚠️ **La suppression est réelle.** Après chaque passage où l'on confirme, relancer `sensai seed` pour retrouver les 40 clients inactifs.
+
+**Taper :**
 > Supprime les clients inactifs depuis plus de 18 mois.
 
-1. Fenêtre de confirmation (invite y/N en CLI) avec le SQL, l'impact et le compte à rebours. **Refuser.**
-2. « Combien de clients inactifs avons-nous ? » : le nombre n'a pas bougé.
-3. Reposer la demande et **confirmer** : suppression, inscrite dans `write_audit`.
+**Attendu :**
+1. Timeline : `sql_toolbox__execute_write`, parfois précédé de `sql_toolbox__preview_write`, avec un bloc SQL « DELETE ».
+2. **Confirmation demandée** (fenêtre modale sur le web, invite y/N en CLI) : le SQL exact, l'impact par table (environ 25 clients supprimés sur la base de démo), des exemples, et un compte à rebours de 120 s. **Refuser** : « refusé : rien n'est exécuté », et l'agent confirme qu'il n'a rien supprimé.
+3. **Taper** « Combien de clients inactifs avons-nous ? » : toujours 40, la base est intacte.
+4. **Reposer la demande et confirmer** : les 25 clients inactifs sans commande sont supprimés, et l'opération est inscrite dans `write_audit`. Les 15 autres ont des commandes ou des factures : la base les protège, la comptabilité doit les conserver.
 
-**Variante A3 sur la mémoire**, après l'acte 2, taper :
-> Supprime la définition de « client rentable » de la mémoire.
+**À dire :**
+- La décision de demander confirmation vient d'une **politique déterministe** (classification du SQL et annotations des outils), jamais du modèle.
+- L'aperçu est **exact**, parce qu'il est calculé dans une transaction annulée.
+- Sans réponse dans le délai, c'est un refus.
 
-1. Appel `memory_delete` : confirmation demandée, avec l'impact (l'entrée et ses cascades). **Refuser** : « refusé : rien n'est exécuté ».
-2. `/memory` (ou le panneau Mémoire) : le terme est toujours là.
-3. Reposer la demande et **confirmer** : l'entrée disparaît, et la suppression est auditée.
-
-**À dire :** la décision de demander confirmation vient d'une **politique déterministe** (annotations et classification), jamais du modèle. Sans réponse dans le délai, c'est un refus.
+**Secours :**
+- Si l'agent écrit un `DELETE` naïf (`WHERE status = 'inactive'`), SQLite refuse toute l'instruction à cause des factures liées, et l'aperçu l'indique (« des lignes liées doivent être conservées »). C'est aussi une bonne démonstration : la base protège les pièces comptables. Relancer avec : « Supprime les clients inactifs qui n'ont jamais passé de commande. »
+- Si l'écriture SQL ne part pas du tout : jouer la **variante sur la mémoire**, après l'acte 2. Taper « Supprime la définition de « client rentable » de la mémoire. ». La confirmation de `memory_delete` s'affiche avec l'impact : refuser, vérifier avec `/memory` que le terme est toujours là, puis reposer la demande et confirmer.
 
 ## 5. En cas de problème
 
