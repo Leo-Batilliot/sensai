@@ -1,10 +1,8 @@
 """WebBackend of `sensai web`: the real Engine behind the WebSocket (WEB-08).
 
-Started once with the application (FastAPI lifespan) and shared by every session:
-the MCP servers (one McpManager, never one per session), the memory store and the
-system prompt, whose schema is read once. Each session gets its own Engine: its Ollama
-client, its history, its registry (the memory tools audit the session id) and the
-WebConfirmationBroker of its socket.
+Started once with the application (FastAPI lifespan) and shared by every session: the
+Services of the application (core/app_factory.py, CORE-10), as for the CLI. Each session
+gets its own Engine from them, with the WebConfirmationBroker of its socket.
 
 The Engine does not cover the whole web protocol: RealEngine adds the servers and tools
 of session_ready, the session settings of set_config, and run_ui_action until the
@@ -14,38 +12,25 @@ Engine has its own (point P-6, P1).
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from typing import Any
 
 from sensai.core import events
+from sensai.core.app_factory import ClientFactory, Services, ollama_client
 from sensai.core.config import Config
 from sensai.core.engine import ChatClient, Engine
 from sensai.core.errors import SensaiError
-from sensai.core.prompts import system_prompt_template
 from sensai.eval.online import OnlineJudge
-from sensai.llm.ollama_client import OllamaClient
 from sensai.mcp.manager import McpManager
-from sensai.memory.context import MemoryContext
-from sensai.memory.store import MemoryStore
-from sensai.tools.memory_tools import memory_tools
 from sensai.tools.policy import SqlClassifier, evaluate
 from sensai.tools.registry import Registry
 from sensai.web.engines.backend import ModelInfo
 from sensai.web.websocket.confirm import WebConfirmationBroker
 from sensai.web.websocket.settings import SESSION_SETTINGS, session_settings
 
-MEMORY_DELETE = "memory_delete"
 UI_ACTION_UNAVAILABLE = (
     "Les modifications depuis l'interface ne sont pas encore branchées sur le moteur réel."
 )
-
-ClientFactory = Callable[[Config], ChatClient]
-
-
-def ollama_client(config: Config) -> OllamaClient:
-    return OllamaClient(
-        config.ollama.host, timeout_s=config.ollama.timeout_s, keep_alive=config.ollama.keep_alive
-    )
 
 
 class RealEngine:
@@ -142,26 +127,17 @@ class RealBackend:
         client_factory: ClientFactory = ollama_client,
         sql_classifier: SqlClassifier | None = None,
     ) -> None:
-        self._config = config
-        self._manager = manager if manager is not None else McpManager.from_config(config)
-        self._client_factory = client_factory
-        self._sql_classifier = sql_classifier  # tests only: None = the business database
+        self._services = Services(
+            config, manager=manager, client_factory=client_factory, sql_classifier=sql_classifier
+        )
         self._client = client_factory(config)  # REST routes: models, health
         self._supports_tools: dict[str, bool] = {}
-        self._store: MemoryStore | None = None
-        self._prompt: Callable[[str], str] | None = None
 
     async def start(self) -> None:
-        await self._manager.start_all()  # a server that cannot start is logged and marked down
-        self._store = MemoryStore.open(self._config.database.memory_path)
-        tool_names = [info.name for info in self._registry(None).tools()]
-        self._prompt = system_prompt_template(self._config.database.business_path, tool_names)
+        await self._services.start()
 
     async def stop(self) -> None:
-        await self._manager.stop_all()
-        if self._store is not None:
-            self._store.close()
-            self._store = None
+        await self._services.stop()
         await self._client.aclose()
 
     async def list_models(self) -> list[ModelInfo]:
@@ -191,28 +167,6 @@ class RealBackend:
         return True
 
     def new_engine(self, session_id: str, broker: WebConfirmationBroker) -> RealEngine:
-        if self._store is None or self._prompt is None:
-            raise RuntimeError("RealBackend.start() must run before the first session")
-        client = self._client_factory(self._config)
-        registry = self._registry(session_id)
-        engine = Engine(
-            self._config,
-            client,
-            registry=registry,
-            system_prompt=self._prompt,
-            broker=broker,
-            session_id=session_id,
-            memory=MemoryContext(self._store),
-            judge=OnlineJudge.from_config(self._config, client),
-            sql_classifier=self._sql_classifier,
-        )
-        return RealEngine(engine, registry, client)
-
-    def _registry(self, session_id: str | None) -> Registry:
-        store = self._store
-        assert store is not None
-        return Registry(
-            self._manager,
-            memory_tools(store, session_id),
-            previewers={MEMORY_DELETE: lambda args: store.delete_impact(args["kind"], args["ref"])},
-        )
+        engine = self._services.new_engine(broker, session_id)
+        assert isinstance(engine.registry, Registry)  # Services always gives one
+        return RealEngine(engine, engine.registry, engine.client)

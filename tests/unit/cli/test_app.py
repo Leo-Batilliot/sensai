@@ -22,9 +22,12 @@ from fakes import (
 from sensai.cli.app import ChatSession, run_chat, run_interruptible, run_repl
 from sensai.cli.render import Renderer
 from sensai.core import engine as engine_module
+from sensai.core import events
+from sensai.core.app_factory import Services
 from sensai.core.config import Config
 from sensai.core.engine import Engine
 from sensai.core.errors import OllamaUnavailable, StreamInterrupted
+from sensai.data.schema import connect, create_schema
 from sensai.llm.ollama_client import Chunk, Message
 
 
@@ -261,8 +264,8 @@ async def test_command_errors_are_shown_and_the_session_goes_on() -> None:
     ("command", "expected"),
     [
         ("/help", "/model <nom>"),
-        ("/tools", "Disponible après MCP-04."),
-        ("/memory", "Disponible après MEM-03."),
+        ("/tools", "Aucun outil : la base de démonstration est absente"),
+        ("/memory", "Aucune mémoire : la base de démonstration est absente."),
         ("/inconnue", "Commande inconnue : /inconnue. Tapez /help."),
     ],
 )
@@ -351,7 +354,12 @@ def config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     for name in ("SENSAI_CONFIG", "SENSAI_OLLAMA_MODEL", "SENSAI_OLLAMA_HOST"):
         monkeypatch.delenv(name, raising=False)
     path = tmp_path / "config.toml"
-    path.write_text('[ollama]\nmodel = "modele-du-fichier"\n', encoding="utf-8")
+    # No demo database: a plain chat, so that no MCP server is started by these tests
+    absent = (tmp_path / "absent.db").as_posix()
+    path.write_text(
+        f'[ollama]\nmodel = "modele-du-fichier"\n\n[database]\nbusiness_path = "{absent}"\n',
+        encoding="utf-8",
+    )
     return path
 
 
@@ -429,3 +437,98 @@ async def test_tool_steps_are_shown_as_a_timeline() -> None:
         "time__get_current_time, sql_toolbox__run_select.\n"
         "Brasserie Lemaire arrive en tête.\n"
     )
+
+
+def test_memory_context_and_judge_verdict_are_shown() -> None:
+    session, out = make_session(FakeClient())
+    label = "client rentable"
+    claim = {"text": "52 300 €", "verdict": "contradicted", "expected_value": "48 712,40 €"}
+
+    session._show(
+        events.ContextInjected(
+            session_id="s-1", turn_id="t-1", refs=[events.MemoryRef("glossary", label, label)]
+        )
+    )
+    session._show(
+        events.JudgeReport(
+            session_id="s-1",
+            turn_id="t-1",
+            badge="contradicted",
+            scores={"faithfulness": 0.0},
+            numeric_check={"status": "mismatch", "unmatched": ["52 300 €"]},
+            report={"claims": [claim]},
+            duration_ms=10,
+        )
+    )
+
+    text = out.getvalue()
+    assert "contexte mémoire fourni : client rentable" in text
+    assert "Vérification : Contredite : chiffres absents des données : 52 300 €" in text
+    assert "« 52 300 € » (attendu : 48 712,40 €)" in text
+
+
+# --- run_chat on the assembled application (CORE-10) ---
+
+
+@pytest.fixture
+def demo_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A config file on an empty demo database, a fresh memory and no MCP server."""
+    for name in ("SENSAI_CONFIG", "SENSAI_OLLAMA_MODEL", "SENSAI_OLLAMA_HOST"):
+        monkeypatch.delenv(name, raising=False)
+    business = tmp_path / "business.db"
+    conn = connect(business)
+    create_schema(conn)
+    conn.close()
+    path = tmp_path / "config.toml"
+    path.write_text(
+        f'[ollama]\nmodel = "{MODEL}"\n\n'
+        f'[database]\nbusiness_path = "{business.as_posix()}"\n'
+        f'memory_path = "{(tmp_path / "memory.db").as_posix()}"\n\n'
+        "[mcp.servers]\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_without_the_demo_database_the_chat_has_no_tools(
+    config_file: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    client = FakeClient(answer("Oui."), models=("modele-du-fichier",))
+    use_fake(monkeypatch, client)
+
+    assert run_chat(str(config_file), read_line=scripted("/tools", "Salut")) == 0
+
+    out = capsys.readouterr().out
+    assert "Base de démonstration absente" in out
+    assert "Aucun outil" in out
+    assert client.tools_sent == [None]
+
+
+def test_the_chat_runs_on_the_assembled_engine(
+    demo_config: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    client = FakeClient(answer("Bonjour."))
+    built: list[Services] = []
+
+    def services(config: Config) -> Services:
+        built.append(Services(config, client_factory=lambda _config: client))
+        return built[-1]
+
+    code = run_chat(
+        str(demo_config),
+        read_line=scripted("/tools", "/memory", "Salut"),
+        services_factory=services,
+    )
+
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "memory_delete (confirmation)" in out
+    assert "Glossaire (0)" in out
+    _model, messages, _options = client.calls[0]
+    assert messages[0]["role"] == "system"
+    assert "memory_search" in messages[0]["content"]  # the prompt names the tools
+    sent = client.tools_sent[0]
+    assert sent is not None and "memory_search" in [tool["function"]["name"] for tool in sent]
+    assert client.closed
+    with pytest.raises(RuntimeError):  # stopped: the memory store is closed
+        _ = built[0].store
