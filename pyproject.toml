@@ -29,7 +29,7 @@ target-version = "py310"
 line-length = 100
 src = ["src", "tests"]
 # code blocks in .md files are illustrative: ruff must not rewrite them
-extend-exclude = ["web", "*.md"]
+extend-exclude = ["/web", "*.md"]
 
 [tool.ruff.lint]
 select = [

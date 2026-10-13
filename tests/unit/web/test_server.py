@@ -8,7 +8,9 @@ from fastapi.testclient import TestClient
 from sensai import __version__
 from sensai.__main__ import main
 from sensai.core.config import Config
+from sensai.data.schema import connect, create_schema
 from sensai.web.engines.mock import MockBackend, Pacing
+from sensai.web.engines.real import RealBackend
 from sensai.web.server import create_app
 
 INSTANT = Pacing(token=0, tool=0, judge=0, other=0)
@@ -25,7 +27,9 @@ def dist(tmp_path: Path) -> Path:
 
 def make_client(static_dir: Path) -> TestClient:
     config = Config()
-    return TestClient(create_app(config, MockBackend(config, pacing=INSTANT), static_dir=static_dir))
+    return TestClient(
+        create_app(config, MockBackend(config, pacing=INSTANT), static_dir=static_dir)
+    )
 
 
 # --- application ----------------------------------------------------------------------
@@ -91,10 +95,26 @@ def test_web_command_starts_uvicorn_with_the_mock(monkeypatch: pytest.MonkeyPatc
 
 
 @pytest.mark.usefixtures("isolated_env")
-def test_web_command_without_mock_explains_why(capsys: pytest.CaptureFixture[str]) -> None:
-    # The real engine is plugged in by WEB-08: until then, only the mock is available
+def test_web_command_without_database_asks_for_the_seed(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["web"]) == 1
-    assert "--mock" in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert "make seed" in error
+    assert "--mock" in error  # the way to run without a database
+
+
+@pytest.mark.usefixtures("isolated_env")
+def test_web_command_starts_the_real_engine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "data").mkdir()
+    conn = connect(tmp_path / "data" / "business.db")  # [database] business_path default
+    create_schema(conn)
+    conn.close()
+    apps: list[FastAPI] = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, *, host, port: apps.append(app))
+    assert main(["web"]) == 0
+    (app,) = apps
+    assert isinstance(app.state.sessions.backend, RealBackend)
 
 
 @pytest.mark.usefixtures("isolated_env")

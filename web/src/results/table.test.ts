@@ -96,6 +96,14 @@ describe('formatCell', () => {
     expect(formatCell(1234, columnFormat('client_id', [[1234]], 0))).toBe('1234')
   })
 
+  it('ignores the binary noise of SQL sums', () => {
+    const noisy: Cell[][] = [[11270.270000000002], [7633.74], [0.1 + 0.2]]
+    const format = columnFormat('ca_ht', noisy, 0)
+    expect(format.decimals).toBe(2)
+    expect(plain(formatCell(11270.270000000002, format))).toBe('11 270,27')
+    expect(formatCell(0.1 + 0.2, format)).toBe('0,30')
+  })
+
   it('treats a column with text and numbers as text', () => {
     expect(columnFormat('mixed', [[1], ['a'], [null]], 0).numeric).toBe(false)
   })

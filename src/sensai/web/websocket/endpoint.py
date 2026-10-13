@@ -14,8 +14,8 @@ import re
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from jsonschema import Draft202012Validator
 
-from sensai.web.websocket.messages import MessageHandler
 from sensai.web.paths import SCHEMAS_DIR
+from sensai.web.websocket.messages import MessageHandler
 from sensai.web.websocket.session import SessionManager
 
 SESSION_ID = re.compile(r"[A-Za-z0-9-]{8,64}")

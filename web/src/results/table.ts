@@ -70,11 +70,16 @@ export function nextSort(current: Sort | null, column: number): Sort | null {
   return current.direction === 'asc' ? { column, direction: 'desc' } : null
 }
 
+// SQLite sums give binary noise: SUM(...) = 11270.270000000002 is shown as 11 270,27
+const SIGNIFICANT_DIGITS = 12
+const MAX_DECIMALS = 6
+
 function decimals(value: number): number {
-  if (Number.isInteger(value) || !Number.isFinite(value)) return 0
-  const text = String(value)
-  if (text.includes('e')) return 6
-  return Math.min(6, text.length - text.indexOf('.') - 1)
+  if (!Number.isFinite(value)) return 0
+  const text = String(Number(value.toPrecision(SIGNIFICANT_DIGITS)))
+  if (text.includes('e')) return MAX_DECIMALS
+  const point = text.indexOf('.')
+  return point === -1 ? 0 : Math.min(MAX_DECIMALS, text.length - point - 1)
 }
 
 export interface ColumnFormat {

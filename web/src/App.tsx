@@ -2,6 +2,7 @@ import { useState } from 'react'
 import './App.css'
 import './chat/chat.css'
 import './hitl/hitl.css'
+import './judge/judge.css'
 import './results/results.css'
 import './sql/sql.css'
 import './timeline/timeline.css'
@@ -26,8 +27,8 @@ const CONNECTION: Record<ConnectionStatus, { label: string; tone: string }> = {
 
 const numbers = new Intl.NumberFormat('fr-FR')
 
-// Layout of the main screen (docs/keynote/ui/EcranPrincipal). Still to come: judge badge
-// (WEB-09), status bar (WEB-10), memory panel (WEB-11).
+// Layout of the main screen (docs/keynote/ui/EcranPrincipal). Still to come: status bar
+// (WEB-10), memory panel (WEB-11).
 export default function App() {
   const session = useSession()
   const { state } = session
@@ -113,7 +114,12 @@ export default function App() {
             onAsk={ask}
           />
         ) : (
-          <MessageList turns={state.turns} onShowSteps={showSteps} />
+          <MessageList
+            turns={state.turns}
+            canAsk={session.connected && !session.busy}
+            onAsk={ask}
+            onShowSteps={showSteps}
+          />
         )}
 
         {toast !== null && (
