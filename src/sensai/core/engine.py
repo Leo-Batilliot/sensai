@@ -6,8 +6,9 @@ decision of their own (PROJECT.md §5.1).
 
 With a ToolRegistry, a turn is a loop (CORE-06, docs/contracts/tools.md §4): the model
 may ask for tools instead of answering; the Engine runs them through the registry, sends
-the results back, and calls the model again until it answers in text. The HITL policy
-(HITL-01/02) plugs in here later.
+the results back, and calls the model again until it answers in text. Each call goes
+through the HITL policy first, and waits for a human confirmation when it asks for one
+(HITL-01/02). The Engine is assembled with all of this in core/app_factory.py (CORE-10).
 
 With a MemoryContext (MEM-04), each turn starts by selecting the memory entries of the
 question: they go into the system prompt and the context_injected event. With an

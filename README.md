@@ -8,8 +8,8 @@ Un collaborateur pose une question métier en français ; l'agent interroge la b
 
 | Commande | Ce qui marche aujourd'hui | Ce qui arrive |
 |---|---|---|
-| `make chat` | Chat en terminal : streaming, historique, commandes, gestion des erreurs, choix du modèle | Outils MCP (SQL, date), mémoire, HITL et juge avec l'intégration (CORE-10) |
-| `scripts/chat_fake_tools.py` | Chat avec deux outils de remplacement (horloge locale, `SELECT` en lecture seule sur la base de démo) : boucle d'outils et prompt SQL | Remplacé par `make chat` une fois les vrais serveurs MCP branchés |
+| `make chat` | Chat en terminal sur le moteur réel, assemblé comme le web : outils MCP, mémoire, confirmation y/N, verdict du juge (il faut `make seed` et Ollama ; sans base, chat simple) | Écritures SQL de l'acte 4 (MCP-05) |
+| `scripts/chat_fake_tools.py` | Chat avec deux outils de remplacement (horloge locale, `SELECT` en lecture seule), sans serveur MCP | Outil de dépannage, remplacé par `make chat` |
 | `make web` | Interface web sur le moteur réel : outils MCP, mémoire, juge, confirmation dans une modale (il faut `make seed` et Ollama) | Écritures SQL de l'acte 4 (MCP-05) |
 | `make web-mock` | Interface web sur le `MockEngine`, qui rejoue des scénarios enregistrés, sans Ollama ni base | — |
 | `make seed` | Base de démonstration `data/business.db`, déterministe | — |
@@ -124,21 +124,18 @@ make chat
 | `/models` | Modèles installés dans Ollama (`*` = modèle actuel) |
 | `/model <nom>` | Change de modèle, l'historique est conservé |
 | `/reset` | Vide l'historique |
-| `/tools`, `/memory` | Outils et mémoire de l'agent (disponibles après MCP-04 et MEM-03) |
+| `/tools` | État des serveurs MCP et outils disponibles (« confirmation » si l'outil en demande une) |
+| `/memory` | Contenu de la mémoire de l'agent (glossaire, entités, faits) |
 | `/exit` ou `Ctrl+D` | Quitte |
 | `Ctrl+C` | Pendant une réponse : l'interrompt sans quitter. À l'invite : quitte |
 
-Pour essayer dès maintenant les questions sur les données (après `make seed`) :
-
-```bash
-.venv/bin/python scripts/chat_fake_tools.py
-```
+Au démarrage, le chat lance les serveurs MCP de la configuration. Un serveur qui ne démarre pas (par exemple `time` sans `uv`) est signalé, et les autres fonctionnent. Après `make seed` :
 
 ```text
 > Quels sont nos 5 clients les plus rentables ce trimestre et quel est leur délai moyen de paiement ?
 ```
 
-La timeline des outils (`• time__get_current_time`, `• sql_toolbox__run_select`, le SQL, le résultat) s'affiche avant la réponse.
+La timeline des outils (`• time__get_current_time`, `• sql_toolbox__run_select`, le SQL, le résultat) s'affiche avant la réponse, puis le verdict du juge (« Vérification : Vérifiée »). Le script de la démo mid-term est dans [`docs/keynote/demo-script-midterm.md`](docs/keynote/demo-script-midterm.md).
 
 ### Interface web
 

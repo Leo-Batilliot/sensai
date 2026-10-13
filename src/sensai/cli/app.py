@@ -3,6 +3,9 @@
 It reads lines, turns commands into Engine calls and displays the events of each turn.
 History, model, errors and cancellation belong to the Engine
 (docs/contracts/events.md): the CLI never talks to Ollama itself.
+
+The engine comes from the same assembly as the web (core/app_factory.py, CORE-10): MCP
+tools, HITL, memory and judge. Without the demo database it is a plain chat (B1).
 """
 
 from __future__ import annotations
@@ -18,10 +21,12 @@ from typing import Any, TypeVar
 from sensai.cli.confirm import CliConfirmationBroker
 from sensai.cli.render import Renderer
 from sensai.core import events
-from sensai.core.config import ConfigError, load_config
+from sensai.core.app_factory import Services
+from sensai.core.config import Config, ConfigError, load_config
 from sensai.core.engine import Engine
 from sensai.core.errors import ModelNotFound, SensaiError
 from sensai.llm.ollama_client import ModelDetails
+from sensai.tools.policy import evaluate
 
 T = TypeVar("T")
 
@@ -37,10 +42,18 @@ HELP = """Commandes :
   /exit          quitte (ou Ctrl+D)
 Ctrl+C pendant une réponse l'interrompt sans quitter."""
 
-# Commands declared now, implemented by later tasks
-NOT_YET_AVAILABLE = {"/tools": "MCP-04", "/memory": "MEM-03"}
-
 NOT_KEPT = "Elle n'est pas conservée dans l'historique."
+NO_TOOLS = "Aucun outil : la base de démonstration est absente (lancez `sensai seed`)."
+
+# Badge of the judge (events.md §3.11) -> label and renderer method
+BADGES = {
+    "verified": ("Vérifiée", "info"),
+    "needs_review": ("À vérifier", "warning"),
+    "contradicted": ("Contredite", "error"),
+    "unavailable": ("Vérification indisponible", "hint"),
+}
+
+ServicesFactory = Callable[[Config], Services]
 
 
 class ChatSession:
@@ -130,7 +143,25 @@ class ChatSession:
                 self.render.info("  confirmé : exécution")
             else:
                 self.render.warning("  refusé : rien n'est exécuté")
-        # Judge events are displayed from EVAL-05 on
+        elif isinstance(event, events.ContextInjected):
+            labels = ", ".join(ref.label for ref in event.refs)
+            self.render.hint(f"  contexte mémoire fourni : {labels}")
+        elif isinstance(event, events.JudgeStarted):
+            self.render.hint("(vérification de la réponse…)")
+        elif isinstance(event, events.JudgeReport):
+            self._show_verdict(event)
+
+    def _show_verdict(self, report: events.JudgeReport) -> None:
+        label, method = BADGES[report.badge]
+        unmatched = report.numeric_check.get("unmatched") or []
+        detail = f" : chiffres absents des données : {', '.join(unmatched)}" if unmatched else ""
+        getattr(self.render, method)(f"Vérification : {label}{detail}")
+        claims = report.report["claims"] if report.report else []
+        for claim in claims:
+            if claim["verdict"] == "contradicted":
+                expected = claim.get("expected_value")
+                hint = f" (attendu : {expected})" if expected else ""
+                self.render.warning(f"  « {claim['text']} »{hint}")
 
     async def _command(self, text: str) -> bool:
         name, _, argument = text.partition(" ")
@@ -145,8 +176,10 @@ class ChatSession:
             await self._show_models()
         elif name == "/model":
             await self._switch_model(argument.strip())
-        elif name in NOT_YET_AVAILABLE:
-            self.render.hint(f"Disponible après {NOT_YET_AVAILABLE[name]}.")
+        elif name == "/tools":
+            self.show_tools()
+        elif name == "/memory":
+            self._show_memory()
         else:
             self.render.warning(f"Commande inconnue : {name}. Tapez /help.")
         return True
@@ -172,6 +205,45 @@ class ChatSession:
             return
         lines = [f"{'*' if name == self.engine.model else ' '} {name}" for name in models]
         self.render.info("Modèles installés :\n" + "\n".join(lines))
+
+    def show_servers(self) -> None:
+        """State of each MCP server: shown at startup and by /tools."""
+        registry = self.engine.registry
+        if registry is None:
+            self.render.hint(NO_TOOLS)
+            return
+        for server in registry.servers():
+            if server.status == "up":
+                self.render.hint(f"Serveur MCP {server.name} : en ligne")
+            else:
+                self.render.warning(f"Serveur MCP {server.name} : indisponible ({server.error})")
+
+    def show_tools(self) -> None:
+        self.show_servers()
+        registry = self.engine.registry
+        if registry is None:
+            return
+        hitl = self.engine.config.hitl
+        lines = []
+        for info in registry.tools():
+            # The decision without arguments (tools.md §5): run_select shows no confirmation
+            confirm = evaluate(info, {}, hitl).action == "confirm"
+            lines.append(f"  {info.name}{' (confirmation)' if confirm else ''}")
+        self.render.info("Outils :\n" + "\n".join(lines))
+
+    def _show_memory(self) -> None:
+        if self.engine.memory is None:
+            self.render.hint("Aucune mémoire : la base de démonstration est absente.")
+            return
+        content = self.engine.memory.store.dump()
+        glossary = content["glossary"]
+        lines = [f"Glossaire ({len(glossary)}) :"]
+        lines += [f"  {row['term']} : {row['definition']}" for row in glossary]
+        lines.append(
+            f"Entités : {len(content['entities'])} · relations : {len(content['relations'])}"
+            f" · faits : {len(content['facts'])}"
+        )
+        self.render.info("\n".join(lines))
 
     def _warn_if_no_tools(self, details: ModelDetails) -> None:
         if not details.supports_tools:
@@ -241,6 +313,7 @@ def run_chat(
     host: str | None = None,
     *,
     read_line: Callable[[str], str] = input,
+    services_factory: ServicesFactory = Services,
 ) -> int:
     """`sensai chat`. Returns the exit code: 0, 1 if the chat cannot start, 130 on Ctrl+C."""
     try:
@@ -251,14 +324,29 @@ def run_chat(
 
     renderer = Renderer()
     broker = CliConfirmationBroker(renderer, read_line)
-    engine = Engine(config, broker=broker)
-    session = ChatSession(engine, renderer, broker)
     loop = asyncio.new_event_loop()
+    services: Services | None = None
+    engine: Engine | None = None
     try:
         renderer.hint(
-            f"SENSAI · {engine.model} sur {config.ollama.host} · "
+            f"SENSAI · {config.ollama.model} sur {config.ollama.host} · "
             "/help pour l'aide, /exit pour quitter"
         )
+        business_db = config.database.business_path
+        if business_db.is_file():
+            services = services_factory(config)
+            renderer.hint("Démarrage des serveurs MCP…")
+            run_interruptible(loop, services.start())
+            engine = services.new_engine(broker)
+        else:
+            renderer.warning(
+                f"Base de démonstration absente ({business_db}) : lancez `sensai seed`. "
+                "Chat sans outils, sans mémoire et sans vérification."
+            )
+            engine = Engine(config, broker=broker)
+        session = ChatSession(engine, renderer, broker)
+        if services is not None:
+            session.show_servers()
         if not run_interruptible(loop, session.check_model()):
             return 1
         run_repl(session, loop, read_line)
@@ -267,6 +355,10 @@ def run_chat(
         renderer.info("")
         return 130
     finally:
-        loop.run_until_complete(engine.aclose())
+        # Shut down in reverse order: the session's Ollama client, then the MCP servers
+        if engine is not None:
+            loop.run_until_complete(engine.aclose())
+        if services is not None:
+            loop.run_until_complete(services.stop())
         loop.run_until_complete(loop.shutdown_asyncgens())
         loop.close()
