@@ -12,7 +12,7 @@ __init__.py: it is not a package, so this module is what `sensai.core.prompts` i
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from importlib import resources
 from pathlib import Path
 from string import Template
@@ -47,9 +47,16 @@ def render(name: str, **values: str) -> str:
 
 def system_prompt(db_path: str | Path, tool_names: Iterable[str], memory: str = "") -> str:
     """The text-to-SQL system prompt, for the database at db_path and the given tools."""
-    return render(
-        SYSTEM_SQL,
-        schema=compact_schema(db_path),
-        tools_hint=", ".join(tool_names) or EMPTY,
-        memory=memory or EMPTY,
-    )
+    return system_prompt_template(db_path, tool_names)(memory)
+
+
+def system_prompt_template(db_path: str | Path, tool_names: Iterable[str]) -> Callable[[str], str]:
+    """The system prompt as a function of the memory block of a turn (MEM-04), for
+    Engine(system_prompt=...). The schema is read once, not at every turn."""
+    schema = compact_schema(db_path)
+    tools_hint = ", ".join(tool_names) or EMPTY
+
+    def build(memory: str = "") -> str:
+        return render(SYSTEM_SQL, schema=schema, tools_hint=tools_hint, memory=memory or EMPTY)
+
+    return build
