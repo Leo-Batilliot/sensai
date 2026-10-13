@@ -29,9 +29,7 @@ class WebConfirmationBroker:
         finally:  # answered, or cancelled by the engine's timeout
             self._pending.pop(action.action_id, None)
 
-    def resolve(
-        self, action_id: str, decision: DecisionKind, comment: str | None = None
-    ) -> bool:
+    def resolve(self, action_id: str, decision: DecisionKind, comment: str | None = None) -> bool:
         """Apply a `confirm` message. False if the action is unknown, resolved or expired."""
         future = self._pending.get(action_id)
         if future is None or future.done():

@@ -37,7 +37,9 @@ def client() -> Iterator[TestClient]:
         yield test_client
 
 
-def until(ws: WebSocketTestSession, stop: Callable[[Message], bool], limit: int = 500) -> list[Message]:
+def until(
+    ws: WebSocketTestSession, stop: Callable[[Message], bool], limit: int = 500
+) -> list[Message]:
     """Receive messages up to and including the first one that matches `stop`."""
     received: list[Message] = []
     for _ in range(limit):
@@ -76,9 +78,8 @@ def test_session_ready_comes_first_and_follows_the_schema(client: TestClient) ->
 
 
 def test_invalid_session_id_is_refused(client: TestClient) -> None:
-    with pytest.raises(WebSocketDisconnect) as closed:
-        with client.websocket_connect("/ws/bad!id") as ws:
-            ws.receive_json()
+    with pytest.raises(WebSocketDisconnect) as closed, client.websocket_connect("/ws/bad!id") as ws:
+        ws.receive_json()
     assert closed.value.code == 4400
 
 
@@ -211,7 +212,9 @@ def test_ui_action_deletes_after_confirmation(client: TestClient) -> None:
         arguments = {"kind": "fact", "ref": "17"}
         ws.send_json({"type": "ui_action", "tool": "memory_delete", "arguments": arguments})
         events = until(ws, of_type("confirmation_required"))
-        ws.send_json({"type": "confirm", "action_id": events[-1]["action_id"], "decision": "approve"})
+        ws.send_json(
+            {"type": "confirm", "action_id": events[-1]["action_id"], "decision": "approve"}
+        )
         events += until(ws, of_type("message_done"))
     for event in events:
         check_event(event)
@@ -230,13 +233,24 @@ def test_ui_action_deletes_after_confirmation(client: TestClient) -> None:
     [
         ({"type": "user_message", "id": "c-9", "content": "   "}, "INVALID_MESSAGE"),
         ({"type": "launch_missiles", "id": "c-9"}, "INVALID_MESSAGE"),
-        ({"type": "confirm", "id": "c-9", "action_id": "nope", "decision": "approve"}, "UNKNOWN_ACTION"),
+        (
+            {"type": "confirm", "id": "c-9", "action_id": "nope", "decision": "approve"},
+            "UNKNOWN_ACTION",
+        ),
         ({"type": "set_model", "id": "c-9", "model": "absent:1b"}, "MODEL_NOT_FOUND"),
         ({"type": "set_config", "id": "c-9", "patch": {"row_limit": 5}}, "INVALID_CONFIG"),
         ({"type": "set_config", "id": "c-9", "patch": {"num_ctx": 100}}, "INVALID_CONFIG"),
-        ({"type": "set_config", "id": "c-9", "patch": {"judge_model": "absent:1b"}}, "MODEL_NOT_FOUND"),
         (
-            {"type": "ui_action", "id": "c-9", "tool": "sql_toolbox__execute_write", "arguments": {}},
+            {"type": "set_config", "id": "c-9", "patch": {"judge_model": "absent:1b"}},
+            "MODEL_NOT_FOUND",
+        ),
+        (
+            {
+                "type": "ui_action",
+                "id": "c-9",
+                "tool": "sql_toolbox__execute_write",
+                "arguments": {},
+            },
             "UI_ACTION_FORBIDDEN",
         ),
     ],

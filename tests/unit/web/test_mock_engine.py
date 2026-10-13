@@ -7,8 +7,8 @@ import pytest
 
 from contract_rules import check_event, check_turns
 from sensai.core.config import Config
-from sensai.web.websocket.confirm import WebConfirmationBroker
 from sensai.web.engines.mock import MockBackend, MockEngine, Pacing
+from sensai.web.websocket.confirm import WebConfirmationBroker
 
 INSTANT = Pacing(token=0, tool=0, judge=0, other=0)
 SESSION = "3f2b9c1e-0000-4000-8000-000000000002"

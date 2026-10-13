@@ -10,7 +10,8 @@ Un collaborateur pose une question métier en français ; l'agent interroge la b
 |---|---|---|
 | `make chat` | Chat en terminal : streaming, historique, commandes, gestion des erreurs, choix du modèle | Outils MCP (SQL, date), mémoire, HITL et juge avec l'intégration (CORE-10) |
 | `scripts/chat_fake_tools.py` | Chat avec deux outils de remplacement (horloge locale, `SELECT` en lecture seule sur la base de démo) : boucle d'outils et prompt SQL | Remplacé par `make chat` une fois les vrais serveurs MCP branchés |
-| `make web-mock` | Interface web sur le `MockEngine`, qui rejoue des scénarios enregistrés | `make web` sur le moteur réel (WEB-08) |
+| `make web` | Interface web sur le moteur réel : outils MCP, mémoire, juge, confirmation dans une modale (il faut `make seed` et Ollama) | Écritures SQL de l'acte 4 (MCP-05) |
+| `make web-mock` | Interface web sur le `MockEngine`, qui rejoue des scénarios enregistrés, sans Ollama ni base | — |
 | `make seed` | Base de démonstration `data/business.db`, déterministe | — |
 | `make eval` | Pas encore implémenté | Harness d'évaluation (EVAL-06a) |
 
@@ -143,10 +144,12 @@ La timeline des outils (`• time__get_current_time`, `• sql_toolbox__run_sele
 
 ```bash
 make web-build      # npm ci + build du front dans web/dist
-make web-mock       # http://127.0.0.1:8000, sur le MockEngine
+make seed           # une fois : la base de démonstration data/business.db
+make web            # http://127.0.0.1:8000, sur le moteur réel (Ollama lancé)
+make web-mock       # ou : sur le MockEngine, sans Ollama ni base
 ```
 
-`make web` (moteur réel) refuse de démarrer tant que WEB-08 n'est pas livré. Développement du front avec rechargement à chaud : voir [`web/README.md`](web/README.md).
+Développement du front avec rechargement à chaud : voir [`web/README.md`](web/README.md).
 
 ### Tests et qualité
 

@@ -10,19 +10,20 @@ Prérequis : Node.js 22 LTS.
 
 ```bash
 make web-build   # npm ci + build → web/dist
-make web-mock    # http://127.0.0.1:8000, sur le MockEngine
+make web         # http://127.0.0.1:8000, sur le moteur réel (make seed et Ollama d'abord)
+make web-mock    # ou : sur le MockEngine, qui rejoue les scénarios enregistrés
 ```
 
 **En développement**, avec rechargement à chaud : deux terminaux.
 
 ```bash
-make web-mock               # terminal 1 : backend FastAPI sur :8000
+make web-mock               # terminal 1 : backend FastAPI sur :8000 (ou make web)
 cd web && npm run dev       # terminal 2 : front sur http://localhost:5173
 ```
 
 Le serveur de développement de Vite redirige `/api` et `/ws` vers le backend (`vite.config.ts`) : même origine, pas de CORS à configurer.
 
-> **Moteur** : jusqu'au branchement du moteur réel (WEB-08), le serveur tourne sur le `MockEngine`, qui rejoue les scénarios de [`tests/fixtures/events/`](../tests/fixtures/events/README.md) (`sensai web --mock`). `make web` sans `--mock` explique pourquoi il refuse de démarrer.
+> **Moteur** : `make web` branche le vrai moteur (Ollama, serveurs MCP, mémoire, juge). `make web-mock` (`sensai web --mock`) le remplace par le `MockEngine`, qui rejoue les scénarios de [`tests/fixtures/events/`](../tests/fixtures/events/README.md) : pratique pour travailler le front sans Ollama, avec des réponses identiques à chaque fois.
 
 ## Scripts
 
