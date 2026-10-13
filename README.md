@@ -4,20 +4,71 @@ Un collaborateur pose une question métier en français ; l'agent interroge la b
 
 > **README v0** (DOC-05) : installation et lancement. La version finale (fonctionnalités, exemples, architecture, résultats d'évaluation) arrive avec la release du 28/10.
 
-## État actuel (v0, 12/10)
+## État actuel (`v0.5.0`, mid-term, 13/10)
 
 | Commande | Ce qui marche aujourd'hui | Ce qui arrive |
 |---|---|---|
-| `make chat` | Chat en terminal sur le moteur réel, assemblé comme le web : outils MCP, mémoire, confirmation y/N, verdict du juge (il faut `make seed` et Ollama ; sans base, chat simple) | Écritures SQL de l'acte 4 (MCP-05) |
-| `scripts/chat_fake_tools.py` | Chat avec deux outils de remplacement (horloge locale, `SELECT` en lecture seule), sans serveur MCP | Outil de dépannage, remplacé par `make chat` |
-| `make web` | Interface web sur le moteur réel : outils MCP, mémoire, juge, confirmation dans une modale (il faut `make seed` et Ollama) | Écritures SQL de l'acte 4 (MCP-05) |
+| `make chat` | Chat en terminal sur le moteur réel, assemblé comme le web : outils MCP (lecture et écriture SQL, date), mémoire, confirmation y/N, verdict du juge (il faut `make seed` et Ollama ; sans base, chat simple) | Auto-correction SQL (CORE-09) |
+| `make web` | Interface web sur le moteur réel : outils MCP, mémoire, juge, confirmation dans une modale (il faut `make seed` et Ollama) | Sélecteur de modèle, jauge, état MCP (WEB-10) |
 | `make web-mock` | Interface web sur le `MockEngine`, qui rejoue des scénarios enregistrés, sans Ollama ni base | — |
 | `make seed` | Base de démonstration `data/business.db`, déterministe | — |
-| `make eval` | Pas encore implémenté | Harness d'évaluation (EVAL-06a) |
+| `make eval` | `sensai eval compare AVANT APRÈS` compare deux rapports | Lancer le golden set sur le moteur réel (EVAL-06) |
+| `scripts/chat_fake_tools.py` | Chat avec deux outils de remplacement, sans serveur MCP | Outil de dépannage |
 
-## Installation
+## Installation sur un PC Windows vierge (PowerShell)
 
-Sous Windows, travailler dans **WSL2** (Ubuntu) : les serveurs MCP en stdio et `uvx` y sont plus simples, et le `Makefile` y fonctionne. Cloner le dépôt **dans le système de fichiers de WSL** (`~/…`), pas sous `/mnt/c` : c'est plus rapide et cela évite de mélanger un `.venv` Windows et un `.venv` Linux.
+La voie la plus simple pour une machine de démo : tout s'installe avec `winget`, sans WSL ni `make`. Compter environ 30 minutes, dont le téléchargement du modèle (5 Go).
+
+### 1. Les outils
+
+```powershell
+winget install --id Git.Git -e
+winget install --id Python.Python.3.12 -e
+winget install --id Ollama.Ollama -e
+winget install --id astral-sh.uv -e
+winget install --id OpenJS.NodeJS.LTS -e
+```
+
+**Fermer puis rouvrir PowerShell** pour que les nouvelles commandes soient trouvées, puis :
+
+```powershell
+ollama pull qwen3:8b          # le modèle de l'agent (environ 5 Go)
+uvx mcp-server-time --help    # met en cache le serveur MCP de date (aucun téléchargement en démo)
+```
+
+### 2. Le projet
+
+```powershell
+git clone https://github.com/EpitechPGE3-2026/G-AIA-500-LIL-5-1-sensai-4.git sensai
+cd sensai
+git checkout v0.5.0           # la version de la mid-term (sinon rester sur main)
+py -3.12 -m venv .venv
+.venv\Scripts\python -m pip install -r requirements-dev.txt
+```
+
+Le dépôt est privé : au premier `git clone`, une fenêtre de connexion GitHub s'ouvre.
+
+### 3. Les données et l'interface web
+
+```powershell
+.venv\Scripts\python -m sensai seed     # base de démo, date de référence = aujourd'hui
+cd web; npm ci; npm run build; cd ..    # construit web/dist
+```
+
+### 4. Vérifier
+
+```powershell
+.venv\Scripts\python -m sensai chat     # puis /tools : sql_toolbox et time « en ligne », /exit pour quitter
+.venv\Scripts\python -m sensai web      # puis ouvrir http://127.0.0.1:8000
+```
+
+- Pendant une réponse, `ollama ps` doit indiquer le **GPU** : sur le seul processeur, le modèle est trop lent pour une démo.
+- `.venv\Scripts\python -m pytest -m "not ollama and not external"` lance les tests. Sous Windows, 4 tests MCP de fin de processus échouent (`test_close_*`, `test_unsupported_version_is_refused`, `test_missing_base_stops_the_server`) : c'est connu, ils passent sous Linux.
+- Pour la démo mid-term : [`docs/keynote/demo-script-midterm.md`](docs/keynote/demo-script-midterm.md).
+
+## Installation sous WSL2 (développement)
+
+Pour développer, **WSL2** (Ubuntu) est le plus confortable : le `Makefile` y fonctionne, comme sous Linux et macOS. Cloner le dépôt **dans le système de fichiers de WSL** (`~/…`), pas sous `/mnt/c` : c'est plus rapide et cela évite de mélanger un `.venv` Windows et un `.venv` Linux.
 
 ### 1. Outils système
 
@@ -69,17 +120,7 @@ make help           # toutes les commandes
 
 Sans `make` : `python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt`.
 
-### Variante : Windows sans WSL (PowerShell)
-
-Le `Makefile` ne fonctionne pas sous PowerShell. Installer Ollama pour Windows ([ollama.com/download](https://ollama.com/download)) et Python 3.12, puis :
-
-```powershell
-py -3.12 -m venv .venv
-.venv\Scripts\python -m pip install -r requirements-dev.txt
-.venv\Scripts\python -m pytest -m "not ollama and not external"   # = make test
-.venv\Scripts\python -m sensai seed                                 # = make seed
-.venv\Scripts\python -m sensai chat                                 # = make chat
-```
+Sous PowerShell, le `Makefile` ne fonctionne pas : chaque cible `make` correspond à une commande `.venv\Scripts\python -m …` (voir l'installation Windows ci-dessus et le `Makefile`).
 
 ## Configuration
 
