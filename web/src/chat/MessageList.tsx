@@ -7,10 +7,12 @@ const STICK_THRESHOLD_PX = 48
 
 interface Props {
   turns: Turn[]
+  canAsk: boolean
+  onAsk: (question: string) => void
   onShowSteps: (turnId: string) => void
 }
 
-export function MessageList({ turns, onShowSteps }: Props) {
+export function MessageList({ turns, canAsk, onAsk, onShowSteps }: Props) {
   const listRef = useRef<HTMLDivElement>(null)
   const followBottom = useRef(true)
 
@@ -39,7 +41,9 @@ export function MessageList({ turns, onShowSteps }: Props) {
                 Action depuis l'interface : <code>{turn.steps[0]?.tool ?? 'outil'}</code>
               </p>
             )}
-            {turn.origin === 'user' && <AssistantMessage turn={turn} onShowSteps={onShowSteps} />}
+            {turn.origin === 'user' && (
+              <AssistantMessage turn={turn} canAsk={canAsk} onAsk={onAsk} onShowSteps={onShowSteps} />
+            )}
           </section>
         ))}
       </div>
