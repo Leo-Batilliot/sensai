@@ -67,7 +67,8 @@ def evaluate(
             )
         elif classification.kind == FORBIDDEN:
             rules.append(("deny", f"requête interdite : {classification.reason}", "SQL_FORBIDDEN"))
-        elif classification.kind == WRITE:
+        elif classification.kind == WRITE and not (tool.trusted and hints.read_only is True):
+            # A trusted read-only tool (preview_write) cannot keep the change: no confirmation
             operations = ", ".join(classification.operations)
             rules.append(("confirm", f"la requête modifie des données ({operations})", None))
 
