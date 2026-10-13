@@ -69,18 +69,34 @@ def test_parse_error(server: SqlToolboxServer) -> None:
 
 
 def test_tools_are_declared_with_explicit_annotations(server: SqlToolboxServer) -> None:
-    tools = request(server, "tools/list")["result"]["tools"]
-    assert [tool["name"] for tool in tools] == ["list_tables", "describe_table", "run_select"]
-    for tool in tools:
+    tools = {tool["name"]: tool for tool in request(server, "tools/list")["result"]["tools"]}
+    assert list(tools) == [
+        "list_tables",
+        "describe_table",
+        "run_select",
+        "preview_write",
+        "execute_write",
+    ]
+    read_only = {
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    }
+    for name, tool in tools.items():
         assert tool["description"] and tool["inputSchema"]["type"] == "object"
         assert "outputSchema" in tool
         hints = {k: v for k, v in tool["annotations"].items() if k.endswith("Hint")}
-        assert hints == {
-            "readOnlyHint": True,
-            "destructiveHint": False,
-            "idempotentHint": True,
-            "openWorldHint": False,
-        }
+        if name == "execute_write":
+            # The only tool that keeps a change: the policy asks for a confirmation
+            assert hints == {
+                "readOnlyHint": False,
+                "destructiveHint": True,
+                "idempotentHint": False,
+                "openWorldHint": False,
+            }
+        else:
+            assert hints == read_only
 
 
 def test_unknown_tool_and_invalid_params(server: SqlToolboxServer) -> None:

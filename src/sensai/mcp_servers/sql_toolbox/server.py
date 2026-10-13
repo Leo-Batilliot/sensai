@@ -1,7 +1,8 @@
 """sql-toolbox: our MCP server, which exposes business.db to any MCP client.
 
 It contains no LLM. Tools: list_tables, describe_table and run_select (reads only, through
-the SQL guard). The server answers one request at a time, over stdio: one JSON-RPC
+the SQL guard), preview_write (impact of a write, always rolled back) and execute_write
+(the write itself, which the client must have confirmed: it is declared destructive). The server answers one request at a time, over stdio: one JSON-RPC
 message per line on stdin, one answer per line on stdout, logs on stderr only.
 """
 
@@ -29,6 +30,7 @@ from sensai.mcp_servers.sql_toolbox.guard import (
     json_value,
     open_readonly,
 )
+from sensai.mcp_servers.sql_toolbox.preview import AUDIT_TABLE, SqlWriter, WriteBlocked
 
 logger = logging.getLogger(__name__)
 
@@ -68,11 +70,14 @@ class SqlToolboxServer:
         self.guard = SqlGuard(db_path, timeout_ms)
         # The server's own queries (schema, samples): read-only, built from checked names
         self._meta = open_readonly(db_path)
+        self.writer = SqlWriter(db_path, timeout_ms)
         self.tools = _tool_definitions(row_limit)
         self._handlers: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
             "list_tables": self._list_tables,
             "describe_table": self._describe_table,
             "run_select": self._run_select,
+            "preview_write": self._preview_write,
+            "execute_write": self._execute_write,
         }
         self._validators = {
             tool["name"]: jsonschema.Draft202012Validator(tool["inputSchema"])
@@ -82,6 +87,7 @@ class SqlToolboxServer:
     def close(self) -> None:
         self.guard.close()
         self._meta.close()
+        self.writer.close()
 
     # ---- protocol ----------------------------------------------------------------------
 
@@ -236,7 +242,8 @@ class SqlToolboxServer:
             raise ToolError(
                 "SQL_FORBIDDEN",
                 "run_select n'accepte que des lectures (SELECT ou WITH … SELECT) : "
-                "cette requête modifie des données, elle n'a pas été exécutée.",
+                "cette requête modifie des données, elle n'a pas été exécutée. "
+                "Pour modifier, utilisez execute_write (une confirmation sera demandée).",
             )
         if classification.kind == FORBIDDEN:
             raise ToolError("SQL_FORBIDDEN", f"Requête refusée : {classification.reason}.")
@@ -253,6 +260,57 @@ class SqlToolboxServer:
             raise ToolError("SQL_ERROR", f"Erreur SQLite : {exc}") from exc
         logger.debug("run_select: %d rows (%s)", len(rows), arguments.get("purpose", ""))
         return {"columns": columns, "rows": rows, "row_count": len(rows), "truncated": truncated}
+
+    def _preview_write(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        sql = arguments["sql"]
+        operation = self._write_operation(sql, "preview_write")
+        try:
+            return self.writer.preview(sql, operation)
+        except QueryTimeout as exc:
+            raise self._timeout() from exc
+        except sqlite3.Error as exc:
+            raise ToolError("SQL_ERROR", f"Erreur SQLite : {exc}") from exc
+
+    def _execute_write(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        sql = arguments["sql"]
+        operation = self._write_operation(sql, "execute_write")
+        try:
+            result = self.writer.execute(sql, operation)
+        except WriteBlocked as exc:
+            raise ToolError(
+                "SQL_ERROR", f"Écriture refusée par la base, rien n'a été modifié : {exc.reason}."
+            ) from exc
+        except QueryTimeout as exc:
+            raise self._timeout() from exc
+        except sqlite3.Error as exc:
+            raise ToolError("SQL_ERROR", f"Erreur SQLite : {exc}") from exc
+        logger.info("execute_write: %s, %d rows", operation, result["rows_affected"])
+        return result
+
+    def _write_operation(self, sql: str, tool: str) -> str:
+        """The operation of a write (INSERT, UPDATE, DELETE); anything else is refused."""
+        try:
+            classification = self.guard.classify(sql)
+        except sqlite3.Error as exc:
+            raise ToolError("SQL_ERROR", f"Erreur SQLite : {exc}") from exc
+        if classification.kind == READ:
+            raise ToolError(
+                "SQL_FORBIDDEN",
+                f"{tool} n'accepte que des écritures (INSERT, UPDATE, DELETE) : "
+                "pour lire, utilisez run_select.",
+            )
+        if classification.kind == FORBIDDEN:
+            raise ToolError("SQL_FORBIDDEN", f"Requête refusée : {classification.reason}.")
+        if AUDIT_TABLE in classification.tables:
+            raise ToolError("SQL_FORBIDDEN", "Le journal des écritures ne peut pas être modifié.")
+        assert classification.operation is not None
+        return classification.operation
+
+    def _timeout(self) -> ToolError:
+        return ToolError(
+            "TOOL_TIMEOUT",
+            f"Requête interrompue : plus de {self.guard.timeout_ms} ms. Rien n'a été modifié.",
+        )
 
     def _table_names(self) -> list[str]:
         return [
@@ -296,6 +354,32 @@ _READ_ONLY = {
     "destructiveHint": False,
     "idempotentHint": True,
     "openWorldHint": False,
+}
+
+
+_WRITE_INPUT = {
+    "type": "object",
+    "properties": {
+        "sql": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000,
+            "description": "L'instruction d'écriture, une seule.",
+        }
+    },
+    "required": ["sql"],
+    "additionalProperties": False,
+}
+_IMPACT_OUTPUT = {
+    "type": "object",
+    "properties": {
+        "operation": {"enum": ["INSERT", "UPDATE", "DELETE"]},
+        "rows_affected": {"type": "integer"},
+        "per_table": {"type": "object", "additionalProperties": {"type": "integer"}},
+        "sample": {"type": "array", "items": {"type": "object"}},
+        "blocked": {"type": "array", "items": {"type": "object"}},
+    },
+    "required": ["operation", "rows_affected", "per_table", "sample", "blocked"],
 }
 
 
@@ -407,5 +491,43 @@ def _tool_definitions(row_limit: int) -> list[dict[str, Any]]:
                 "required": ["columns", "rows", "row_count", "truncated"],
             },
             "annotations": {"title": "Lire la base", **_READ_ONLY},
+        },
+        {
+            "name": "preview_write",
+            "description": (
+                "Calcule l'effet d'une écriture (INSERT, UPDATE ou DELETE) sans la garder : "
+                "lignes visées et nombre de lignes en plus ou en moins par table, suppressions "
+                "en cascade comprises. La base n'est jamais modifiée."
+            ),
+            "inputSchema": _WRITE_INPUT,
+            "outputSchema": _IMPACT_OUTPUT,
+            "annotations": {"title": "Prévoir une écriture", **_READ_ONLY},
+        },
+        {
+            "name": "execute_write",
+            "description": (
+                "Exécute une écriture (INSERT, UPDATE ou DELETE, dialecte SQLite) sur la base de "
+                "l'entreprise. Une confirmation de l'utilisateur est demandée avant : si elle "
+                "est refusée, ne pas réessayer. Une seule instruction ; le schéma et le journal "
+                "des écritures ne peuvent pas être modifiés."
+            ),
+            "inputSchema": _WRITE_INPUT,
+            "outputSchema": {
+                "type": "object",
+                "properties": {
+                    "operation": {"enum": ["INSERT", "UPDATE", "DELETE"]},
+                    "rows_affected": {"type": "integer"},
+                    "per_table": {"type": "object", "additionalProperties": {"type": "integer"}},
+                    "audit_id": {"type": "integer"},
+                },
+                "required": ["operation", "rows_affected", "per_table", "audit_id"],
+            },
+            "annotations": {
+                "title": "Modifier la base",
+                "readOnlyHint": False,
+                "destructiveHint": True,
+                "idempotentHint": False,
+                "openWorldHint": False,
+            },
         },
     ]
