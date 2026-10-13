@@ -1,6 +1,10 @@
-import Markdown from 'react-markdown'
+import { useMemo } from 'react'
+import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { confirmationOutcome } from '../hitl/confirmation'
+import { MARK_PREFIX, highlight } from '../judge/judge'
+import { JudgeBadge } from '../judge/JudgeBadge'
+import { KeyFigures } from '../judge/KeyFigures'
 import { ResultTable } from '../results/ResultTable'
 import { asRowSet } from '../results/table'
 import type { Turn } from '../session/reducer'
@@ -16,15 +20,52 @@ function activity(turn: Turn): string | null {
   return null
 }
 
+// The final answer, with the passages checked by the judge highlighted (WEB-09)
+function Answer({ turn, streaming }: { turn: Turn; streaming: boolean }) {
+  const { content, judge } = turn
+  const highlighted = useMemo(
+    () => (judge === null || judge === 'pending' || streaming ? null : highlight(content, judge)),
+    [content, judge, streaming],
+  )
+  const components = useMemo<Components | undefined>(() => {
+    if (highlighted === null) return undefined
+    return {
+      a({ href, children }) {
+        const mark = href?.startsWith(MARK_PREFIX)
+          ? highlighted.marks[Number(href.slice(MARK_PREFIX.length))]
+          : undefined
+        if (mark === undefined) return <a href={href}>{children}</a>
+        return (
+          <mark className={`claim claim-${mark.kind}`} title={mark.note}>
+            {children}
+          </mark>
+        )
+      },
+    }
+  }, [highlighted])
+
+  return (
+    <div className="markdown">
+      <Markdown remarkPlugins={[remarkGfm]} components={components}>
+        {highlighted?.markdown ?? content}
+      </Markdown>
+      {streaming && <span className="cursor" aria-hidden="true" />}
+    </div>
+  )
+}
+
 interface Props {
   turn: Turn
+  canAsk: boolean
+  onAsk: (question: string) => void
   onShowSteps: (turnId: string) => void
 }
 
-export function AssistantMessage({ turn, onShowSteps }: Props) {
+export function AssistantMessage({ turn, canAsk, onAsk, onShowSteps }: Props) {
   const streaming = turn.status === 'running'
   const label = activity(turn)
   const outcome = confirmationOutcome(turn)
+  const report = turn.judge !== null && turn.judge !== 'pending' ? turn.judge.report : null
 
   return (
     <article className="assistant" aria-busy={streaming}>
@@ -32,10 +73,15 @@ export function AssistantMessage({ turn, onShowSteps }: Props) {
         S
       </span>
       <div className="assistant-body">
-        {turn.steps.length > 0 && (
-          <button type="button" className="steps-link" onClick={() => onShowSteps(turn.id)}>
-            <span aria-hidden="true">▶</span> {stepsSummary(turn)}
-          </button>
+        {(turn.judge !== null || turn.steps.length > 0) && (
+          <div className="message-meta">
+            {turn.judge !== null && <JudgeBadge judge={turn.judge} />}
+            {turn.steps.length > 0 && (
+              <button type="button" className="steps-link" onClick={() => onShowSteps(turn.id)}>
+                <span aria-hidden="true">▶</span> {stepsSummary(turn)}
+              </button>
+            )}
+          </div>
         )}
         {label !== null && (
           <p className="activity" role="status">
@@ -48,12 +94,7 @@ export function AssistantMessage({ turn, onShowSteps }: Props) {
             <p>{turn.thinking}</p>
           </details>
         )}
-        {turn.content !== '' && (
-          <div className="markdown">
-            <Markdown remarkPlugins={[remarkGfm]}>{turn.content}</Markdown>
-            {streaming && <span className="cursor" aria-hidden="true" />}
-          </div>
-        )}
+        {turn.content !== '' && <Answer turn={turn} streaming={streaming} />}
         {outcome !== null && (
           // Kept in the message: the toast disappears, this stays
           <p className={`hitl-outcome tone-${outcome.tone}`}>
@@ -77,6 +118,7 @@ export function AssistantMessage({ turn, onShowSteps }: Props) {
             </div>
           )
         })}
+        {report !== null && <KeyFigures report={report} canAsk={canAsk} onAsk={onAsk} />}
       </div>
     </article>
   )

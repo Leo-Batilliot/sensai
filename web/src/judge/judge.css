@@ -1,0 +1,246 @@
+/* Judge badge, highlights and key figures (docs/keynote/ui/BadgeJuge, FicheIndicateurs) */
+.message-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.judge-badge {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+button.judge-badge {
+  cursor: pointer;
+}
+
+.judge-badge.tone-pending {
+  color: var(--ink-muted);
+  border-style: dashed;
+}
+
+.judge-badge.tone-ok {
+  color: var(--ok);
+  border-color: var(--ok);
+  background: var(--ok-bg);
+}
+
+.judge-badge.tone-warn {
+  color: var(--warn);
+  border-color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.judge-badge.tone-bad {
+  color: var(--bad);
+  border-color: var(--bad);
+  background: var(--bad-bg);
+}
+
+.judge-badge.tone-unavailable {
+  color: var(--ink-muted);
+  border-style: dashed;
+}
+
+.judge-detail {
+  order: 1; /* after the steps link, on its own line */
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.judge-detail p {
+  margin: 0;
+}
+
+.claims {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.claim-row {
+  display: flex;
+  gap: var(--space-2);
+  overflow-wrap: anywhere;
+}
+
+.claim-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.claim-supported .claim-icon {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.claim-contradicted .claim-icon {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+
+.claim-unverifiable .claim-icon {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.claim-contradicted strong {
+  color: var(--bad);
+}
+
+.judge-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.judge-metrics div {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.judge-metrics dt {
+  color: var(--ink-muted);
+}
+
+.judge-metrics dt::after {
+  content: ' :';
+}
+
+.judge-metrics dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* Highlights in the answer: never colour alone, the underline style differs too */
+mark.claim {
+  background: none;
+  color: inherit;
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+mark.claim-contradicted {
+  background: var(--bad-bg);
+  text-decoration-color: var(--bad);
+  text-decoration-style: wavy;
+}
+
+mark.claim-unverifiable {
+  text-decoration-color: var(--warn);
+  text-decoration-style: dotted;
+}
+
+mark.claim-supported {
+  text-decoration-color: var(--ok);
+  text-decoration-thickness: 1px;
+}
+
+/* Key figures */
+.key-figures {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.key-figures h3 {
+  margin: 0 0 var(--space-1);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kpi-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.kpi-label {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.kpi-value {
+  font-size: 20px;
+  line-height: 28px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-source {
+  font-size: 11px;
+  color: var(--ok);
+  overflow-wrap: anywhere;
+}
+
+.kpi-source.computed {
+  color: var(--warn);
+}
+
+.kpi-source code {
+  font-family: var(--font-mono);
+}
+
+.kpi-notes ul {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: 13px;
+}
+
+.followup-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.followup-buttons .example {
+  font-size: 13px;
+}

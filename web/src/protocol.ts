@@ -113,12 +113,36 @@ export interface JudgeStarted extends Common {
   type: 'judge_started'
 }
 
+// What the judge model writes (docs/contracts/schemas/judge_report.v1.json)
+export interface Claim {
+  text: string // copied word for word from the answer, Markdown included
+  verdict: 'supported' | 'contradicted' | 'unverifiable'
+  evidence: string
+  expected_value: string | null
+}
+
+export interface KeyFigure {
+  label: string
+  value: number
+  unit: string
+  source_column: string | null
+}
+
+export interface JudgeReportBody {
+  claims: Claim[]
+  relevance: number // 1 to 5
+  sql_answers_question: boolean
+  key_figures: KeyFigure[]
+  assumptions: string[]
+  followups: string[]
+}
+
 export interface JudgeReport extends Common {
   type: 'judge_report'
   badge: Badge
   scores: { faithfulness: number | null }
   numeric_check: { status: 'ok' | 'mismatch' | 'inconclusive'; unmatched: string[] }
-  report: Record<string, unknown> | null // schemas/judge_report.v1.json, used by WEB-09
+  report: JudgeReportBody | null // null: invalid report, judge timeout or unreachable
   duration_ms: number
 }
 
