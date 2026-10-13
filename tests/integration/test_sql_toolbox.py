@@ -38,8 +38,18 @@ async def client(business_db: Path) -> AsyncIterator[McpClient]:
 async def test_tools_over_stdio(client: McpClient) -> None:
     assert client.server_info is not None and client.server_info.name == "sql-toolbox"
     tools = {tool.name: tool for tool in await client.list_tools()}
-    assert set(tools) == {"list_tables", "describe_table", "run_select"}
-    assert all(tool.annotations.read_only for tool in tools.values())
+    assert set(tools) == {
+        "list_tables",
+        "describe_table",
+        "run_select",
+        "preview_write",
+        "execute_write",
+    }
+    # Only execute_write keeps a change
+    assert [name for name, tool in tools.items() if not tool.annotations.read_only] == [
+        "execute_write"
+    ]
+    assert tools["execute_write"].annotations.destructive is True
 
     tables = (await client.call_tool("list_tables", {})).structured
     assert tables is not None and len(tables["tables"]) == 9

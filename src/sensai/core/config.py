@@ -116,7 +116,8 @@ def _default_mcp_servers() -> dict[str, McpServerConfig]:
     return {
         "sql_toolbox": McpServerConfig(
             command="python",
-            args=("-m", "sensai.mcp_servers.sql_toolbox", "--db", "data/business.db"),
+            # The database comes from [database] business_path (added by the McpManager)
+            args=("-m", "sensai.mcp_servers.sql_toolbox"),
         ),
         "time": McpServerConfig(
             command="uvx", args=("mcp-server-time", "--local-timezone=Europe/Paris")

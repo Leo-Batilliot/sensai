@@ -13,6 +13,7 @@ import logging
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from sensai.core.config import Config, McpServerConfig
@@ -173,10 +174,26 @@ def _command(server: McpServerConfig) -> str:
 
 
 def _own_server(server: McpServerConfig, config: Config) -> McpServerConfig:
-    """sql_toolbox gets [database] row_limit and query_timeout_ms, unless already given."""
+    """sql_toolbox gets its database and limits from [database], unless already given.
+
+    [database] business_path is the only place that says where the database is: the seed,
+    the web server and the confirmation policy read it too. A --db written in the server's
+    arguments still wins, with a warning when it points elsewhere.
+    """
     args = list(server.args)
     if SQL_TOOLBOX_MODULE not in args:
         return server
+    business_path = config.database.business_path
+    if "--db" not in args:
+        args += ["--db", str(business_path)]
+    else:
+        given = args[args.index("--db") + 1] if args.index("--db") + 1 < len(args) else ""
+        if Path(given).resolve() != Path(business_path).resolve():
+            logger.warning(
+                "sql_toolbox lit %s alors que [database] business_path vaut %s",
+                given,
+                business_path,
+            )
     if "--row-limit" not in args:
         args += ["--row-limit", str(config.database.row_limit)]
     if "--timeout-ms" not in args:

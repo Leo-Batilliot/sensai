@@ -89,17 +89,15 @@ class SqlGuard:
     """Classifies statements and runs reads on one database, with a time limit."""
 
     def __init__(self, path: str | Path, timeout_ms: int) -> None:
+        self.path = path
         self.timeout_ms = timeout_ms
         self._actions: list[tuple[int, str | None, str | None]] = []
-        self._explain = open_readonly(path)
-        self._explain.set_authorizer(self._collect)
         self._reader = open_readonly(path)
         self._reader.set_authorizer(_allow_reads_only)
         self._deadline = math.inf
         self._reader.set_progress_handler(self._past_deadline, PROGRESS_STEPS)
 
     def close(self) -> None:
-        self._explain.close()
         self._reader.close()
 
     def classify(self, sql: str) -> Classification:
@@ -108,14 +106,22 @@ class SqlGuard:
         if not keyword:
             return _forbidden("requête vide")
         self._actions.clear()
+        # A fresh connection each time: a connection caches its prepared statements, and
+        # the authorizer is only called when a statement is prepared. With a cache, the
+        # same SQL classified twice would show no action the second time (and
+        # cached_statements=0 does not disable the cache before Python 3.12).
+        explain = open_readonly(self.path)
         try:
-            self._explain.execute("EXPLAIN " + sql)
+            explain.set_authorizer(self._collect)
+            explain.execute("EXPLAIN " + sql)
         except (sqlite3.ProgrammingError, sqlite3.Warning) as exc:
             # "You can only execute one statement at a time": ProgrammingError from
             # Python 3.12, sqlite3.Warning before
             if "one statement" in str(exc):
                 return _forbidden("une seule instruction par requête")
             raise
+        finally:
+            explain.close()
         return _classify_actions(keyword, self._actions)
 
     def run_read(self, sql: str, max_rows: int) -> tuple[list[str], list[list[Any]], bool]:

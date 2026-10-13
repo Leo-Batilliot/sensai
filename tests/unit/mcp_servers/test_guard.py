@@ -205,3 +205,11 @@ def test_json_value() -> None:
     assert json_value(1.5) == 1.5
     assert json_value("é") == "é"
     assert json_value(None) is None
+
+
+@pytest.mark.parametrize(
+    "sql", ["DELETE FROM clients", "SELECT * FROM clients", "DROP TABLE clients"]
+)
+def test_the_same_statement_twice_gets_the_same_classification(guard: SqlGuard, sql: str) -> None:
+    # Regression: a cached prepared statement does not call the authorizer again
+    assert guard.classify(sql) == guard.classify(sql)

@@ -183,3 +183,15 @@ def test_database_classifier(tmp_path: Path) -> None:
     finally:
         classify.close()
         classify.close()  # closing twice is harmless
+
+
+def test_a_trusted_preview_needs_no_confirmation() -> None:
+    preview = tool("sql_toolbox__preview_write")  # trusted, readOnlyHint: true
+    write = classifier(WRITE, ("DELETE",))
+    assert evaluate(preview, {"sql": "DELETE FROM clients"}, CONFIG, write).action == "allow"
+    # The same claim from a third-party server is not believed
+    untrusted = tool("other__preview_write", server="other", trusted=False)
+    assert evaluate(untrusted, {"sql": "DELETE FROM clients"}, CONFIG, write).action == "confirm"
+    # And the real write still asks
+    execute = tool("sql_toolbox__execute_write", annotations=DESTRUCTIVE)
+    assert evaluate(execute, {"sql": "DELETE FROM clients"}, CONFIG, write).action == "confirm"
