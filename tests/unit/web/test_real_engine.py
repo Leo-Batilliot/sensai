@@ -169,6 +169,13 @@ async def test_ollama_down_gives_no_model_instead_of_an_error(config: Config) ->
     assert await backend.ollama_available() is False
 
 
+async def test_memory_snapshot_reads_the_store(started: RealBackend, config: Config) -> None:
+    assert (await started.memory_snapshot())["facts"] == []
+    started._services.store.add_fact(FACT, "preference")
+    facts = (await started.memory_snapshot())["facts"]
+    assert [fact["content"] for fact in facts] == [FACT]
+
+
 # --- over the WebSocket -----------------------------------------------------------------
 
 

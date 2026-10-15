@@ -59,9 +59,10 @@ interface Props {
   canAsk: boolean
   onAsk: (question: string) => void
   onShowSteps: (turnId: string) => void
+  onShowMemory: () => void
 }
 
-export function AssistantMessage({ turn, canAsk, onAsk, onShowSteps }: Props) {
+export function AssistantMessage({ turn, canAsk, onAsk, onShowSteps, onShowMemory }: Props) {
   const streaming = turn.status === 'running'
   const label = activity(turn)
   const outcome = confirmationOutcome(turn)
@@ -82,6 +83,23 @@ export function AssistantMessage({ turn, canAsk, onAsk, onShowSteps }: Props) {
               </button>
             )}
           </div>
+        )}
+        {turn.context.length > 0 && (
+          // What was given to the model, not what it applied (memory.md §4)
+          <p className="context-chips">
+            <span className="muted">Contexte mémoire fourni :</span>
+            {turn.context.map((entry) => (
+              <button
+                key={`${entry.kind}:${entry.ref}`}
+                type="button"
+                className="chip chip-small"
+                title="Voir la mémoire de l'agent"
+                onClick={onShowMemory}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </p>
         )}
         {label !== null && (
           <p className="activity" role="status">

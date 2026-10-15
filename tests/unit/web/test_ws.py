@@ -225,6 +225,36 @@ def test_ui_action_deletes_after_confirmation(client: TestClient) -> None:
     assert events[-1]["usage"] is None
 
 
+def test_the_memory_panel_reads_what_the_agent_remembers(client: TestClient) -> None:
+    # Act 2: the mock replays glossary_define and keeps its memory in step (GET /api/memory)
+    assert client.get("/api/memory").json()["glossary"] == []
+    with client.websocket_connect(f"/ws/{SESSION}") as ws:
+        ws.receive_json()
+        ws.send_json({"type": "user_message", "content": "Un client rentable, c'est… Retiens-le."})
+        until(ws, of_type("message_done"))
+    memory = client.get("/api/memory").json()
+    assert [entry["ref"] for entry in memory["glossary"]] == ["client rentable"]
+    assert set(memory) == {"glossary", "entities", "relations", "facts"}
+
+
+def test_deleting_from_the_panel_shows_the_cascade_and_empties_the_memory(
+    client: TestClient,
+) -> None:
+    entity = client.get("/api/memory").json()["entities"][0]
+    with client.websocket_connect(f"/ws/{SESSION}") as ws:
+        ws.receive_json()
+        arguments = {"kind": "entity", "ref": entity["ref"]}
+        ws.send_json({"type": "ui_action", "tool": "memory_delete", "arguments": arguments})
+        required = until(ws, of_type("confirmation_required"))[-1]
+        # The real preview of the store: the entity takes its attached fact with it
+        assert required["impact"]["per_table"] == {"entities": -1, "facts": -1}
+        ws.send_json({"type": "confirm", "action_id": required["action_id"], "decision": "approve"})
+        until(ws, of_type("message_done"))
+    memory = client.get("/api/memory").json()
+    assert memory["entities"] == []
+    assert [fact["content"] for fact in memory["facts"]] == ["Claire veut les montants en k€"]
+
+
 # --- protocol errors ----------------------------------------------------------------------
 
 

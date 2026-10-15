@@ -56,6 +56,10 @@ def create_app(
     async def models() -> dict[str, Any]:
         return {"default": config.ollama.model, "models": await backend.list_models()}
 
+    @app.get("/api/memory")
+    async def memory() -> dict[str, list[dict[str, Any]]]:
+        return await backend.memory_snapshot()
+
     install_websocket(app, app.state.sessions)
 
     if (static_dir / "index.html").is_file():

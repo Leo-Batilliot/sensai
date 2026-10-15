@@ -3,6 +3,7 @@ import './App.css'
 import './chat/chat.css'
 import './hitl/hitl.css'
 import './judge/judge.css'
+import './memory/memory.css'
 import './results/results.css'
 import './sql/sql.css'
 import './statusbar/statusbar.css'
@@ -13,14 +14,16 @@ import { MessageList } from './chat/MessageList'
 import { ConfirmationModal } from './hitl/ConfirmationModal'
 import { pendingConfirmation } from './hitl/confirmation'
 import { useOutcomeToast } from './hitl/useOutcomeToast'
+import { MemoryPanel } from './memory/MemoryPanel'
+import { memoryVersion, recentChanges } from './memory/memory'
+import { useMemory } from './memory/useMemory'
 import { useSession } from './session/useSession'
 import { StatusBar } from './statusbar/StatusBar'
 import { Timeline } from './timeline/Timeline'
 
 type SideTab = 'timeline' | 'memory'
 
-// Layout of the main screen (docs/keynote/ui/EcranPrincipal). Still to come: memory panel
-// (WEB-11).
+// Layout of the main screen (docs/keynote/ui/EcranPrincipal).
 export default function App() {
   const session = useSession()
   const { state } = session
@@ -31,6 +34,8 @@ export default function App() {
   const { toast, dismiss: dismissToast } = useOutcomeToast(state.turns)
   const pinned = state.turns.findIndex((turn) => turn.id === pinnedTurnId)
   const timelineIndex = pinned !== -1 ? pinned : state.turns.length - 1
+  const memory = useMemory(session.connected, memoryVersion(state.turns))
+  const canAct = session.connected && !session.busy
 
   const ask = (content: string) => {
     setPinnedTurnId(null) // the timeline follows the new turn
@@ -84,6 +89,7 @@ export default function App() {
             canAsk={session.connected && !session.busy}
             onAsk={ask}
             onShowSteps={showSteps}
+            onShowMemory={() => setTab('memory')}
           />
         )}
 
@@ -138,9 +144,12 @@ export default function App() {
           {tab === 'timeline' ? (
             <Timeline turn={state.turns[timelineIndex] ?? null} number={timelineIndex + 1} />
           ) : (
-            <p className="muted">
-              Le glossaire, les entités et les faits retenus par l'agent s'afficheront ici.
-            </p>
+            <MemoryPanel
+              memory={memory}
+              recent={recentChanges(state.turns)}
+              canAct={canAct}
+              onAction={session.uiAction}
+            />
           )}
         </div>
       </aside>

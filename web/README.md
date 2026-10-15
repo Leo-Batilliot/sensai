@@ -46,6 +46,7 @@ Le serveur de développement de Vite redirige `/api` et `/ws` vers le backend (`
 | `timeline/` | Étapes de l'agent dans le panneau de droite |
 | `hitl/` | Modale de confirmation d'une action destructive, notification après la décision |
 | `statusbar/` | Barre d'état : sélecteur de modèle, serveurs MCP et leur état, jauge de contexte |
+| `memory/` | Panneau Mémoire : glossaire, entités, relations, faits ; modifier et supprimer (avec confirmation) |
 | `judge/` | Badge du juge et son détail, surlignage des affirmations, cartes de chiffres clés et relances |
 | `shared/` | Composants communs (bouton Copier) |
 | `test/` | Outils des tests seulement (lecture des fixtures), exclus du build |

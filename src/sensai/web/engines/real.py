@@ -159,6 +159,9 @@ class RealBackend:
             for name in names
         ]
 
+    async def memory_snapshot(self) -> dict[str, list[dict[str, Any]]]:
+        return self._services.store.dump()
+
     async def ollama_available(self) -> bool:
         try:
             await self._client.list_models()
