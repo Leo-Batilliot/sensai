@@ -1,0 +1,147 @@
+/* Status bar controls (docs/keynote/ui/BarreEtat) */
+.statusbar {
+  position: relative;
+  z-index: 2; /* the servers menu opens over the conversation */
+}
+
+.statusbar-items {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Model selector: the native select keeps keyboard and screen reader support */
+.model-select {
+  gap: var(--space-1);
+  padding-right: 4px;
+}
+
+.model-select select {
+  /* As wide as the chosen model, not as the longest one of the list */
+  field-sizing: content;
+  max-width: 220px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.model-select select:disabled {
+  cursor: default;
+}
+
+/* MCP servers: a menu that says which server is down and why */
+.servers-menu {
+  position: relative;
+}
+
+.servers-menu summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.servers-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.servers-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: max-content;
+  max-width: min(420px, calc(100vw - 32px));
+  margin: 0;
+  padding: var(--space-3);
+  list-style: none;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  font-size: 13px;
+}
+
+.servers-list li {
+  display: grid;
+  grid-template-columns: 10px auto 1fr;
+  align-items: center;
+  gap: 4px var(--space-2);
+}
+
+.server-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--ink-muted);
+}
+
+.server-dot.up {
+  background: var(--ok);
+}
+
+.server-dot.down {
+  background: var(--bad);
+}
+
+.server-name {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.server-up {
+  color: var(--ok);
+}
+
+.server-down {
+  color: var(--bad);
+}
+
+.server-error {
+  grid-column: 2 / -1;
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Context gauge: the colour and the word "dépassé" both say when it overflows */
+.context-gauge {
+  gap: var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.gauge-bar {
+  display: inline-block;
+  width: 48px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--fill-2);
+}
+
+.gauge-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+}
+
+.gauge-warn {
+  color: var(--warn);
+  border-color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.gauge-warn .gauge-bar > span {
+  background: var(--warn);
+}
+
+.gauge-over {
+  color: var(--bad);
+  border-color: var(--bad);
+  background: var(--bad-bg);
+}
+
+.gauge-over .gauge-bar > span {
+  background: var(--bad);
+}
