@@ -3,7 +3,7 @@ PYTHON ?= python3
 PY     := $(VENV)/bin/python
 TAG    ?= dev
 
-.PHONY: help install test test-all lint format chat web web-mock web-build seed eval clean
+.PHONY: help install test test-all lint format ci chat web web-mock web-build seed eval clean
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  make %-10s %s\n", $$1, $$2}'
@@ -24,6 +24,9 @@ test-all: ## Run all tests, including real Ollama and external MCP servers
 lint: ## Check lint and formatting (same as CI)
 	$(PY) -m ruff check .
 	$(PY) -m ruff format --check .
+
+ci: ## Run the CI locally: lint + tests on Python 3.10 and 3.12 in fresh venvs (needs uv)
+	bash scripts/ci_local.sh
 
 format: ## Fix lint issues and reformat
 	$(PY) -m ruff check --fix .

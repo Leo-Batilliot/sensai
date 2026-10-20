@@ -273,7 +273,10 @@ make test           # comme la CI : sans Ollama ni serveurs externes
 make test-all       # tout, y compris les tests sur un vrai Ollama et sur uvx mcp-server-time
 make lint           # ruff check + ruff format --check
 make format         # corrige ce qui peut l'être
+make ci             # la CI en local : lint + tests sur Python 3.10 et 3.12, environnements neufs (il faut uv)
 ```
+
+`make ci` remplace la CI GitHub tant que le budget Actions de l'organisation est épuisé (décision D-08) : environ 2 minutes, et un résumé à coller dans la PR à la fin. `CI_PYTHONS=3.12 make ci` ne teste qu'une version, pour aller plus vite entre deux essais.
 
 ## Dépannage
 
@@ -303,5 +306,5 @@ make format         # corrige ce qui peut l'être
 
 - Une branche par tâche du planning : `feat/<ID>-<slug>` (ex. `feat/CORE-02-ollama-client`), `fix/…`, `docs/…`
 - Commits : `[Initiales][chemin] type: ID, résumé` (ex. `[G.WI][src/sensai/core] feat: CORE-06, tool-calling loop`)
-- PR vers `main`, une relecture obligatoire, CI verte
+- PR vers `main`, une relecture obligatoire, CI verte. Tant que la CI GitHub ne démarre pas (budget Actions épuisé) : lancer `make ci` sur le dernier commit et coller son résumé dans la PR ; le relecteur vérifie que le commit cité est bien le dernier
 - Commentaires du code en anglais, textes affichés en français
