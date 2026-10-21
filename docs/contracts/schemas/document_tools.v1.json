@@ -1,0 +1,64 @@
+{
+  "$comment": "Outils natifs de la note du comité (M4), au format d'une réponse MCP tools/list. Contrat : docs/contracts/memory.md §7. Propriétaire : P3. document_restore est réservé à l'interface (ui_action) : il n'est jamais proposé au modèle.",
+  "version": 1,
+  "tools": [
+    {
+      "name": "document_read",
+      "description": "Lit la note du comité en cours de rédaction. Sans argument : le plan (sections, titres, révision courante). Avec section_id : le contenu d'une section. À appeler avant de modifier une section, pour connaître sa révision.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "section_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$", "description": "Identifiant de la section, par exemple « rentabilite »."}
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {"title": "Lire la note", "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+    },
+    {
+      "name": "document_patch",
+      "description": "Modifie une seule section de la note du comité : remplace son contenu (replace), ajoute à la fin (append) ou crée une nouvelle section après elle (insert_after, title obligatoire). Ne réécris jamais toute la note. base_revision est la révision lue avec document_read.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "section_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$", "description": "Section modifiée ; pour insert_after, la section après laquelle la nouvelle est créée."},
+          "op": {"type": "string", "enum": ["replace", "append", "insert_after"], "description": "replace : nouveau contenu de la section ; append : ajout en fin de section ; insert_after : nouvelle section."},
+          "content": {"type": "string", "maxLength": 4000, "description": "Texte Markdown de la section (ou de l'ajout), 4 000 caractères au plus."},
+          "title": {"type": "string", "minLength": 1, "maxLength": 120, "description": "Titre de la nouvelle section : obligatoire pour insert_after, ignoré sinon."},
+          "base_revision": {"type": "integer", "minimum": 0, "description": "Révision de la note sur laquelle porte la modification."}
+        },
+        "required": ["section_id", "op", "content", "base_revision"],
+        "additionalProperties": false
+      },
+      "annotations": {"title": "Modifier une section de la note", "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}
+    },
+    {
+      "name": "document_delete_section",
+      "description": "Supprime une section de la note du comité. Demande une confirmation à l'utilisateur. base_revision est la révision lue avec document_read.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "section_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$", "description": "Section à supprimer."},
+          "base_revision": {"type": "integer", "minimum": 0, "description": "Révision de la note sur laquelle porte la suppression."}
+        },
+        "required": ["section_id", "base_revision"],
+        "additionalProperties": false
+      },
+      "annotations": {"title": "Supprimer une section de la note", "readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}
+    },
+    {
+      "name": "document_restore",
+      "ui_only": true,
+      "description": "Revient à une révision antérieure de la note : crée une nouvelle révision dont le contenu est celui de la révision donnée. Réservé au panneau Note (ui_action).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "revision": {"type": "integer", "minimum": 0, "description": "Révision à restaurer."}
+        },
+        "required": ["revision"],
+        "additionalProperties": false
+      },
+      "annotations": {"title": "Restaurer une révision de la note", "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}
+    }
+  ]
+}
