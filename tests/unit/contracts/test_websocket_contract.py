@@ -142,6 +142,15 @@ def test_websocket_examples_follow_the_contract() -> None:
         {"type": "set_config", "patch": {}},
         {"type": "launch_missiles"},
         {"type": "cancel", "id": ""},
+        # v1.1: exactly one of option_id and text (§4.8)
+        {"type": "answer", "question_id": "q-1"},
+        {"type": "answer", "question_id": "q-1", "option_id": None, "text": None},
+        {"type": "answer", "question_id": "q-1", "option_id": "trimestre", "text": "ce trimestre"},
+        {"type": "answer", "question_id": "q-1", "text": "  "},
+        {"type": "answer", "question_id": "q-1", "text": "x" * 501},
+        {"type": "set_persona", "persona": ""},
+        {"type": "unshare"},
+        {"type": "run_schedule"},
     ],
 )
 def test_client_schema_rejects_invalid_messages(message: dict[str, Any]) -> None:
@@ -151,3 +160,38 @@ def test_client_schema_rejects_invalid_messages(message: dict[str, Any]) -> None
 def test_client_schema_ignores_unknown_fields() -> None:
     # websocket.md §3: unknown fields are ignored, for forward compatibility
     assert CLIENT.is_valid({"type": "cancel", "id": "c-1", "future_field": True})
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"type": "answer", "question_id": "q-1", "option_id": "trimestre"},
+        {"type": "answer", "question_id": "q-1", "option_id": None, "text": "Les deux"},
+        {"type": "share"},
+    ],
+)
+def test_client_schema_accepts_the_v1_1_messages(message: dict[str, Any]) -> None:
+    assert CLIENT.is_valid(message)
+
+
+def schedule_run_finished(**fields: Any) -> dict[str, Any]:
+    message = {
+        "type": "schedule_run_finished",
+        "session_id": "s-1",
+        "ts": 1760433760.0,
+        "schedule_id": "point-lundi",
+        "run_id": "r-12",
+        "status": "ok",
+        "badge": None,
+        "report_path": "reports/planifie/point-lundi-2026-10-26.md",
+        "error": None,
+    }
+    return {**message, **fields}
+
+
+def test_a_failed_scheduled_run_has_an_error_and_no_report() -> None:
+    failure = {"code": "OLLAMA_UNAVAILABLE", "message": "Ollama ne répond pas."}
+    assert SERVER.is_valid(schedule_run_finished(status="error", report_path=None, error=failure))
+    assert not SERVER.is_valid(schedule_run_finished(status="error", report_path=None))
+    assert not SERVER.is_valid(schedule_run_finished(status="error", error=failure))
+    assert not SERVER.is_valid(schedule_run_finished(error=failure))

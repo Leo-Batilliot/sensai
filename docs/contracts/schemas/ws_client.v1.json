@@ -2,11 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "ws_client.v1",
   "title": "Message client → serveur (websocket.md §4)",
-  "description": "Structure seulement. Le serveur répond INVALID_MESSAGE si ce schéma échoue. Les règles de sens sont vérifiées après : liste blanche de ui_action (UI_ACTION_FORBIDDEN), bornes de set_config (INVALID_CONFIG), modèle existant (MODEL_NOT_FOUND). Les champs inconnus sont ignorés (§3).",
+  "description": "Structure seulement. Le serveur répond INVALID_MESSAGE si ce schéma échoue. Les règles de sens sont vérifiées après : liste blanche de ui_action (UI_ACTION_FORBIDDEN), bornes de set_config (INVALID_CONFIG), modèle existant (MODEL_NOT_FOUND), question, profil, lien ou tâche existants (v1.1). Les champs inconnus sont ignorés (§3).",
   "type": "object",
   "required": ["type"],
   "properties": {
-    "type": {"enum": ["user_message", "ui_action", "confirm", "cancel", "reset", "set_model", "set_config"]},
+    "type": {"enum": ["user_message", "ui_action", "confirm", "cancel", "reset", "set_model", "set_config",
+                      "answer", "set_persona", "share", "unshare", "run_schedule"]},
     "id": {"$ref": "#/$defs/correlation_id"}
   },
   "oneOf": [
@@ -16,7 +17,12 @@
     {"$ref": "#/$defs/cancel"},
     {"$ref": "#/$defs/reset"},
     {"$ref": "#/$defs/set_model"},
-    {"$ref": "#/$defs/set_config"}
+    {"$ref": "#/$defs/set_config"},
+    {"$ref": "#/$defs/answer"},
+    {"$ref": "#/$defs/set_persona"},
+    {"$ref": "#/$defs/share"},
+    {"$ref": "#/$defs/unshare"},
+    {"$ref": "#/$defs/run_schedule"}
   ],
   "$defs": {
     "correlation_id": {
@@ -69,6 +75,49 @@
       "properties": {
         "type": {"const": "set_config"},
         "patch": {"type": "object", "minProperties": 1}
+      }
+    },
+    "answer": {
+      "description": "v1.1 (X4) : exactement un de option_id et text est non nul (§4.8)",
+      "required": ["type", "question_id"],
+      "properties": {
+        "type": {"const": "answer"},
+        "question_id": {"type": "string", "minLength": 1},
+        "option_id": {"type": ["string", "null"], "minLength": 1},
+        "text": {"type": ["string", "null"], "maxLength": 500, "pattern": "\\S"}
+      },
+      "oneOf": [
+        {"required": ["option_id"], "properties": {"option_id": {"type": "string"}, "text": {"type": "null"}}},
+        {"required": ["text"], "properties": {"text": {"type": "string"}, "option_id": {"type": "null"}}}
+      ]
+    },
+    "set_persona": {
+      "description": "v1.1 (A5)",
+      "required": ["type", "persona"],
+      "properties": {
+        "type": {"const": "set_persona"},
+        "persona": {"type": "string", "minLength": 1}
+      }
+    },
+    "share": {
+      "description": "v1.1 (X3)",
+      "required": ["type"],
+      "properties": {"type": {"const": "share"}}
+    },
+    "unshare": {
+      "description": "v1.1 (X3)",
+      "required": ["type", "token"],
+      "properties": {
+        "type": {"const": "unshare"},
+        "token": {"type": "string", "minLength": 1}
+      }
+    },
+    "run_schedule": {
+      "description": "v1.1 (X5)",
+      "required": ["type", "schedule_id"],
+      "properties": {
+        "type": {"const": "run_schedule"},
+        "schedule_id": {"type": "string", "minLength": 1}
       }
     }
   }

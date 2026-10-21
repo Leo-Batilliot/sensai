@@ -1,4 +1,4 @@
-# Contrat — Protocole WebSocket (v1)
+# Contrat — Protocole WebSocket (v1, ajouts v1.1)
 
 | | |
 |---|---|
@@ -6,6 +6,7 @@
 | **Propriétaire** | P4 (Web & Produit) |
 | **Consommateurs** | P1 (moteur, événements), P2 (outils MCP, HITL), P3 (mémoire, juge) |
 | **Tâche** | WEB-01 (PLANNING §7, sprint 1) |
+| **Ajouts v1.1** | Mer 21/10 (décision D-06, [`v1.1-extensions.md`](v1.1-extensions.md) §4, gelé à 18 h) : `answer`, `set_persona`, `share`, `unshare`, `run_schedule`, cinq messages serveur, nouvelles routes REST. **Ajouts uniquement** : rien de la v1 ne change de sens, `protocol_version` reste à `1` |
 | **Dépend de** | `events.md` (P1), `tools.md` (P1, P2), `judge.md` + `schemas/judge_report.v1.json` (P3, EVAL-01), `memory.md` (P3, MEM-01) |
 
 Ce document définit tout ce qui circule entre le front web et le serveur FastAPI : la connexion, les messages du client, les messages du serveur, l'ordre dans lequel ils arrivent et les erreurs. Il reprend PROJECT.md §7.2 et le complète avec ce qu'exigent les maquettes (WEB-03) et le catalogue X1.
@@ -83,6 +84,13 @@ Si une seconde connexion s'ouvre avec le même `session_id`, la première est fe
 | `reset` | — | Vide l'historique de la session | ✅ (annule d'abord le tour) |
 | `set_model` | `model` | Change le modèle de l'agent | ✅ effectif au tour suivant |
 | `set_config` | `patch` | Modifie les réglages de la session | ✅ effectif au tour suivant |
+| `answer` (v1.1) | `question_id`, `option_id?`, `text?` | Répond à une question de l'agent (X4) | ✅ (c'est même le seul cas utile) |
+| `set_persona` (v1.1) | `persona` | Change de profil (A5) | ✅ effectif au tour suivant |
+| `share` (v1.1) | — | Crée un lien de partage en lecture seule (X3) | ✅ (sans le tour en cours) |
+| `unshare` (v1.1) | `token` | Révoque un lien de partage (X3) | ✅ |
+| `run_schedule` (v1.1) | `schedule_id` | Lance une tâche planifiée tout de suite (X5) | ✅ (la tâche tourne à part) |
+
+Un serveur qui ne prend pas encore en charge un type de la v1.1 répond `INVALID_MESSAGE` (« pas encore pris en charge »), sans fermer la connexion.
 
 ### 4.1 `user_message`
 
@@ -205,6 +213,54 @@ C'est la réponse à l'exigence « configuration » du catalogue X1. Règles (va
 - **Revenir aux valeurs par défaut** (bouton « Réinitialiser » du panneau Réglages) : il n'y a pas de message dédié. Le front lit `defaults` dans `GET /api/config` (§9) et l'envoie tel quel dans un `set_config`.
 - Les réglages en lecture seule affichés dans le panneau (hôte Ollama, `keep_alive`, délais…) viennent de `GET /api/config` (§9).
 
+### 4.8 `answer` (v1.1, X4)
+
+```json
+{"type": "answer", "id": "c-14", "question_id": "q-1", "option_id": "trimestre", "text": null}
+```
+
+- Répond à l'événement `question_asked` (`events.md`, P1) : l'agent a appelé `ask_user` et le tour est en pause (état AWAITING_ANSWER, §6.1).
+- **Exactement un** de `option_id` et `text` est non nul. `option_id` doit être une des `options` de la question. `text` : non vide après `strip()`, 500 caractères au plus, refusé si la question a `allow_free_text: false`. Sinon `INVALID_MESSAGE`, et **la question reste en attente** : l'utilisateur peut corriger.
+- Question inconnue, déjà répondue, expirée ou annulée : `UNKNOWN_QUESTION`. Le `question_answered` correspondant a déjà été envoyé, et le front ferme la carte (même règle que `confirm`).
+- Pas d'accusé de réception propre : la réponse est l'événement `question_answered` du moteur (`status: "answered"`).
+- Le texte libre se tape dans la carte de la question, pas dans le champ du chat : `user_message` reste refusé (`BUSY`).
+
+### 4.9 `set_persona` (v1.1, A5)
+
+```json
+{"type": "set_persona", "id": "c-15", "persona": "adv"}
+```
+
+- `persona` : un `id` de `GET /api/personas` (§9). Profil inconnu : `PERSONA_NOT_FOUND`, et le profil courant ne change pas.
+- Effectif **au tour suivant**, comme `set_model` : un tour en cours se termine avec le profil d'avant. L'historique est conservé ; le moteur y insère un message `system` « Profil actif : … » (P1).
+- Le profil ne change ni le modèle ni les réglages de session, et ne lève jamais une confirmation : il ne fait que retirer des outils.
+- Réponse : `persona_changed` (§5.2). Demander le profil courant renvoie aussi `persona_changed` (le message est idempotent).
+
+### 4.10 `share` et `unshare` (v1.1, X3)
+
+```json
+{"type": "share", "id": "c-16"}
+```
+
+```json
+{"type": "unshare", "id": "c-17", "token": "kq3Vb0wLr8nT2xYc5HdJ1A"}
+```
+
+- `share` fige un **instantané** : les tours terminés (jusqu'au dernier `message_done`, ou `error` de fin de tour), les `judge_report` déjà reçus et la note du comité à sa révision courante. Un tour en cours n'y figure pas, et la suite de la conversation non plus. Sa forme est celle de `GET /api/shares/{token}` (§9).
+- Rien d'autre n'est partagé : ni la mémoire long terme, ni les réglages, ni la liste des outils.
+- Une session sans tour terminé peut être partagée : la page n'affiche alors que la note.
+- Réponses : `share_created` et `share_revoked` (§5.2). `unshare` sur un jeton inconnu ou déjà révoqué : `SHARE_NOT_FOUND`.
+
+### 4.11 `run_schedule` (v1.1, X5)
+
+```json
+{"type": "run_schedule", "id": "c-18", "schedule_id": "point-lundi"}
+```
+
+- Tâche inconnue ou désactivée (`enabled = false`) : `SCHEDULE_NOT_FOUND`. Tâche déjà en cours : `BUSY` (« Cette tâche tourne déjà »).
+- La tâche tourne dans **son propre moteur** : brokers sans humain, profil de la tâche, aucun outil d'écriture ; le rapport est écrit par le planificateur. Elle n'occupe pas la session : `user_message` reste accepté.
+- Réponse : `schedule_run_started` (§5.2), avec `reply_to` dans la copie envoyée à la session qui l'a demandée.
+
 ---
 
 ## 5. Messages serveur → client
@@ -214,6 +270,8 @@ C'est la réponse à l'exigence « configuration » du catalogue X1. Règles (va
 Le serveur envoie **exactement les événements de `events.md`** (PROJECT §7.1), sérialisés tels quels, sans enveloppe :
 
 `turn_started`, `context_injected`, `token`, `thinking`, `tool_call`, `tool_result`, `sql_generated`, `confirmation_required`, `confirmation_resolved`, `memory_updated`, `message_done`, `judge_started`, `judge_report`, `error`.
+
+**v1.1** : `context_compacted`, `examples_injected`, `question_asked`, `question_answered` et `document_updated` s'ajoutent à la liste (`events.md`, P1). Un front **ignore les types qu'il ne connaît pas** (`events.md`, règle 7) : il ne casse pas quand le moteur en émet un nouveau.
 
 Leur définition fait foi dans `events.md` (propriétaire P1). Ce contrat n'en redéfinit aucun. Pour mémoire, voici les points décidés avec P1 qui concernent directement le front :
 
@@ -248,6 +306,13 @@ Envoyé une fois, juste après l'ouverture.
  "supports_tools": true,
  "ctx_max": 8192,
  "config": {"temperature": 0.1, "num_ctx": 8192, "judge_enabled": true, "judge_model": null},
+ "persona": {"id": "analyste", "name": "Contrôle de gestion", "role": "Copilote de Claire, contrôleuse de gestion"},
+ "personas": [
+   {"id": "analyste", "name": "Contrôle de gestion", "role": "Copilote de Claire, contrôleuse de gestion"},
+   {"id": "adv", "name": "ADV", "role": "Copilote de Karim, responsable ADV"},
+   {"id": "admin", "name": "Admin", "role": "Copilote d'Inès, administratrice"}
+ ],
+ "document_id": "note-comite",
  "servers": [
    {"name": "sql_toolbox", "status": "up"},
    {"name": "time", "status": "up"},
@@ -269,8 +334,12 @@ Envoyé une fois, juste après l'ouverture.
 - `history` : la liste des **événements de la session depuis le dernier `reset`**, dans l'ordre d'émission, y compris ceux des tours d'origine `ui`. Elle est vide quand `resumed: false`. Le front la rejoue dans le même reducer que les événements en direct (principe 4).
   - Pour alléger le message, **les `token` et `thinking` sont omis**, puisque `message_done.content` porte le texte complet.
   - Aucun tour n'est en cours à la reconnexion, car une déconnexion annule le tour (§2.4). La liste ne contient donc jamais de confirmation en attente.
+  - **v1.1** : `history` contient aussi les `persona_changed` (§5.2), à leur place entre les événements, pour que le séparateur « Profil : ADV (Karim) » survive à un rechargement. Ce sont les seuls messages sans `turn_id` de l'historique.
+- `persona` (v1.1) : le profil actif de la session, `{id, name, role}`. `personas` : les profils disponibles, pour le sélecteur. `null` et `[]` pour un serveur sans profils.
+- `document_id` (v1.1) : l'identifiant de la note du comité (`GET /api/documents/current`), `null` sans note.
 - `config` contient les **valeurs de la session**, uniquement pour les clés du tableau §4.7. Les valeurs de `config.toml` et les réglages en lecture seule sont dans `GET /api/config` (§9).
 - `servers[].status` : `"up"` ou `"down"`. Les chips de la barre d'état en découlent (maquette BarreEtat, annotation 2). `servers[].error` est un message en français fourni par la couche MCP, affichable tel quel.
+- `tools` : les outils **du profil actif** (v1.1), c'est-à-dire ce que le modèle voit.
 - `tools[].server` vaut `null` pour les outils natifs (mémoire).
 - `tools[].name` est le nom tel que le modèle le voit (`tools.md`, MCP-04) :
   - **toujours préfixé par le serveur** (`sql_toolbox__run_select`), pour que les noms restent stables quand on ajoute un serveur ;
@@ -305,6 +374,56 @@ Envoyé une fois, juste après l'ouverture.
  "changed": ["temperature", "judge_enabled"]}
 ```
 
+#### `persona_changed` (v1.1)
+
+```json
+{"type": "persona_changed", "session_id": "3f2b…", "ts": 1760433400.0, "reply_to": "c-15",
+ "persona": {"id": "adv", "name": "ADV", "role": "Copilote de Karim, responsable ADV"},
+ "tools": [
+   {"name": "sql_toolbox__execute_write", "server": "sql_toolbox",
+    "description": "Exécute une écriture en transaction",
+    "read_only": false, "destructive": true, "requires_confirmation": true}
+ ]}
+```
+
+- `tools` : même forme que `session_ready.tools`, filtrée par le nouveau profil. Le cadenas (`requires_confirmation`) ne change jamais avec le profil.
+- Le front affiche le profil dans la barre d'état et un séparateur « Profil : ADV (Karim) » dans le fil, après le tour en cours s'il y en a un.
+
+#### `share_created` et `share_revoked` (v1.1)
+
+```json
+{"type": "share_created", "session_id": "3f2b…", "ts": 1760433500.0, "reply_to": "c-16",
+ "token": "kq3Vb0wLr8nT2xYc5HdJ1A", "url": "http://127.0.0.1:8000/share/kq3Vb0wLr8nT2xYc5HdJ1A",
+ "created_at": 1760433500.0}
+```
+
+```json
+{"type": "share_revoked", "session_id": "3f2b…", "ts": 1760433600.0, "reply_to": "c-17",
+ "token": "kq3Vb0wLr8nT2xYc5HdJ1A"}
+```
+
+- `token` : 16 octets aléatoires en base64 URL (`secrets.token_urlsafe(16)`, 22 caractères). `url` est absolue, construite avec `[web] host` et `port`.
+- Le serveur écoute sur `127.0.0.1` par défaut : le lien n'est joignable que depuis la machine, sauf si `[web] host` est changé.
+
+#### `schedule_run_started` et `schedule_run_finished` (v1.1)
+
+Envoyés à **toutes les sessions ouvertes**, pas seulement à celle qui a lancé la tâche.
+
+```json
+{"type": "schedule_run_started", "session_id": "3f2b…", "ts": 1760433700.0, "reply_to": "c-18",
+ "schedule_id": "point-lundi", "run_id": "r-12", "trigger": "manual"}
+```
+
+```json
+{"type": "schedule_run_finished", "session_id": "3f2b…", "ts": 1760433760.0,
+ "schedule_id": "point-lundi", "run_id": "r-12", "status": "ok", "badge": "verified",
+ "report_path": "reports/planifie/point-lundi-2026-10-26.md", "error": null}
+```
+
+- `trigger` : `"schedule"` (heure atteinte) ou `"manual"` (`run_schedule`).
+- `status` : `"ok"` ou `"error"`. `badge` : celui du juge (§5.1), ou `null` (erreur, juge désactivé). `report_path` est relatif au dossier de lancement, `null` en cas d'erreur. `error` vaut `{code, message}` ou `null`.
+- Une session ouverte après une exécution ne reçoit pas ces messages : elle lit `GET /api/schedules` (§9).
+
 ---
 
 ## 6. Règles de séquence
@@ -330,6 +449,20 @@ Envoyé une fois, juste après l'ouverture.
 
 Le juge du tour précédent ne compte pas comme un tour en cours.
 
+**v1.1 : AWAITING_ANSWER.** On y entre sur `question_asked` et on en sort sur `question_answered` (X4). Comme AWAITING_CONFIRMATION, c'est un tour en cours :
+
+| Message reçu | AWAITING_ANSWER |
+|---|---|
+| `user_message`, `ui_action` | `BUSY` |
+| `answer` | résout la question |
+| `confirm` | `UNKNOWN_ACTION` |
+| `cancel` | `question_answered` (`status: "cancelled"`), puis `message_done` (`interrupted: true`) |
+| `reset` | comme `cancel`, puis vide |
+| `set_model`, `set_config`, `set_persona` | appliqué au tour suivant |
+| `share`, `unshare`, `run_schedule` | traités tout de suite (`share` : sans le tour en cours) |
+
+`set_persona`, `share`, `unshare` et `run_schedule` sont acceptés dans tous les états.
+
 ### 6.2 Ordre des événements dans un tour
 
 1. `turn_started` est **toujours le premier** événement d'un tour, qu'il vienne de l'utilisateur ou de l'interface.
@@ -347,13 +480,19 @@ Le juge du tour précédent ne compte pas comme un tour en cours.
 - À l'expiration, le moteur émet `confirmation_resolved` avec `decision: "timeout"` et `reason: "timeout"` (US-A3-03). Le front affiche « Délai dépassé, action annulée ».
 - Une déconnexion refuse immédiatement la confirmation (`decision: "reject"`, `reason: "disconnected"`, §2.4).
 
+### 6.4 Délai d'une question (v1.1)
+
+- Même règle : le moteur compte (`[agent] question_timeout_s`), le front affiche `expires_in_s` à partir de l'heure de réception et ne décide rien.
+- À l'expiration, le moteur émet `question_answered` avec `status: "timeout"` et **le tour continue** : le modèle fait une hypothèse explicite et la dit.
+- Une déconnexion annule la question (`status: "cancelled"`), puis le tour, comme une confirmation (§2.4). `session_ready.history` ne contient donc jamais de question en attente.
+
 ---
 
 ## 7. Erreurs
 
 ### 7.1 Erreurs de protocole (émises par la couche web)
 
-Elles utilisent la forme de l'événement `error` d'`events.md` (`code`, `message`, `recoverable`), avec `turn_id: null` et `reply_to` si le message du client avait un `id`. La connexion reste ouverte. Les codes appartiennent à la **liste fermée d'`events.md`** (ALL-02, question 5) ; ceux marqués ➕ y ont été ajoutés pour ce contrat (P-11). Toutes ces erreurs ont `recoverable: true` et `turn_id: null`.
+Elles utilisent la forme de l'événement `error` d'`events.md` (`code`, `message`, `recoverable`), avec `turn_id: null` et `reply_to` si le message du client avait un `id`. La connexion reste ouverte. Les codes appartiennent à la **liste fermée d'`events.md`** (ALL-02, question 5) ; ceux marqués ➕ y ont été ajoutés pour ce contrat (P-11). Toutes ces erreurs ont `recoverable: true` et `turn_id: null`. Les codes marqués « ➕ v1.1 » sont ajoutés à la liste d'`events.md` par P1 (`v1.1-extensions.md` §2.4).
 
 | Code | Quand | `recoverable` |
 |---|---|---|
@@ -363,6 +502,10 @@ Elles utilisent la forme de l'événement `error` d'`events.md` (`code`, `messag
 | `UNKNOWN_ACTION` ➕ | `confirm` sur une action inconnue, déjà résolue ou expirée | true |
 | `INVALID_CONFIG` ➕ | `set_config` : clé hors du tableau §4.7 ou valeur hors bornes | true |
 | `UI_ACTION_FORBIDDEN` ➕ | `ui_action` sur un outil hors liste blanche | true |
+| `UNKNOWN_QUESTION` ➕ v1.1 | `answer` sur une question inconnue, déjà résolue ou expirée | true |
+| `PERSONA_NOT_FOUND` ➕ v1.1 | `set_persona` sur un profil inconnu | true |
+| `SHARE_NOT_FOUND` ➕ v1.1 | `unshare` sur un jeton inconnu ou déjà révoqué (et 404 de `GET /api/shares/{token}`) | true |
+| `SCHEDULE_NOT_FOUND` ➕ v1.1 | `run_schedule` sur une tâche inconnue ou désactivée | true |
 
 ```json
 {"type": "error", "session_id": "3f2b…", "turn_id": null, "ts": 1760433300.0,
@@ -456,10 +599,27 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 | `GET /api/memory` | `{"glossary": [...], "entities": [...], "relations": [...], "facts": [...]}`, colonnes de `memory.db` | Panneau mémoire |
 | `GET /api/schema` | `{"tables": [{"name", "columns": [{"name", "type"}]}]}` | Affichage du schéma (facultatif) |
 | `GET /api/config` | Valeurs par défaut, bornes et réglages en lecture seule (voir ci-dessous) | Panneau Réglages |
+| `GET /api/personas` (v1.1) | `{"current": "analyste", "personas": [{id, name, role, tools}]}` | Sélecteur de profil (A5) |
+| `GET /api/prompts` (v1.1) | `{"current": "v2", "versions": [{name, version, created, parent, sha256, notes}]}` | Réglages (A4) |
+| `GET /api/documents/current` (v1.1) | `{id, title, revision, sections: [{section_id, position, title, content, updated_at}]}` | Panneau Note (M4) |
+| `GET /api/documents/current/revisions` (v1.1) | `{revisions: [{revision, op, section_id, actor, at}]}` | Panneau Note (M4) |
+| `GET /api/documents/current/export?format=md` (v1.1) | Le document en Markdown (`text/markdown`) | Export (M4, X3) |
+| `GET /api/sessions/{session_id}/export?format=md\|json` (v1.1) | La conversation : Markdown lisible, ou JSON | Export (X3) |
+| `GET /api/shares` (v1.1) | `{shares: [{token, url, created_at}]}` | Liste des liens (X3) |
+| `GET /api/shares/{token}` (v1.1) | L'instantané partagé (JSON) ; 404 si révoqué ou inconnu | Page partagée (X3) |
+| `GET /share/{token}` (v1.1) | **Page en lecture seule, sans authentification**, sans WebSocket ni action | Lien partagé (X3) |
+| `GET /api/schedules` (v1.1) | `{schedules: [{id, at, every_minutes, question, persona, output, enabled, next_run, last_runs}]}` | Tâches planifiées (X5) |
 
 - `supports_tools` vient de `POST /api/show` (champ `capabilities`) d'Ollama.
 - `GET /api/schema` est alimenté par `sql_toolbox` (`list_tables`, `describe_table`) via le registry. **La couche web n'ouvre jamais `business.db` elle-même** : `sql_toolbox` reste le seul accès à la base.
-- En cas d'erreur : statut HTTP 5xx et `{"error": {"code", "message"}}`, avec les codes d'`events.md`. Par exemple, `GET /api/models` répond 503 avec `OLLAMA_UNAVAILABLE` quand Ollama est arrêté.
+- **v1.1** :
+  - `GET /api/personas` : `current` est le profil de démarrage (`[agent] persona`) ; celui d'une session est dans `session_ready.persona`. `tools` : les noms d'outils autorisés par le profil, après application des motifs.
+  - `GET /api/sessions/{session_id}/export` : le JSON vaut `{session_id, exported_at, model, persona, events}`, où `events` a la forme de `session_ready.history`. Session inconnue ou expirée : 404 ; autre `format` : 400.
+  - `GET /api/shares/{token}` : `{token, created_at, model, persona, events, document}`, avec `events` comme `session_ready.history` et `document` comme `GET /api/documents/current` (ou `null`). L'instantané est **figé** dans `data/shares/<token>.json`.
+  - `GET /share/{token}` est servie par le build du front (WEB-14) : la même application en mode lecture seule, qui lit `GET /api/shares/{token}`. Elle affiche « Toute personne qui a ce lien voit cette conversation ».
+  - `GET /api/schedules` : une tâche a soit `at`, soit `every_minutes` (l'autre vaut `null`). `next_run` vaut `null` si elle est désactivée. `last_runs` : les 5 dernières exécutions, de la plus récente à la plus ancienne, `[{run_id, trigger, started_at, finished_at, status, badge, report_path, error}]`.
+  - Les dates (`created_at`, `exported_at`, `next_run`, `started_at`, `finished_at`) sont en secondes epoch, comme `ts`.
+- En cas d'erreur : statut HTTP 5xx (4xx pour une ressource absente ou un paramètre invalide) et `{"error": {"code", "message"}}`, avec les codes d'`events.md`. Par exemple, `GET /api/models` répond 503 avec `OLLAMA_UNAVAILABLE` quand Ollama est arrêté.
 
 **Réponse de `GET /api/config`**
 
@@ -527,6 +687,21 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 | P-9 | « Basic agent switching » (catalogue X1) | `set_model` est le changement d'agent de la v1 : il change le modèle au tour suivant sans perdre l'historique. | Question posée au suivi. Si le jury attend davantage (profils d'agent), ce sera une extension par PR de modification de contrat, sans casser l'existant. |
 | P-13 bis | Valeurs de `badge` et forme de `numeric_check` | Celles d'`events.md` §3.11 : `badge` ∈ `verified`, `needs_review`, `contradicted`, `unavailable` ; `numeric_check = {status, unmatched}`. | P3 les reporte dans `judge.md` (J-1). |
 | P-18 | `events.md`, auquel ce contrat renvoie | Rédigé avec toutes les décisions P-2 à P-17, complété et mergé sur `main` par P1 (ALL-02). Ce contrat est aligné sur sa version : `usage` nul après un `cancel`, `OLLAMA_ERROR`, `DUPLICATE_CALL`, surlignage selon `numeric_check.status`. | Un écart futur se corrige par une PR de modification de ce contrat. |
+
+### 10.4 Ajouts v1.1 (atelier ALL-15, mer 21/10)
+
+Décisions de [`v1.1-extensions.md`](v1.1-extensions.md) §6 qui touchent ce contrat.
+
+V-7 et V-10 ont été proposés par P4 dans la relecture de la section 4 : ils sont à confirmer avant le gel de 18 h.
+
+| # | Décision | Avec | Reporté dans |
+|---|---|---|---|
+| V-1 | `ask_user` passe par un `QuestionBroker` séparé, résolu par le message `answer` ; la HITL ne bouge pas | P1, P2 | §4.8, §6.1, §6.4 |
+| V-4 | Une tâche planifiée tourne sans humain et sans outil d'écriture ; le planificateur écrit le rapport | P2 | §4.11 |
+| V-6 | Pas d'expiration des liens de partage en v1.1 (révocation manuelle), cité en limite | — | §4.10 |
+| V-7 | `persona_changed` entre dans `session_ready.history`, à sa place | P1 | §5.2 |
+| V-10 | `SHARE_NOT_FOUND` pour un jeton inconnu ou révoqué | P1 | §7.1 |
+| — | Les nouvelles clés de `set_config` (`prompt_version`, `fewshot_enabled`) et les outils `document_*` d'`ui_action` sont reportés ici par la PR de la fonctionnalité qui les lit (A4, A7, M4) | P1, P3 | §4.2, §4.7 |
 
 ---
 

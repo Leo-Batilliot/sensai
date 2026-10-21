@@ -65,6 +65,10 @@ class MessageHandler:
             "config": dict(engine.session_config),
             "servers": servers,
             "tools": tools,
+            # v1.1: no persona nor committee note before PERS-01 and M4
+            "persona": None,
+            "personas": [],
+            "document_id": None,
         }
 
     async def handle(self, text: str) -> None:
@@ -82,7 +86,14 @@ class MessageHandler:
         if problem is not None:
             await self._error("INVALID_MESSAGE", problem, reply_to)
             return
-        handler = getattr(self, f"_on_{message['type']}")
+        handler = getattr(self, f"_on_{message['type']}", None)
+        if handler is None:  # a v1.1 message this server does not handle yet (§4)
+            await self._error(
+                "INVALID_MESSAGE",
+                f"Le message « {message['type']} » n'est pas encore pris en charge par ce serveur.",
+                reply_to,
+            )
+            return
         await handler(message, reply_to)
 
     def _invalid(self, message: dict[str, Any]) -> str | None:
