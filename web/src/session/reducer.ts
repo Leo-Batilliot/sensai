@@ -10,6 +10,7 @@ import {
   type EngineEvent,
   type JudgeReport,
   type MemoryUpdated,
+  type Persona,
   type ServerInfo,
   type ServerMessage,
   type SessionConfig,
@@ -58,6 +59,14 @@ export interface SessionInfo {
   config: SessionConfig
   servers: ServerInfo[]
   tools: ToolInfo[]
+  persona: Persona | null
+  personas: Persona[]
+}
+
+// "Profil : ADV" in the thread, after the turns that came before the change
+export interface PersonaMark {
+  afterTurns: number
+  persona: Persona
 }
 
 export interface Notice {
@@ -70,6 +79,7 @@ export interface ChatState {
   connection: ConnectionStatus
   session: SessionInfo | null
   turns: Turn[]
+  personaMarks: PersonaMark[]
   lastUsage: Usage | null // context gauge: keeps its last value when usage is null
   notices: Notice[] // errors outside any turn (BUSY, INVALID_MESSAGE…)
   incompatible: boolean // server speaks another protocol version
@@ -85,6 +95,7 @@ export const initialState: ChatState = {
   connection: 'connecting',
   session: null,
   turns: [],
+  personaMarks: [],
   lastUsage: null,
   notices: [],
   incompatible: false,
@@ -112,7 +123,9 @@ export function isBusy(state: ChatState): boolean {
 function applyMessage(state: ChatState, message: ServerMessage): ChatState {
   switch (message.type) {
     case 'session_ready': {
-      const replayed = message.history.reduce(applyEvent, { ...state, turns: [], lastUsage: null })
+      // session null while replaying: every persona_changed of the history is a real change
+      const empty = { ...state, session: null, turns: [], personaMarks: [], lastUsage: null }
+      const replayed = message.history.reduce<ChatState>(applyMessage, empty)
       return {
         ...replayed,
         connection: 'open',
@@ -124,11 +137,14 @@ function applyMessage(state: ChatState, message: ServerMessage): ChatState {
           config: message.config,
           servers: message.servers,
           tools: message.tools,
+          persona: message.persona,
+          personas: message.personas,
         },
       }
     }
     case 'session_reset':
-      return { ...state, turns: [], lastUsage: null } // the gauge shows "—" until the next answer
+      // the gauge shows "—" until the next answer; the profile stays, its separators go
+      return { ...state, turns: [], personaMarks: [], lastUsage: null }
     case 'model_changed':
       return updateSession(state, {
         model: message.model,
@@ -137,6 +153,13 @@ function applyMessage(state: ChatState, message: ServerMessage): ChatState {
       })
     case 'config_updated':
       return updateSession(state, { config: message.config, ctxMax: message.config.num_ctx })
+    case 'persona_changed': {
+      // Effective from the next turn: the separator goes after the turn running now, if any
+      const same = state.session?.persona?.id === message.persona.id
+      const mark = { afterTurns: state.turns.length, persona: message.persona }
+      const marked = same ? state : { ...state, personaMarks: [...state.personaMarks, mark] }
+      return updateSession(marked, { persona: message.persona, tools: message.tools })
+    }
     default:
       return applyEvent(state, message)
   }
@@ -239,6 +262,10 @@ function applyToTurn(turn: Turn, event: EngineEvent): Turn {
     case 'judge_report':
       return { ...turn, judge: event }
     case 'turn_started':
+      return turn
+    default:
+      // events.md v1.1, rule 7: a client ignores the event types it does not know
+      // (examples_injected, context_compacted…), the turn goes on unchanged
       return turn
   }
 }

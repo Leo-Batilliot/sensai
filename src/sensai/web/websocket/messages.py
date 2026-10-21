@@ -65,10 +65,12 @@ class MessageHandler:
             "config": dict(engine.session_config),
             "servers": servers,
             "tools": tools,
-            # v1.1: no persona nor committee note before PERS-01 and M4
-            "persona": None,
-            "personas": [],
-            "document_id": None,
+            "persona": engine.persona,
+            "personas": [
+                {"id": p["id"], "name": p["name"], "role": p["role"]}
+                for p in self.backend.personas()[1]
+            ],
+            "document_id": None,  # no committee note before M4
         }
 
     async def handle(self, text: str) -> None:
@@ -184,6 +186,20 @@ class MessageHandler:
                 "config_updated", reply_to, config=dict(engine.session_config), changed=changed
             )
         )
+
+    async def _on_set_persona(self, message: dict[str, Any], reply_to: str | None) -> None:
+        engine = self.session.engine
+        previous = engine.persona
+        if not engine.set_persona(message["persona"]):
+            await self._error(
+                "PERSONA_NOT_FOUND", f"Le profil « {message['persona']} » n'existe pas.", reply_to
+            )
+            return
+        _, tools = engine.describe()
+        changed = self._ack("persona_changed", reply_to, persona=engine.persona, tools=tools)
+        if engine.persona != previous:  # the same profile again: acknowledged, no separator
+            self.session.remember(changed)  # the separator survives a reload (§5.2, V-7)
+        await self.session.send(changed)
 
     # --- helpers --------------------------------------------------------------------------
 

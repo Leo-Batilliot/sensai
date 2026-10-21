@@ -195,6 +195,13 @@ export interface ToolInfo {
   requires_confirmation: boolean
 }
 
+// An agent profile (A5): it only removes tools, never a confirmation
+export interface Persona {
+  id: string
+  name: string
+  role: string
+}
+
 interface WebCommon {
   session_id: string
   ts: number
@@ -206,13 +213,16 @@ export interface SessionReady extends WebCommon {
   protocol_version: number
   server_version: string
   resumed: boolean
-  history: EngineEvent[]
+  history: (EngineEvent | PersonaChanged)[] // persona_changed in place, for the separators
   model: string
   supports_tools: boolean
   ctx_max: number
   config: SessionConfig
   servers: ServerInfo[]
-  tools: ToolInfo[]
+  tools: ToolInfo[] // the tools of the active profile
+  persona: Persona | null // v1.1: null and [] for a server without profiles
+  personas: Persona[]
+  document_id: string | null
 }
 
 export interface SessionReset extends WebCommon {
@@ -232,7 +242,19 @@ export interface ConfigUpdated extends WebCommon {
   changed: (keyof SessionConfig)[]
 }
 
-export type ServerMessage = EngineEvent | SessionReady | SessionReset | ModelChanged | ConfigUpdated
+export interface PersonaChanged extends WebCommon {
+  type: 'persona_changed'
+  persona: Persona
+  tools: ToolInfo[]
+}
+
+export type ServerMessage =
+  | EngineEvent
+  | SessionReady
+  | SessionReset
+  | ModelChanged
+  | ConfigUpdated
+  | PersonaChanged
 
 export const PROTOCOL_VERSION = 1
 
@@ -246,3 +268,4 @@ export type ClientMessage =
   | { type: 'reset'; id?: string }
   | { type: 'set_model'; id?: string; model: string }
   | { type: 'set_config'; id?: string; patch: Partial<SessionConfig> }
+  | { type: 'set_persona'; id?: string; persona: string }
