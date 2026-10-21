@@ -2,7 +2,7 @@
 
 Un collaborateur pose une question métier en français ; l'agent interroge la base de l'entreprise via des outils MCP, répond avec des chiffres vérifiés contre les données, retient le vocabulaire métier et ne modifie jamais les données sans confirmation explicite. Tout tourne en local avec [Ollama](https://ollama.com).
 
-> **README v0** (DOC-05) : installation et lancement. La version finale (fonctionnalités, exemples, architecture, résultats d'évaluation) arrive avec la release du 28/10.
+> **README v0** (DOC-05) : installation et lancement, et la liste des fonctionnalités prévues pour la release. La version finale (exemples, architecture, résultats d'évaluation) arrive avec la release du 28/10 (DOC-08).
 
 ## État actuel (`v0.5.0`, mid-term, 13/10)
 
@@ -14,6 +14,32 @@ Un collaborateur pose une question métier en français ; l'agent interroge la b
 | `make seed` | Base de démonstration `data/business.db`, déterministe | — |
 | `make eval` | `sensai eval compare AVANT APRÈS` compare deux rapports | Lancer le golden set sur le moteur réel (EVAL-06) |
 | `scripts/chat_fake_tools.py` | Chat avec deux outils de remplacement, sans serveur MCP | Outil de dépannage |
+
+## Fonctionnalités (périmètre final, livraison `v1.0.0` le 28/10)
+
+Après la mid-term, le périmètre est passé de 6 à 16 fonctionnalités du catalogue ([`docs/decisions.md`](docs/decisions.md), D-01). Chaque ajout se branche sur le même scénario (Nordvent Distribution, [`docs/keynote/scenario.md`](docs/keynote/scenario.md)). État au 20/10 :
+
+| ID | Fonctionnalité | Ce qu'elle apporte | État |
+|---|---|---|---|
+| B1 | Chatbot CLI | Streaming, historique, erreurs propres, modèle au choix | Fait |
+| T1 | MCP | Client MCP maison, serveur `sql_toolbox`, serveur existant `mcp-server-time` | Fait (conformité en cours) |
+| T5 | Sorties structurées | Rapport du juge et arguments d'outils validés par schéma | Fait |
+| M3 | Mémoire structurée | Glossaire, entités, faits dans `memory.db`, écrits par l'agent | Fait (alias en cours) |
+| A3 | Confirmation humaine | Aucune écriture sans aperçu chiffré et accord explicite | Fait (aperçu enrichi en cours) |
+| EV1 | Évaluation et hallucinations | Juge en ligne, contrôle numérique, golden set, comparaison de versions | En cours (harness complet, calibration) |
+| X1 | Interface web | Chat, SQL, résultats, timeline, modale, badge, mémoire | En cours (sélecteur de modèle et panneau mémoire sur branche) |
+| EV4 | Tests adversariaux | Attaques rejouées en CI et sur le vrai modèle : où ça tient, où ça casse | Prévu |
+| T4 | Fichiers avec permissions | Lecture et écriture de fichiers seulement dans les dossiers autorisés | Prévu |
+| M2 | Budget de tokens et compression | Longues séances sans dépassement, chiffres conservés, mesuré | Prévu |
+| A4 | Versions de prompts | Prompts versionnés, retour arrière par configuration, comparaison mesurée | Prévu |
+| A5 | Profils d'agent | Claire, Karim, Inès : ton, périmètre et droits par profil, changeables en cours de séance | Prévu |
+| X4 | Questions de précision | L'agent demande quand la question est ambiguë, réponse en un clic | Prévu |
+| X5 | Tâches planifiées | Point du lundi préparé tout seul, en lecture seule | Prévu |
+| X3 | Export et partage | Markdown, JSON, PDF, lien de partage en lecture seule | Prévu |
+| A7 | Exemples dynamiques | Exemples de requêtes validées proches de la question, gain mesuré | Prévu |
+| M4 | Note du comité | Livrable tenu par l'agent section par section, avec révisions | Prévu |
+
+User stories de chaque fonctionnalité : [`docs/user-stories/`](docs/user-stories/) ; interfaces des fonctionnalités ajoutées : [`docs/contracts/v1.1-extensions.md`](docs/contracts/v1.1-extensions.md).
 
 ## Installation sur un PC Windows vierge (PowerShell)
 
@@ -247,7 +273,10 @@ make test           # comme la CI : sans Ollama ni serveurs externes
 make test-all       # tout, y compris les tests sur un vrai Ollama et sur uvx mcp-server-time
 make lint           # ruff check + ruff format --check
 make format         # corrige ce qui peut l'être
+make ci             # la CI en local : lint + tests sur Python 3.10 et 3.12, environnements neufs (il faut uv)
 ```
+
+`make ci` remplace la CI GitHub tant que le budget Actions de l'organisation est épuisé (décision D-08) : environ 2 minutes, et un résumé à coller dans la PR à la fin. `CI_PYTHONS=3.12 make ci` ne teste qu'une version, pour aller plus vite entre deux essais.
 
 ## Dépannage
 
@@ -266,8 +295,9 @@ make format         # corrige ce qui peut l'être
 
 ## Documentation
 
-- [`docs/contracts/`](docs/contracts/) : contrats entre les briques (événements du moteur, outils et confirmation, WebSocket, mémoire, rapport du juge)
-- [`docs/user-stories/`](docs/user-stories/) : user stories par fonctionnalité
+- [`docs/contracts/`](docs/contracts/) : contrats entre les briques (événements du moteur, outils et confirmation, WebSocket, mémoire, rapport du juge) ; ajouts de l'extension dans [`v1.1-extensions.md`](docs/contracts/v1.1-extensions.md)
+- [`docs/user-stories/`](docs/user-stories/) : user stories par fonctionnalité (16)
+- [`docs/decisions.md`](docs/decisions.md) : journal des décisions ; [`docs/midterm-feedback.md`](docs/midterm-feedback.md) : retours de la mid-term
 - [`docs/keynote/scenario.md`](docs/keynote/scenario.md) : scénario de démonstration
 - [`web/README.md`](web/README.md) : front web
 - [`eval/README.md`](eval/README.md) : golden set et évaluation
@@ -276,5 +306,5 @@ make format         # corrige ce qui peut l'être
 
 - Une branche par tâche du planning : `feat/<ID>-<slug>` (ex. `feat/CORE-02-ollama-client`), `fix/…`, `docs/…`
 - Commits : `[Initiales][chemin] type: ID, résumé` (ex. `[G.WI][src/sensai/core] feat: CORE-06, tool-calling loop`)
-- PR vers `main`, une relecture obligatoire, CI verte
+- PR vers `main`, une relecture obligatoire, CI verte. Tant que la CI GitHub ne démarre pas (budget Actions épuisé) : lancer `make ci` sur le dernier commit et coller son résumé dans la PR ; le relecteur vérifie que le commit cité est bien le dernier
 - Commentaires du code en anglais, textes affichés en français
