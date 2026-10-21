@@ -46,7 +46,11 @@
         "BUSY",
         "UNKNOWN_ACTION",
         "INVALID_CONFIG",
-        "UI_ACTION_FORBIDDEN"
+        "UI_ACTION_FORBIDDEN",
+        "PERSONA_NOT_FOUND",
+        "PROMPT_VERSION_NOT_FOUND",
+        "UNKNOWN_QUESTION",
+        "SCHEDULE_NOT_FOUND"
       ]
     },
     "message": {

@@ -6,6 +6,7 @@
 | **Propriétaire** | P1 — Core & Agent |
 | **Consommateurs** | P4 (front, WebSocket, `MockEngine`), P3 (juge, mémoire, harness), P2 (aperçu d'impact HITL) |
 | **Statut** | Brouillon — à valider par P2, P3 et P4 (point P-18 de `websocket.md`) |
+| **Version** | **v1.1** (21/10) : cinq types (§3.13 à §3.17), ordre et invariants (§4.1, §4.3), quatre codes (§5.1), repris de [`v1.1-extensions.md`](v1.1-extensions.md) §2 (ALL-15). Ajouts uniquement : rien de la v1 ne change de sens |
 | **Fait foi** | Ce document. Les schémas JSON (`schemas/events/*.json`) seront générés à partir de lui dans CORE-05 |
 | **Spécification** | PROJECT.md §7.1 (événements), §5.3 et §5.4 (déroulé d'un tour) |
 | **Contrats liés** | [`websocket.md`](websocket.md) (P4), [`memory.md`](memory.md) (P3), `judge.md` (P3), `tools.md` (P1, P2) |
@@ -20,6 +21,7 @@
 4. **Tous les champs sont toujours présents.** Un champ sans valeur vaut `null` (ou `[]` pour une liste), il n'est jamais omis. Les types TypeScript du front et les schémas JSON restent ainsi simples, sans champ facultatif.
 5. **Identifiants opaques** (`session_id`, `turn_id`, `call_id`, `action_id`) : des chaînes que personne ne découpe pour en tirer un sens. `session_id` est généré par le client web (UUID v4, `websocket.md` §2.1) ou par la CLI ; `turn_id`, `call_id` et `action_id` par le moteur (UUID4). Les exemples utilisent `t-1`, `k-2`… pour la lisibilité.
 6. **Textes destinés à l'utilisateur en français** : `summary`, `message`, `label`, `reason` des éléments protégés.
+7. **Un type inconnu est ignoré** (v1.1). Un consommateur qui reçoit un événement dont il ne connaît pas le type le laisse de côté, sans erreur : c'est ce qui permet d'ajouter des types sans casser les clients existants.
 
 ## 2. Champs communs
 
@@ -36,14 +38,19 @@
 |---|---|---|
 | `turn_started` | `origin`, `user_message` | Début de tour |
 | `context_injected` | `refs` | Mémoire fournie au modèle pour ce tour (s'il y en a) |
+| `context_compacted` | `turns`, `tokens_before`, `tokens_after`, `summary` | Les plus vieux tours viennent d'être résumés (v1.1, M2) |
+| `examples_injected` | `examples` | Exemples question → SQL ajoutés au prompt du tour (v1.1, A7) |
 | `token` | `delta` | Fragment de la réponse |
 | `thinking` | `delta` | Fragment de raisonnement (modèles « thinking ») |
 | `tool_call` | `call_id`, `server`, `tool`, `arguments` | Le modèle demande un outil |
 | `sql_generated` | `call_id`, `sql`, `operation` | Un appel d'outil porte du SQL classé par la garde |
 | `confirmation_required` | `action_id`, `call_id`, `tool`, `sql`, `impact`, `expires_in_s` | Pause HITL |
 | `confirmation_resolved` | `action_id`, `decision`, `reason`, `comment` | Décision reçue, délai dépassé ou pause interrompue |
+| `question_asked` | `question_id`, `call_id`, `question`, `reason`, `options`, `allow_free_text`, `expires_in_s` | Le modèle a appelé `ask_user` : le tour est en pause (v1.1, X4) |
+| `question_answered` | `question_id`, `status`, `option_id`, `text` | Réponse reçue, délai dépassé ou pause interrompue (v1.1, X4) |
 | `tool_result` | `call_id`, `ok`, `summary`, `data`, `error`, `duration_ms` | Outil terminé (ou refusé) |
 | `memory_updated` | `op`, `kind`, `ref`, `summary` | Écriture effective en mémoire |
+| `document_updated` | `doc_id`, `revision`, `section_id`, `op`, `summary` | Une section de la note du comité a été modifiée (v1.1, M4) |
 | `message_done` | `content`, `interrupted`, `usage`, `duration_ms` | Fin de la réponse |
 | `judge_started` | — | Début de la vérification |
 | `judge_report` | `badge`, `scores`, `numeric_check`, `report`, `duration_ms` | Vérification terminée |
@@ -248,14 +255,85 @@ Le juge ne tourne pas (ni `judge_started` ni `judge_report`) : sans `run_select`
 - Un `error` hors tour a `turn_id: null` (erreurs de protocole du WebSocket, avertissement au démarrage).
 - Une erreur d'outil n'est **pas** un `error` : c'est un `tool_result` en échec, renvoyé au modèle pour qu'il corrige (§5.2).
 
+### 3.13 `context_compacted` (v1.1)
+
+Émis quand le budget de tokens (`[context]`, M2) oblige à remplacer les plus vieux tours par un résumé glissant, avant le premier appel au modèle du tour (§4.1).
+
+| Champ | Type | Contenu |
+|---|---|---|
+| `turns` | entier ≥ 1 | Tours remplacés par le résumé à ce tour-ci |
+| `tokens_before` / `tokens_after` | entiers ≥ 0 | Estimation du prompt avant et après compression ; `tokens_after < tokens_before` |
+| `summary` | chaîne (200 caractères au plus) | Début du résumé, pour la timeline |
+
+```json
+{"type": "context_compacted", "session_id": "s-1", "turn_id": "t-19", "ts": 1760434100.0,
+ "turns": 6, "tokens_before": 6120, "tokens_after": 2480,
+ "summary": "Client rentable = marge brute > 25 % ; top 5 du T4 : Brasserie Lemaire (18,4 k€)…"}
+```
+
+### 3.14 `examples_injected` (v1.1)
+
+Émis quand des exemples question → SQL de la banque (`[fewshot]`, A7) ont été ajoutés au prompt du tour. Il est distinct de `context_injected`, qui reste réservé à la mémoire et à son ablation (point V-3).
+
+| Champ | Type | Contenu |
+|---|---|---|
+| `examples` | liste non vide de `{id, question, score}` | Exemples choisis, du plus proche au moins proche. `id` : identifiant dans la banque (`"ex-07"`) ; `question` : la question de l'exemple ; `score` : score de sélection (nombre) |
+
+### 3.15 `question_asked` (v1.1)
+
+Le modèle a appelé l'outil natif `ask_user` (X4) : le tour est en pause jusqu'à la réponse, au délai ou à une interruption. Le moteur attend le `QuestionBroker` de l'adaptateur (`tools.md`, P2), qui est distinct du `ConfirmationBroker` (point V-1).
+
+| Champ | Type | Contenu |
+|---|---|---|
+| `question_id` | chaîne | Identifiant de la question, repris par `answer` (WebSocket) et `question_answered` |
+| `call_id` | chaîne | Appel `ask_user` mis en pause |
+| `question` | chaîne (300 caractères au plus) | La question posée à l'utilisateur |
+| `reason` | chaîne (200 caractères au plus) | Pourquoi l'agent demande (« La période change le résultat ») |
+| `options` | liste de `{id, label}`, 0 à 5 | Choix proposés ; `[]` si seule la réponse libre est possible. `id` : `[a-z0-9_-]`, 32 caractères au plus ; `label` : 80 caractères au plus |
+| `allow_free_text` | booléen | Champ libre affiché ou non. Vaut forcément `true` quand `options` est vide |
+| `expires_in_s` | nombre | `[agent] question_timeout_s`. Le front décompte à partir de la réception |
+
+```json
+{"type": "question_asked", "session_id": "s-1", "turn_id": "t-1", "ts": 1760433003.2,
+ "question_id": "q-1", "call_id": "k-2",
+ "question": "Le délai moyen de paiement doit-il porter sur ce trimestre ou sur tout l'historique ?",
+ "reason": "Les deux périodes donnent des délais très différents.",
+ "options": [{"id": "trimestre", "label": "Ce trimestre"}, {"id": "historique", "label": "Tout l'historique"}],
+ "allow_free_text": true, "expires_in_s": 120}
+```
+
+### 3.16 `question_answered` (v1.1)
+
+| Champ | Type | Contenu |
+|---|---|---|
+| `question_id` | chaîne | Question résolue |
+| `status` | `"answered"`, `"timeout"` ou `"cancelled"` | `cancelled` : `cancel`, `reset`, déconnexion, ou exécution sans humain (tâche planifiée, harness) |
+| `option_id` | chaîne ou `null` | Option choisie, `null` sinon |
+| `text` | chaîne ou `null` | Réponse libre, `null` sinon |
+
+- Avec `"answered"`, `option_id` et `text` ne sont jamais `null` tous les deux.
+- Avec `"timeout"` ou `"cancelled"`, ils valent `null` tous les deux. Le `tool_result` qui suit dit au modèle de faire une hypothèse explicite et de l'annoncer.
+
+### 3.17 `document_updated` (v1.1)
+
+Émis juste après le `tool_result` réussi de `document_patch`, `document_delete_section` ou `document_restore` (M4, `memory.md`, P3), que la modification vienne de l'agent ou de l'interface, comme `memory_updated`.
+
+| Champ | Type | Contenu |
+|---|---|---|
+| `doc_id` | chaîne | Document modifié (`"note-comite"`) |
+| `revision` | entier ≥ 1 | Révision du document **après** la modification |
+| `section_id` | chaîne ou `null` | Section modifiée (ou supprimée). `null` si et seulement si `op` vaut `"restore"`, qui rétablit tout le document |
+| `op` | `"replace"`, `"append"`, `"insert_after"`, `"delete"` ou `"restore"` | Opération appliquée |
+| `summary` | chaîne | Résumé en français pour le panneau Note (« Section « Rentabilité » mise à jour (révision 4) ») |
+
 ## 4. Séquence d'un tour
 
 ### 4.1 Ordre
 
 1. `turn_started` est **toujours le premier** événement d'un tour.
-2. `context_injected`, s'il est émis, vient juste après.
-3. Ensuite, dans un ordre quelconque et éventuellement répété : `thinking`, `token`, appels d'outils (ci-dessous), `memory_updated`.
-4. Pour un même `call_id` : `tool_call` → `sql_generated` (si SQL) → `confirmation_required` → `confirmation_resolved` (si HITL) → `tool_result`.
+2. Viennent juste après, dans cet ordre et chacun au plus une fois, ceux qui sont émis : `context_injected`, `context_compacted`, `examples_injected` (v1.1). Ils précèdent donc tout `thinking`, `token` ou `tool_call`.
+3. Ensuite, dans un ordre quelconque et éventuellement répété : `thinking`, `token`, appels d'outils (ci-dessous), `memory_updated`, `document_updated`.
+4. Pour un même `call_id` : `tool_call` → `sql_generated` (si SQL) → `confirmation_required` → `confirmation_resolved` (si HITL) → `tool_result`. Pour un appel à `ask_user` (v1.1) : `tool_call` → `question_asked` → `question_answered` → `tool_result`, sans `sql_generated` ni `confirmation_required`.
 5. Le tour se termine par **`message_done`**, ou par un **`error`** portant son `turn_id`. Rien d'autre n'est émis pour ce tour ensuite, sauf le juge.
 6. `judge_started` puis `judge_report` arrivent après `message_done`, éventuellement après le `turn_started` du tour suivant (le juge n'est pas bloquant). Les consommateurs rattachent chaque événement à son tour par `turn_id`, jamais par l'ordre d'arrivée.
 
@@ -274,6 +352,14 @@ Les fixtures (`tests/fixtures/events/*.jsonl`, WEB-01) et le moteur (CORE-05) so
 - chaque `call_id` d'un `tool_result` a un `tool_call` avant lui ; chaque `confirmation_resolved` a son `confirmation_required` ;
 - les couples `decision` / `reason` respectent le tableau du §3.7 ;
 - `judge_report` suit toujours un `judge_started` du même tour, et aucun des deux n'apparaît pour un tour interrompu ou `origin: "ui"`.
+
+Ajoutés en v1.1 (`tests/contract_rules.py`, `tests/unit/contracts/test_turn_rules_v1_1.py`) :
+
+- `context_injected`, `context_compacted` et `examples_injected` suivent l'ordre du §4.1, point 2 ; `tokens_after < tokens_before` ;
+- chaque `question_asked` porte le `call_id` d'un appel à `ask_user` ; chaque `question_answered` a son `question_asked` (même `question_id`), et le `tool_result` de l'appel vient après lui ; aucune question ne reste sans réponse à la fin du tour ;
+- au plus `[agent] max_questions_per_turn` `question_asked` par tour ;
+- les couples `status` / `option_id` / `text` respectent le §3.16 ;
+- `document_updated` suit le `tool_result` réussi d'un outil `document_*` qui écrit ; `section_id` est `null` si et seulement si `op` vaut `"restore"`.
 
 ## 5. Codes
 
@@ -294,8 +380,12 @@ Les fixtures (`tests/fixtures/events/*.jsonl`, WEB-01) et le moteur (CORE-05) so
 | `UNKNOWN_ACTION` | `confirm` sur une action inconnue, résolue ou expirée | true | oui |
 | `INVALID_CONFIG` | `set_config` refusé | true | oui |
 | `UI_ACTION_FORBIDDEN` | `ui_action` hors liste blanche | true | oui |
+| `PERSONA_NOT_FOUND` | `set_persona` ou `/persona` sur un profil inconnu (v1.1) | true | oui |
+| `PROMPT_VERSION_NOT_FOUND` | `prompt_version` absente du registre, au démarrage ou par `set_config` (v1.1) | true | oui |
+| `UNKNOWN_QUESTION` | `answer` sur une question inconnue, déjà résolue ou expirée (v1.1) | true | oui |
+| `SCHEDULE_NOT_FOUND` | `run_schedule` sur une tâche inconnue ou désactivée (v1.1) | true | oui |
 
-Les cinq derniers sont émis par la couche web (`websocket.md` §7.1), toujours hors tour (`turn_id: null`). `BUSY` et `UI_ACTION_FORBIDDEN` sont aussi renvoyés par le moteur (`run_ui_action`), qui applique les mêmes règles.
+`INVALID_MESSAGE`, `BUSY`, `UNKNOWN_ACTION`, `INVALID_CONFIG` et `UI_ACTION_FORBIDDEN` sont émis par la couche web (`websocket.md` §7.1), toujours hors tour (`turn_id: null`). `BUSY` et `UI_ACTION_FORBIDDEN` sont aussi renvoyés par le moteur (`run_ui_action`), qui applique les mêmes règles. Les quatre codes de la v1.1 sont toujours émis hors tour, par la couche web (`answer`, `set_persona`, `run_schedule`, `set_config`), par la CLI (`/persona`) ou au démarrage.
 
 ### 5.2 `tool_result.error.code`
 
