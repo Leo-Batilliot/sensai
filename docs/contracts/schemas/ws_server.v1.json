@@ -6,7 +6,9 @@
   "type": "object",
   "required": ["type", "session_id", "ts"],
   "properties": {
-    "type": {"enum": ["session_ready", "session_reset", "model_changed", "config_updated"]},
+    "type": {"enum": ["session_ready", "session_reset", "model_changed", "config_updated",
+                      "persona_changed", "share_created", "share_revoked",
+                      "schedule_run_started", "schedule_run_finished"]},
     "session_id": {"type": "string", "minLength": 1},
     "ts": {"type": "number"},
     "reply_to": {"type": "string", "minLength": 1, "maxLength": 64}
@@ -16,7 +18,12 @@
     {"$ref": "#/$defs/session_ready"},
     {"$ref": "#/$defs/session_reset"},
     {"$ref": "#/$defs/model_changed"},
-    {"$ref": "#/$defs/config_updated"}
+    {"$ref": "#/$defs/config_updated"},
+    {"$ref": "#/$defs/persona_changed"},
+    {"$ref": "#/$defs/share_created"},
+    {"$ref": "#/$defs/share_revoked"},
+    {"$ref": "#/$defs/schedule_run_started"},
+    {"$ref": "#/$defs/schedule_run_finished"}
   ],
   "$defs": {
     "session_config": {
@@ -52,16 +59,32 @@
         "requires_confirmation": {"type": "boolean"}
       }
     },
+    "persona": {
+      "description": "v1.1 (A5) : un profil, tel que l'affiche le sélecteur",
+      "type": "object",
+      "required": ["id", "name", "role"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1},
+        "role": {"type": "string"}
+      }
+    },
+    "share_token": {
+      "description": "v1.1 (X3) : secrets.token_urlsafe(16)",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{16,64}$"
+    },
     "session_ready": {
       "required": ["type", "protocol_version", "server_version", "resumed", "history", "model",
-                   "supports_tools", "ctx_max", "config", "servers", "tools"],
+                   "supports_tools", "ctx_max", "config", "servers", "tools",
+                   "persona", "personas", "document_id"],
       "properties": {
         "type": {"const": "session_ready"},
         "protocol_version": {"const": 1},
         "server_version": {"type": "string"},
         "resumed": {"type": "boolean"},
         "history": {
-          "description": "Événements de la session depuis le dernier reset, sans token ni thinking (§5.2)",
+          "description": "Événements de la session depuis le dernier reset, sans token ni thinking ; v1.1 : avec les persona_changed à leur place (§5.2)",
           "type": "array",
           "items": {"type": "object", "required": ["type"]}
         },
@@ -70,7 +93,21 @@
         "ctx_max": {"type": "integer", "minimum": 1},
         "config": {"$ref": "#/$defs/session_config"},
         "servers": {"type": "array", "items": {"$ref": "#/$defs/server"}},
-        "tools": {"type": "array", "items": {"$ref": "#/$defs/tool"}}
+        "tools": {"type": "array", "items": {"$ref": "#/$defs/tool"}},
+        "persona": {
+          "description": "v1.1 : profil actif de la session, null pour un serveur sans profils",
+          "oneOf": [{"$ref": "#/$defs/persona"}, {"type": "null"}]
+        },
+        "personas": {
+          "description": "v1.1 : profils disponibles, [] pour un serveur sans profils",
+          "type": "array",
+          "items": {"$ref": "#/$defs/persona"}
+        },
+        "document_id": {
+          "description": "v1.1 : identifiant de la note du comité, null sans note",
+          "type": ["string", "null"],
+          "minLength": 1
+        }
       }
     },
     "session_reset": {
@@ -97,6 +134,65 @@
           "uniqueItems": true
         }
       }
+    },
+    "persona_changed": {
+      "description": "v1.1 (A5) : réponse à set_persona ; tools filtrés par le nouveau profil",
+      "required": ["type", "persona", "tools"],
+      "properties": {
+        "type": {"const": "persona_changed"},
+        "persona": {"$ref": "#/$defs/persona"},
+        "tools": {"type": "array", "items": {"$ref": "#/$defs/tool"}}
+      }
+    },
+    "share_created": {
+      "description": "v1.1 (X3) : réponse à share",
+      "required": ["type", "token", "url", "created_at"],
+      "properties": {
+        "type": {"const": "share_created"},
+        "token": {"$ref": "#/$defs/share_token"},
+        "url": {"type": "string", "pattern": "^https?://.+/share/[A-Za-z0-9_-]+$"},
+        "created_at": {"type": "number"}
+      }
+    },
+    "share_revoked": {
+      "description": "v1.1 (X3) : réponse à unshare",
+      "required": ["type", "token"],
+      "properties": {
+        "type": {"const": "share_revoked"},
+        "token": {"$ref": "#/$defs/share_token"}
+      }
+    },
+    "schedule_run_started": {
+      "description": "v1.1 (X5) : envoyé à toutes les sessions ouvertes",
+      "required": ["type", "schedule_id", "run_id", "trigger"],
+      "properties": {
+        "type": {"const": "schedule_run_started"},
+        "schedule_id": {"type": "string", "minLength": 1},
+        "run_id": {"type": "string", "minLength": 1},
+        "trigger": {"enum": ["schedule", "manual"]}
+      }
+    },
+    "schedule_run_finished": {
+      "description": "v1.1 (X5) : envoyé à toutes les sessions ouvertes ; error et report_path selon status",
+      "required": ["type", "schedule_id", "run_id", "status", "badge", "report_path", "error"],
+      "properties": {
+        "type": {"const": "schedule_run_finished"},
+        "schedule_id": {"type": "string", "minLength": 1},
+        "run_id": {"type": "string", "minLength": 1},
+        "status": {"enum": ["ok", "error"]},
+        "badge": {"enum": ["verified", "needs_review", "contradicted", "unavailable", null]},
+        "report_path": {"type": ["string", "null"], "minLength": 1},
+        "error": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "object", "required": ["code", "message"],
+             "properties": {"code": {"type": "string", "minLength": 1}, "message": {"type": "string"}}}
+          ]
+        }
+      },
+      "if": {"properties": {"status": {"const": "error"}}},
+      "then": {"properties": {"error": {"type": "object"}, "report_path": {"type": "null"}}},
+      "else": {"properties": {"error": {"type": "null"}}}
     }
   }
 }

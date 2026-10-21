@@ -14,6 +14,7 @@ from contract_rules import SERVER, check_event, check_turns
 from sensai.core.config import Config
 from sensai.web.engines.mock import MockBackend, Pacing
 from sensai.web.server import create_app
+from sensai.web.websocket.messages import MessageHandler
 
 INSTANT = Pacing(token=0, tool=0, judge=0, other=0)
 # Slow enough for a message to arrive while a turn is still running
@@ -296,6 +297,34 @@ def test_protocol_errors_keep_the_connection_open(
         assert ws.receive_json()["type"] == "session_reset"  # still open
     check_event(error)
     assert (error["code"], error["reply_to"], error["recoverable"]) == (code, "c-9", True)
+
+
+V1_1_MESSAGES: list[Message] = [
+    {"type": "answer", "id": "c-9", "question_id": "q-1", "option_id": "trimestre"},
+    {"type": "set_persona", "id": "c-9", "persona": "adv"},
+    {"type": "share", "id": "c-9"},
+    {"type": "unshare", "id": "c-9", "token": "kq3Vb0wLr8nT2xYc5HdJ1A"},
+    {"type": "run_schedule", "id": "c-9", "schedule_id": "point-lundi"},
+]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [m for m in V1_1_MESSAGES if not hasattr(MessageHandler, f"_on_{m['type']}")],
+    ids=lambda m: m["type"],
+)
+def test_a_v1_1_message_not_handled_yet_is_refused_politely(
+    client: TestClient, message: Message
+) -> None:
+    # websocket.md §4: valid against the schema, but this server does not handle it yet
+    with client.websocket_connect(f"/ws/{SESSION}") as ws:
+        ws.receive_json()
+        ws.send_json(message)
+        error = ws.receive_json()
+        ws.send_json({"type": "reset", "id": "c-r"})
+        assert ws.receive_json()["type"] == "session_reset"  # still open
+    assert (error["code"], error["reply_to"]) == ("INVALID_MESSAGE", "c-9")
+    assert "pas encore pris en charge" in error["message"]
 
 
 def test_unreadable_json_is_an_invalid_message(client: TestClient) -> None:
