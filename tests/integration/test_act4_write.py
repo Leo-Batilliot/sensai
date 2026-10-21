@@ -108,6 +108,8 @@ async def test_refused_purge_changes_nothing(config: Config) -> None:
     assert required.tool == EXECUTE and required.sql == PURGE
     assert required.impact["rows_affected"] == 25
     assert required.impact["per_table"]["clients"] == -25
+    assert len(required.impact["sample"]) == 5  # the clients that would disappear
+    assert all(row["status"] == "inactive" for row in required.impact["sample"])
     assert only(emitted, events.ToolResult).error.code == "ACTION_REJECTED"
     assert inactive(config) == 40
 
