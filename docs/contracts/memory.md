@@ -5,9 +5,9 @@
 | **Tâche** | MEM-01 (PLANNING §7, sprint 1) |
 | **Propriétaire** | P3 — Mémoire & Évaluation |
 | **Consommateurs** | P1 (registry, injection dans le prompt, événements), P4 (panneau mémoire, `GET /api/memory`, `ui_action` WS), P2 (politique HITL) |
-| **Statut** | Brouillon — gel le **mar 06/10 à 12 h** |
-| **Fait foi** | [`src/sensai/memory/schema.sql`](../../src/sensai/memory/schema.sql) pour le schéma, [`schemas/memory_tools.v1.json`](schemas/memory_tools.v1.json) pour les outils |
-| **Spécification** | PROJECT.md §6.4 (M3) |
+| **Statut** | v1 gelée le mar 06/10 ; **v1.1** (note du comité, §7) gelée le **mer 21/10 à 18 h** (ajouts uniquement) |
+| **Fait foi** | [`src/sensai/memory/schema.sql`](../../src/sensai/memory/schema.sql) pour le schéma, [`schemas/memory_tools.v1.json`](schemas/memory_tools.v1.json) pour les outils mémoire, [`schemas/document_tools.v1.json`](schemas/document_tools.v1.json) pour les outils de la note (§7) |
+| **Spécification** | PROJECT.md §6.4 (M3), §6.17 (M4) |
 
 > À relier depuis `tools.md` (P1) : ce document en est la section « Outils mémoire ». Il est séparé pour éviter un conflit sur un fichier que P1 rédige en parallèle.
 
@@ -170,6 +170,122 @@ Renvoie les colonnes du §2, `aliases` et `attributes` décodés en JSON, plus `
 | M-2 | Événement `context_injected` (P-2) | ✅ Accepté par P1, forme du §4 |
 | M-3 | Lien depuis `tools.md` vers ce document | À faire par P1 |
 | M-4 | Types nullables (`["string", "null"]`) dans le paramètre `tools` d'Ollama | Évités par précaution : optionnel = omis. Un modèle qui envoie `null` déclenche une réparation (T5) |
+| V-2 (v1.1) | Où vit la note du comité | Proposition retenue : `memory.db`, `DocumentStore` séparé (§7.1). À confirmer à ALL-15 |
+| M-5 | `ToolResult.document_change` pour que le moteur émette `document_updated` (§7.3) | À ajouter par P1 dans `tools.md` §3.4 avec l'événement (`events.md`), même forme que `memory_change` |
+| M-6 | `section_id` d'une section créée par `insert_after` : calculé par le store ou donné par le modèle | Calculé par le store à partir du titre (§7.2) : le modèle ne peut pas créer de doublon |
+
+## 7. Note du comité (M4, contrats v1.1)
+
+Reporté de [`v1.1-extensions.md`](v1.1-extensions.md) §3.4 (décision [D-06](../decisions.md)). Implémentation : ARTIF-01 (P3), panneau Note : WEB-17 (P4). Spécification : PROJECT.md §6.17.
+
+### 7.1 Principes
+
+1. **Même base, autre store** (point V-2) : la note vit dans `memory.db`, la seule base de l'agent à remettre à zéro (`make demo-reset`), mais derrière un `DocumentStore` séparé du `MemoryStore` : la note n'est pas une entrée de mémoire, elle n'a ni `kind` ni `ref`, et n'apparaît ni dans `memory_search`, ni dans `context_injected`, ni dans `GET /api/memory`.
+2. **Une section par appel.** Le modèle ne réécrit jamais toute la note : chaque écriture porte sur une seule section, 4 000 caractères au plus.
+3. **Tout est versionné.** Chaque écriture effective incrémente `documents.revision` et ajoute une ligne à `document_revisions`, dans la même transaction. Revenir en arrière crée une nouvelle révision (`restore`), sans rien effacer.
+4. **Verrou optimiste.** Chaque écriture donne la révision sur laquelle elle porte (`base_revision`) : si la note a changé entre-temps (par l'interface, par exemple), l'écriture échoue et le modèle relit avant de recommencer.
+5. Une seule note active en v1 : `note-comite`, créée vide à partir du modèle `[documents] template` au premier accès.
+
+### 7.2 Schéma
+
+Tables ajoutées à `memory.db` par ARTIF-01 (`schema.sql` fera foi, `PRAGMA user_version = 2`, migration depuis la version 1 : création des tables, rien d'autre ne change). Mêmes conventions que le §2 : horodatages UTC `YYYY-MM-DDTHH:MM:SSZ`, clés étrangères actives.
+
+```sql
+CREATE TABLE documents (
+  id          TEXT PRIMARY KEY,            -- 'note-comite'
+  title       TEXT NOT NULL,
+  revision    INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+
+CREATE TABLE document_sections (
+  doc_id      TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  section_id  TEXT NOT NULL,               -- 'rentabilite'
+  position    INTEGER NOT NULL,
+  title       TEXT NOT NULL,
+  content     TEXT NOT NULL DEFAULT '',
+  updated_at  TEXT NOT NULL,
+  PRIMARY KEY (doc_id, section_id)
+);
+
+CREATE TABLE document_revisions (
+  doc_id      TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  revision    INTEGER NOT NULL,
+  op          TEXT NOT NULL CHECK (op IN ('replace','append','insert_after','delete','restore')),
+  section_id  TEXT,
+  before      TEXT,                        -- JSON de la section avant
+  after       TEXT,                        -- JSON de la section après
+  actor       TEXT NOT NULL,               -- 'agent' | 'user'
+  session_id  TEXT,
+  at          TEXT NOT NULL,
+  PRIMARY KEY (doc_id, revision)
+);
+```
+
+- `section_id` : minuscules, chiffres et `-`, 64 caractères au plus (`rentabilite`, `top-clients`). Celui d'une section créée par `insert_after` est calculé par le store à partir du titre (sans accents, espaces → `-`, suffixe `-2`, `-3`… en cas de doublon).
+- `position` : entiers croissants ; `insert_after` décale les sections suivantes.
+- `before` / `after` : la section entière en JSON (`{section_id, position, title, content}`) ; `before` est `null` pour `insert_after`, `after` est `null` pour `delete`. Pour `restore`, `section_id` est `null` et `before` / `after` contiennent la note entière (`{title, sections: [...]}`).
+
+### 7.3 Outils
+
+Définitions complètes (descriptions vues par le modèle, `inputSchema`, annotations) : [`schemas/document_tools.v1.json`](schemas/document_tools.v1.json). Outils natifs, sans préfixe ; les quatre annotations sont déclarées explicitement, comme pour la mémoire (§3).
+
+| Outil | Arguments | `readOnly` | `destructive` | Confirmation | Proposé au modèle |
+|---|---|:---:|:---:|:---:|:---:|
+| `document_read` | `{section_id?}` | ✅ | — | Non | ✅ |
+| `document_patch` | `{section_id, op, content, title?, base_revision}` | — | — | Non (réversible, versionné) | ✅ |
+| `document_delete_section` | `{section_id, base_revision}` | — | ✅ | **Oui** | ✅ |
+| `document_restore` | `{revision}` | — | — | Non (crée une révision) | **Non** : `ui_action` uniquement (`"ui_only": true` dans le schéma) |
+
+- `op` de `document_patch` : `replace` (nouveau contenu de la section), `append` (ajout en fin de section, séparé par une ligne vide), `insert_after` (nouvelle section après `section_id`, `title` obligatoire, `content` est son contenu). `title` est ignoré pour `replace` et `append`.
+- `document_delete_section` passe par la politique HITL ; son aperçu suit la forme de `confirmation_required.impact` :
+
+  ```json
+  {"operation": "DELETE", "rows_affected": 1,
+   "per_table": {"document_sections": -1},
+   "sample": [{"section_id": "risques", "title": "Risques", "chars": 812}],
+   "blocked": []}
+  ```
+
+**Résultats** (texte JSON pour le modèle, `ToolResult.data` pour le moteur) :
+
+```json
+// document_read sans argument : le plan
+{"doc_id": "note-comite", "title": "Note au comité de direction", "revision": 4,
+ "sections": [{"section_id": "synthese", "position": 1, "title": "Synthèse", "chars": 640},
+              {"section_id": "rentabilite", "position": 2, "title": "Rentabilité", "chars": 1210}]}
+
+// document_read avec section_id
+{"doc_id": "note-comite", "revision": 4, "section_id": "rentabilite", "title": "Rentabilité",
+ "content": "Les 5 clients les plus rentables du trimestre…"}
+
+// écritures (document_patch, document_delete_section, document_restore)
+{"doc_id": "note-comite", "revision": 5, "op": "replace", "section_id": "rentabilite",
+ "summary": "Section « Rentabilité » mise à jour (révision 5)"}
+```
+
+- Après chaque écriture réussie, le moteur émet `document_updated {doc_id, revision, section_id, op, summary}` (événement de P1, `events.md`), comme `memory_updated`. Le résultat d'outil porte pour cela un `document_change` dans `ToolResult` (même rôle que `memory_change`, `tools.md` §3.4).
+- **Plan injecté** : à chaque tour, le plan de la note (titres et révision, une ligne par section, sans les contenus) est ajouté au prompt système dans un budget fixe (M2), pour que le modèle connaisse `section_id` et `base_revision` sans appel. Le contenu d'une section ne s'obtient que par `document_read`.
+
+### 7.4 Erreurs
+
+Comme au §3.4 : un résultat d'outil en erreur, renvoyé au modèle, jamais une exception.
+
+| `code` | Quand | Le modèle doit |
+|---|---|---|
+| `REVISION_CONFLICT` | `base_revision` ≠ révision courante. Le message donne la révision courante | relire (`document_read`) puis recommencer |
+| `section_not_found` | `section_id` absent de la note (ou `revision` inconnue pour `document_restore`) | relire le plan |
+| `content_too_long` | `content` dépasse 4 000 caractères (filet de sécurité : le `inputSchema` le refuse déjà) | découper en plusieurs `append` |
+| `invalid_patch` | `insert_after` sans `title` | redonner un titre |
+
+`REVISION_CONFLICT` est en majuscules, comme les codes des outils de `tools.md` §8, parce que l'interface l'affiche (édition concurrente depuis le panneau) ; les autres codes suivent la convention de la mémoire.
+
+### 7.5 Interface (P4)
+
+- `ui_action` : la liste blanche du §4 gagne `document_patch` (édition depuis le panneau, `actor = 'user'`) et `document_restore`. Même broker et même politique que la session.
+- Routes REST en lecture seule (`websocket.md` §9, P4) : `GET /api/documents/current` (`{id, title, revision, sections: [{section_id, position, title, content, updated_at}]}`), `GET /api/documents/current/revisions` (`{revisions: [{revision, op, section_id, actor, at}]}`), `GET /api/documents/current/export?format=md`.
+- `session_ready.document_id` (P4) : `"note-comite"`.
 
 ## Validation
 
