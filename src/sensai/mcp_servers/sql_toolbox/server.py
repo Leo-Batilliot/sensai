@@ -277,8 +277,10 @@ class SqlToolboxServer:
         try:
             result = self.writer.execute(sql, operation)
         except WriteBlocked as exc:
+            hint = f" {exc.hint}." if exc.hint else ""
             raise ToolError(
-                "SQL_ERROR", f"Écriture refusée par la base, rien n'a été modifié : {exc.reason}."
+                "SQL_ERROR",
+                f"Écriture refusée par la base, rien n'a été modifié : {exc.reason}.{hint}",
             ) from exc
         except QueryTimeout as exc:
             raise self._timeout() from exc
@@ -376,8 +378,9 @@ _IMPACT_OUTPUT = {
         "operation": {"enum": ["INSERT", "UPDATE", "DELETE"]},
         "rows_affected": {"type": "integer"},
         "per_table": {"type": "object", "additionalProperties": {"type": "integer"}},
-        "sample": {"type": "array", "items": {"type": "object"}},
+        "sample": {"type": "array", "maxItems": 5, "items": {"type": "object"}},
         "blocked": {"type": "array", "items": {"type": "object"}},
+        "hint": {"type": "string"},
     },
     "required": ["operation", "rows_affected", "per_table", "sample", "blocked"],
 }
