@@ -173,6 +173,7 @@ Renvoie les colonnes du §2, `aliases` et `attributes` décodés en JSON, plus `
 | V-2 (v1.1) | Où vit la note du comité | Proposition retenue : `memory.db`, `DocumentStore` séparé (§7.1). À confirmer à ALL-15 |
 | M-5 | `ToolResult.document_change` pour que le moteur émette `document_updated` (§7.3) | À ajouter par P1 dans `tools.md` §3.4 avec l'événement (`events.md`), même forme que `memory_change` |
 | M-6 | `section_id` d'une section créée par `insert_after` : calculé par le store ou donné par le modèle | Calculé par le store à partir du titre (§7.2) : le modèle ne peut pas créer de doublon |
+| V-8 (v1.1) | Supprimer une section depuis le panneau Note | ✅ Oui : `document_delete_section` dans la liste blanche d'`ui_action`, toujours sous confirmation (§7.5) |
 
 ## 7. Note du comité (M4, contrats v1.1)
 
@@ -283,7 +284,7 @@ Comme au §3.4 : un résultat d'outil en erreur, renvoyé au modèle, jamais une
 
 ### 7.5 Interface (P4)
 
-- `ui_action` : la liste blanche du §4 gagne `document_patch` (édition depuis le panneau, `actor = 'user'`) et `document_restore`. Même broker et même politique que la session.
+- `ui_action` : la liste blanche du §4 gagne `document_patch` (édition depuis le panneau, `actor = 'user'`), `document_restore` et `document_delete_section` (point V-8). Même broker et même politique que la session : `document_delete_section` demande donc toujours une confirmation, comme `memory_delete`.
 - Routes REST en lecture seule (`websocket.md` §9, P4) : `GET /api/documents/current` (`{id, title, revision, sections: [{section_id, position, title, content, updated_at}]}`), `GET /api/documents/current/revisions` (`{revisions: [{revision, op, section_id, actor, at}]}`), `GET /api/documents/current/export?format=md`.
 - `session_ready.document_id` (P4) : `"note-comite"`.
 
