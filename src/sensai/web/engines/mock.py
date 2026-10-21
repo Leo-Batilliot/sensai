@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import fnmatch
 import json
 import logging
 import time
@@ -27,7 +28,7 @@ from sensai.core.config import Config
 from sensai.core.confirm import ConfirmationBroker, Decision, PendingAction
 from sensai.memory.errors import MemoryStoreError
 from sensai.memory.store import AuditContext, MemoryStore
-from sensai.web.engines.backend import ModelInfo
+from sensai.web.engines.backend import ModelInfo, Persona, PersonaTools
 from sensai.web.paths import FIXTURES_DIR
 from sensai.web.websocket.confirm import WebConfirmationBroker
 from sensai.web.websocket.settings import session_settings
@@ -135,6 +136,51 @@ MOCK_TOOLS = (
 
 
 @dataclass(frozen=True)
+class MockPersona:
+    """A profile of v1.1-extensions.md §3.7, as PERS-01 will load it from personas/*.toml."""
+
+    id: str
+    name: str
+    role: str
+    allow: tuple[str, ...]  # fnmatch patterns
+
+    def allows(self, tool: str) -> bool:
+        return any(fnmatch.fnmatchcase(tool, pattern) for pattern in self.allow)
+
+    def info(self) -> Persona:
+        return Persona(id=self.id, name=self.name, role=self.role)
+
+
+READ_ONLY = (
+    "time__*",
+    "sql_toolbox__list_tables",
+    "sql_toolbox__describe_table",
+    "sql_toolbox__run_select",
+    "memory_*",
+    "glossary_define",
+    "ask_user",
+    "document_*",
+    "file_list",
+    "file_read",
+)
+
+# The three profiles of the scenario (docs/keynote/scenario.md §2): a profile only removes tools
+MOCK_PERSONAS = (
+    MockPersona(
+        "analyste", "Contrôle de gestion", "Copilote de Claire, contrôleuse de gestion", READ_ONLY
+    ),
+    MockPersona(
+        "adv",
+        "ADV",
+        "Copilote de Karim, responsable ADV",
+        (*READ_ONLY, "sql_toolbox__preview_write", "sql_toolbox__execute_write"),
+    ),
+    MockPersona("admin", "Admin", "Copilote d'Inès, administratrice", (*READ_ONLY, "file_write")),
+)
+DEFAULT_PERSONA = "analyste"
+
+
+@dataclass(frozen=True)
 class Pacing:
     """Seconds slept before each event; tests use zero or tiny values."""
 
@@ -188,11 +234,25 @@ class MockEngine:
         self._cancelled = False
         self._active_turn: object | None = None  # the turn that cancel() would stop
         self._next_error_turn = 0
+        self._persona = _persona(DEFAULT_PERSONA)
 
     # --- WebEngine ----------------------------------------------------------------------
 
+    @property
+    def persona(self) -> Persona:
+        return self._persona.info()
+
     def describe(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        return [dict(server) for server in MOCK_SERVERS], [dict(tool) for tool in MOCK_TOOLS]
+        tools = [dict(tool) for tool in MOCK_TOOLS if self._persona.allows(tool["name"])]
+        return [dict(server) for server in MOCK_SERVERS], tools
+
+    def set_persona(self, persona_id: str) -> bool:
+        # The replayed fixtures do not change: only the tools shown follow the profile
+        persona = next((p for p in MOCK_PERSONAS if p.id == persona_id), None)
+        if persona is None:
+            return False
+        self._persona = persona
+        return True
 
     def run_turn(self, user_message: str) -> AsyncIterator[Event]:
         prefix, branches = self._pick(user_message)
@@ -502,10 +562,23 @@ class MockBackend:
     async def ollama_available(self) -> bool:
         return True  # simulated
 
+    def personas(self) -> tuple[str | None, list[PersonaTools]]:
+        return DEFAULT_PERSONA, [
+            PersonaTools(
+                **persona.info(),
+                tools=[tool["name"] for tool in MOCK_TOOLS if persona.allows(tool["name"])],
+            )
+            for persona in MOCK_PERSONAS
+        ]
+
     def new_engine(self, session_id: str, broker: WebConfirmationBroker) -> MockEngine:
         return MockEngine(
             session_id, self._config, broker, self._turns, self._pacing, memory=self._store()
         )
+
+
+def _persona(persona_id: str) -> MockPersona:
+    return next(persona for persona in MOCK_PERSONAS if persona.id == persona_id)
 
 
 def mock_memory() -> MemoryStore:

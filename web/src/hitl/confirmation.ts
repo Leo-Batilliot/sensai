@@ -62,6 +62,9 @@ export function confirmationOutcome(turn: Turn): Outcome | null {
       )
     case 'user':
       return outcome('rejected', 'neutral', 'Action refusée', "Rien n'a été modifié. L'agent en tient compte.")
+    default:
+      // A reason added after this version of the interface: the action did not run
+      return outcome('rejected', 'neutral', 'Action non exécutée', "Rien n'a été modifié.")
   }
 }
 

@@ -60,6 +60,11 @@ def create_app(
     async def memory() -> dict[str, list[dict[str, Any]]]:
         return await backend.memory_snapshot()
 
+    @app.get("/api/personas")
+    async def personas() -> dict[str, Any]:
+        current, profiles = backend.personas()
+        return {"current": current, "personas": profiles}
+
     install_websocket(app, app.state.sessions)
 
     if (static_dir / "index.html").is_file():

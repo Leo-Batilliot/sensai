@@ -1,4 +1,4 @@
-import type { ServerInfo, Usage } from '../protocol'
+import type { Persona, ServerInfo, Usage } from '../protocol'
 import type { ChatState, ConnectionStatus } from '../session/reducer'
 import { GAUGE_HINT, gauge, modelChoices, modelLabel, serversUp } from './status'
 import { useModels } from './useModels'
@@ -16,10 +16,11 @@ interface Props {
   state: ChatState
   connected: boolean
   onSetModel: (model: string) => void
+  onSetPersona: (persona: string) => void
 }
 
-// Status bar (docs/keynote/ui/BarreEtat): model, MCP servers, context window, connection
-export function StatusBar({ state, connected, onSetModel }: Props) {
+// Status bar (docs/keynote/ui/BarreEtat): profile, model, MCP servers, context window, connection
+export function StatusBar({ state, connected, onSetModel, onSetPersona }: Props) {
   const connection = CONNECTION[state.connection]
   const session = state.session
 
@@ -33,6 +34,12 @@ export function StatusBar({ state, connected, onSetModel }: Props) {
         <span className="muted">Nordvent Distribution</span>
       </div>
       <div className="statusbar-items">
+        <PersonaSelect
+          current={session?.persona ?? null}
+          personas={session?.personas ?? []}
+          connected={connected}
+          onSetPersona={onSetPersona}
+        />
         <ModelSelect
           current={session?.model ?? null}
           supportsTools={session?.supportsTools ?? true}
@@ -49,6 +56,37 @@ export function StatusBar({ state, connected, onSetModel }: Props) {
   )
 }
 
+interface PersonaSelectProps {
+  current: Persona | null
+  personas: Persona[]
+  connected: boolean
+  onSetPersona: (persona: string) => void
+}
+
+// The profile applies from the next turn and the conversation is kept (websocket.md §4.9).
+// Hidden for a server without profiles.
+function PersonaSelect({ current, personas, connected, onSetPersona }: PersonaSelectProps) {
+  if (current === null || personas.length === 0) return null
+  return (
+    <label className="chip chip-select persona-select" title={current.role}>
+      <span>Profil :</span>
+      <select
+        id="persona-select"
+        value={current.id}
+        disabled={!connected}
+        onChange={(event) => onSetPersona(event.target.value)}
+        title="Le nouveau profil répond à partir de la prochaine question ; la conversation est conservée. Un profil retire des outils, il ne supprime jamais une confirmation."
+      >
+        {personas.map((persona) => (
+          <option key={persona.id} value={persona.id}>
+            {persona.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
 interface ModelSelectProps {
   current: string | null
   supportsTools: boolean
@@ -61,7 +99,7 @@ function ModelSelect({ current, supportsTools, connected, onSetModel }: ModelSel
   const models = modelChoices(useModels(connected), current)
   return (
     <>
-      <label className="chip model-select">
+      <label className="chip chip-select model-select">
         <span>Modèle :</span>
         <select
           id="model-select"
