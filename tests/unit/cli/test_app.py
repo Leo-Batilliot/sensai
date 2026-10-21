@@ -504,6 +504,18 @@ def test_without_the_demo_database_the_chat_has_no_tools(
     assert client.tools_sent == [None]
 
 
+def test_the_demo_mode_is_announced_at_startup(
+    config_file: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    demo = config_file.read_text(encoding="utf-8") + "\n[demo]\nalter_answer = true\n"
+    config_file.write_text(demo, encoding="utf-8")
+    use_fake(monkeypatch, FakeClient(answer("Oui."), models=("modele-du-fichier",)))
+
+    assert run_chat(str(config_file), read_line=scripted("Salut")) == 0
+
+    assert "Mode démo actif" in capsys.readouterr().out
+
+
 def test_the_chat_runs_on_the_assembled_engine(
     demo_config: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

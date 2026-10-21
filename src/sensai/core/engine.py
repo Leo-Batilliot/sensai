@@ -14,6 +14,9 @@ With a MemoryContext (MEM-04), each turn starts by selecting the memory entries 
 question: they go into the system prompt and the context_injected event. With an
 OnlineJudge (EVAL-05), an answer built on a successful run_select is checked after
 message_done (judge_started, judge_report), once the session is free again.
+
+With [demo] alter_answer (CORE-20, core/demo.py), the answer to the question of act 3
+gets one wrong figure while it streams, before the judge: the demo of a caught mistake.
 """
 
 from __future__ import annotations
@@ -36,6 +39,7 @@ from sensai.core.confirm import (
     Decision,
     PendingAction,
 )
+from sensai.core.demo import AnswerAlteration
 from sensai.core.errors import SensaiError
 from sensai.core.history import History
 from sensai.eval.online import OnlineJudge, SelectResult, select_result
@@ -231,6 +235,8 @@ class Engine:
             interrupted = answered = False
             previous: str | None = None  # last executed call, to detect loops
             selects: list[SelectResult] = []  # successful run_select calls, for the judge
+            # Act 3 of the demo (CORE-20): None unless [demo] alter_answer and its trigger
+            demo = AnswerAlteration.for_turn(self.config, user_message, selects)
             try:
                 for _ in range(self.config.agent.max_tool_iterations):
                     text: list[str] = []
@@ -250,17 +256,20 @@ class Engine:
                                     turn_id=turn_id,
                                     delta=chunk.thinking,
                                 )
-                            if chunk.content:
-                                parts.append(chunk.content)
-                                text.append(chunk.content)
+                            delta = demo.feed(chunk.content) if demo else chunk.content
+                            if delta:
+                                parts.append(delta)
+                                text.append(delta)
                                 yield events.Token(
-                                    session_id=self.session_id,
-                                    turn_id=turn_id,
-                                    delta=chunk.content,
+                                    session_id=self.session_id, turn_id=turn_id, delta=delta
                                 )
                             calls.extend(chunk.tool_calls)
                             if chunk.usage is not None:
                                 usage = chunk.usage
+                    if demo is not None and (rest := demo.flush()):
+                        parts.append(rest)
+                        text.append(rest)
+                        yield events.Token(session_id=self.session_id, turn_id=turn_id, delta=rest)
                     if interrupted:
                         break
                     if not calls:
