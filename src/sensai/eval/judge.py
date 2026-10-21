@@ -24,7 +24,7 @@ from sensai.core.errors import SensaiError
 from sensai.core.events import Badge
 from sensai.eval.numeric_check import DEFAULT_TOLERANCE, NumericCheck, check_numbers
 from sensai.llm.ollama_client import Chunk, Message
-from sensai.llm.structured import generate_structured
+from sensai.llm.structured import RepairStats, generate_structured
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +158,8 @@ class Judge:
         self.options: dict[str, Any] = {"temperature": 0}
         if num_ctx is not None:
             self.options["num_ctx"] = num_ctx
+        # T5 counters of the judge reports, read by the harness ("JSON valide", EVAL-06)
+        self.stats = RepairStats()
         self._schema = load_report_schema()
         self._prompt = load_prompt()
 
@@ -185,6 +187,7 @@ class Judge:
                 self.model,
                 max_repairs=MAX_REPAIRS,
                 options=self.options,
+                stats=self.stats,
             )
         except SensaiError as exc:
             # Never log the answer or the rows: they may hold confidential business data

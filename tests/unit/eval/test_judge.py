@@ -231,6 +231,19 @@ async def test_report_still_invalid_after_repair_gives_unavailable() -> None:
     assert envelope_is_valid(verdict.to_dict())
 
 
+async def test_judge_counts_valid_json_for_the_harness() -> None:
+    # "JSON valide" metric of EVAL-06: first try, after a repair, still invalid
+    case = CASES[0]
+    judge = Judge(
+        FakeChat(case["stub_report"], "{pas du json", case["stub_report"], "{}", "{}"), MODEL
+    )
+
+    for _ in range(3):
+        await judge.evaluate(as_input(case))
+
+    assert judge.stats.to_dict() == {"first_try": 1, "repaired": 1, "failed": 1}
+
+
 @pytest.mark.parametrize("error", [OllamaUnavailable("http://x"), OllamaTimeout(5)])
 async def test_model_failure_never_raises(error: Exception) -> None:
     verdict = await Judge(FakeChat(error), MODEL).evaluate(as_input(CASES[0]))
