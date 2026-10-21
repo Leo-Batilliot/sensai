@@ -5,6 +5,7 @@ import './hitl/hitl.css'
 import './judge/judge.css'
 import './results/results.css'
 import './sql/sql.css'
+import './statusbar/statusbar.css'
 import './timeline/timeline.css'
 import { ChatInput } from './chat/ChatInput'
 import { EmptyState } from './chat/EmptyState'
@@ -12,32 +13,20 @@ import { MessageList } from './chat/MessageList'
 import { ConfirmationModal } from './hitl/ConfirmationModal'
 import { pendingConfirmation } from './hitl/confirmation'
 import { useOutcomeToast } from './hitl/useOutcomeToast'
-import type { ConnectionStatus } from './session/reducer'
 import { useSession } from './session/useSession'
+import { StatusBar } from './statusbar/StatusBar'
 import { Timeline } from './timeline/Timeline'
 
 type SideTab = 'timeline' | 'memory'
 
-const CONNECTION: Record<ConnectionStatus, { label: string; tone: string }> = {
-  connecting: { label: 'Connexion…', tone: '' },
-  open: { label: 'Connecté', tone: 'chip-up' },
-  reconnecting: { label: 'Reconnexion…', tone: 'chip-down' },
-  replaced: { label: 'Ouverte ailleurs', tone: 'chip-down' },
-}
-
-const numbers = new Intl.NumberFormat('fr-FR')
-
-// Layout of the main screen (docs/keynote/ui/EcranPrincipal). Still to come: status bar
-// (WEB-10), memory panel (WEB-11).
+// Layout of the main screen (docs/keynote/ui/EcranPrincipal). Still to come: memory panel
+// (WEB-11).
 export default function App() {
   const session = useSession()
   const { state } = session
   const [tab, setTab] = useState<SideTab>('timeline')
   // Turn shown in the timeline: the one picked from a message, otherwise the last one
   const [pinnedTurnId, setPinnedTurnId] = useState<string | null>(null)
-  const connection = CONNECTION[state.connection]
-  const servers = state.session?.servers ?? []
-  const usage = state.lastUsage
   const confirmation = pendingConfirmation(state.turns)
   const { toast, dismiss: dismissToast } = useOutcomeToast(state.turns)
   const pinned = state.turns.findIndex((turn) => turn.id === pinnedTurnId)
@@ -55,31 +44,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="statusbar">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            S
-          </span>
-          <strong>SENSAI</strong>
-          <span className="muted">Nordvent Distribution</span>
-        </div>
-        <div className="statusbar-items">
-          <span className="chip">Modèle : {state.session?.model ?? '—'}</span>
-          <span className="chip">
-            Serveurs MCP : {servers.filter((server) => server.status === 'up').length}/
-            {servers.length}
-          </span>
-          <span className="chip">
-            Contexte :{' '}
-            {usage === null
-              ? '—'
-              : `${numbers.format(usage.ctx_used)} / ${numbers.format(usage.ctx_max)}`}
-          </span>
-          <span className={`chip ${connection.tone}`} role="status">
-            {connection.label}
-          </span>
-        </div>
-      </header>
+      <StatusBar state={state} connected={session.connected} onSetModel={session.setModel} />
 
       <main className="conversation" aria-label="Conversation">
         <div className="banners">
