@@ -49,7 +49,12 @@ export default function App() {
 
   return (
     <div className="app">
-      <StatusBar state={state} connected={session.connected} onSetModel={session.setModel} />
+      <StatusBar
+        state={state}
+        connected={session.connected}
+        onSetModel={session.setModel}
+        onSetPersona={session.setPersona}
+      />
 
       <main className="conversation" aria-label="Conversation">
         <div className="banners">
@@ -86,6 +91,7 @@ export default function App() {
         ) : (
           <MessageList
             turns={state.turns}
+            personaMarks={state.personaMarks}
             canAsk={session.connected && !session.busy}
             onAsk={ask}
             onShowSteps={showSteps}

@@ -147,6 +147,13 @@ async def test_ui_action_says_it_is_not_plugged_yet(started: RealBackend) -> Non
     await engine.aclose()
 
 
+async def test_no_profile_before_pers_01(started: RealBackend) -> None:
+    engine = started.new_engine("s-1", WebConfirmationBroker())
+    assert engine.persona is None and engine.set_persona("adv") is False
+    assert started.personas() == (None, [])
+    await engine.aclose()
+
+
 async def test_new_engine_needs_the_shared_services(config: Config) -> None:
     backend = RealBackend(config, client_factory=Clients())
     with pytest.raises(RuntimeError):
