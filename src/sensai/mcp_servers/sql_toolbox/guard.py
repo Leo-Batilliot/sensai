@@ -77,11 +77,15 @@ def open_readonly(path: str | Path) -> sqlite3.Connection:
     return conn
 
 
+def strip_leading_comments(sql: str) -> str:
+    """The statement without the spaces and comments that come before it."""
+    comments = _LEADING_COMMENTS.match(sql)  # always matches, possibly empty
+    return sql[comments.end() :] if comments else sql
+
+
 def first_keyword(sql: str) -> str:
     """First word of the statement, upper-case, after leading spaces and comments."""
-    comments = _LEADING_COMMENTS.match(sql)  # always matches, possibly empty
-    rest = sql[comments.end() :] if comments else sql
-    match = re.match(r"[A-Za-z]+", rest)
+    match = re.match(r"[A-Za-z]+", strip_leading_comments(sql))
     return match.group(0).upper() if match else ""
 
 
