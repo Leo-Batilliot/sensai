@@ -62,7 +62,7 @@ notes = "Hypothèses explicites, refus hors périmètre, $persona, $examples, pl
 ### 1.3 Ce que les autres enregistrent
 
 - **Harness** : chaque rapport contient `prompt: {name, version, file, sha256}` ([`judge.md`](judge.md) §5). Tant que le registre n'existe pas, `version` est lue dans le nom du fichier (`system_sql_v1.md` → `v1`) ; ensuite, elle vient du registre et le harness vérifie l'empreinte.
-- **WebSocket** : `session_ready.prompt_version` (P4).
+- **WebSocket** : la version courante est `config.prompt_version` (`session_ready.config`, `config_updated.config`), sans champ à part (point V-9).
 
 ## 2. Exemples dynamiques (A7)
 
@@ -103,6 +103,7 @@ notes = "Hypothèses explicites, refus hors périmètre, $persona, $examples, pl
 |---|---|---|
 | V-3 (`v1.1-extensions.md`) | `examples_injected` à part ou dans `context_injected` | Proposition retenue : à part (§2.2), à confirmer à ALL-15 |
 | PR-1 | Le prompt du juge (`judge.md`) entre-t-il dans le registre ? | Non en v1.1 : il ne change pas pendant l'extension. À reconsidérer s'il évolue |
+| V-9 (v1.1) | `session_ready.prompt_version` fait doublon avec `config.prompt_version` | ✅ Un seul endroit : `config.prompt_version` (§1.3) |
 | PR-2 | Version par défaut tant que CORE-14 n'est pas mergée | `"v1"` : la clé `[agent] prompt_version` arrive avec PROMPT-01, sa valeur par défaut passe à `"v2"` avec CORE-14 |
 
 ## Validation
