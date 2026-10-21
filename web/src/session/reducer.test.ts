@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import type { EngineEvent, ServerMessage, SessionReady } from '../protocol'
-import { FIXTURE_FILES, fixture } from '../test/fixtures'
+import type { EngineEvent, Persona, PersonaChanged, ServerMessage, SessionReady } from '../protocol'
+import { FIXTURE_FILES, fixture, until } from '../test/fixtures'
 import { chatReducer, initialState, isBusy, type ChatState } from './reducer'
 
-function ready(history: EngineEvent[] = [], protocolVersion = 1): SessionReady {
+const ANALYSTE: Persona = { id: 'analyste', name: 'Contrôle de gestion', role: 'Copilote de Claire' }
+const ADV: Persona = { id: 'adv', name: 'ADV', role: 'Copilote de Karim' }
+
+function ready(
+  history: SessionReady['history'] = [],
+  protocolVersion = 1,
+  persona: Persona = ANALYSTE,
+): SessionReady {
   return {
     type: 'session_ready',
     session_id: 's-fixture',
@@ -18,7 +25,14 @@ function ready(history: EngineEvent[] = [], protocolVersion = 1): SessionReady {
     config: { temperature: 0.1, num_ctx: 8192, judge_enabled: true, judge_model: null },
     servers: [],
     tools: [],
+    persona,
+    personas: [ANALYSTE, ADV],
+    document_id: null,
   }
+}
+
+function personaChanged(persona: Persona): PersonaChanged {
+  return { type: 'persona_changed', session_id: 's-fixture', ts: 0, persona, tools: [] }
 }
 
 function play(messages: ServerMessage[], state: ChatState = initialState): ChatState {
@@ -59,6 +73,42 @@ describe('replaying the fixtures', () => {
   it('batched and one-by-one dispatches give the same state', () => {
     const events = fixture('nominal.jsonl')
     expect(play([ready(), ...events]).turns).toEqual(playOneByOne(events).turns)
+  })
+})
+
+describe('event types added after this version (events.md v1.1, rule 7)', () => {
+  // What the engine starts to emit with the v1.1 extensions (contracts/v1.1-extensions.md)
+  function withNewTypes(events: EngineEvent[]): ServerMessage[] {
+    const started = events.findIndex((event) => event.type === 'turn_started')
+    const turnId = events[started].turn_id
+    const common = { session_id: 's-fixture', turn_id: turnId, ts: 0 }
+    const unknown = [
+      { type: 'context_compacted', ...common, turns: 3, tokens_before: 9000, tokens_after: 4000, summary: '…' },
+      { type: 'examples_injected', ...common, examples: [{ id: 'ex-1', question: 'Top 5 ?', score: 0.9 }] },
+    ] as unknown as ServerMessage[]
+    // and a new message of the web layer, outside any turn
+    const outside = { type: 'persona_changed', session_id: 's-fixture', ts: 0, persona: 'cfo' }
+    return [
+      ...events.slice(0, started + 1),
+      ...unknown,
+      outside as unknown as ServerMessage,
+      ...events.slice(started + 1),
+    ]
+  }
+
+  it('ignores them: the turn ends exactly as without them', () => {
+    const events = fixture('nominal.jsonl')
+    const expected = play([ready(), ...events])
+    const state = play([ready(), ...withNewTypes(events)])
+    expect(state.turns).toEqual(expected.turns)
+    expect(state.notices).toEqual([])
+    expect(isBusy(state)).toBe(false)
+  })
+
+  it('ignores them one message at a time as well', () => {
+    const state = playOneByOne(withNewTypes(fixture('hitl_approve.jsonl')))
+    expect(state.turns).toHaveLength(1)
+    expect(state.turns[0].status).toBe('done')
   })
 })
 
@@ -172,5 +222,46 @@ describe('session messages', () => {
       },
     ])
     expect(state.session).toMatchObject({ model: 'gemma2:9b', supportsTools: false, ctxMax: 16384 })
+  })
+})
+
+describe('profile change (A5, WEB-15)', () => {
+  const nominal = fixture('nominal.jsonl')
+
+  it('updates the status bar and puts a separator after the turns before it', () => {
+    const state = play([ready(), ...nominal, personaChanged(ADV)])
+    expect(state.session?.persona).toEqual(ADV)
+    expect(state.personaMarks).toEqual([{ afterTurns: 1, persona: ADV }])
+    expect(state.turns).toHaveLength(1) // the conversation of Claire stays (US-A5-01)
+  })
+
+  it('during a turn, the separator goes after the running turn', () => {
+    const running = until(nominal, (event) => event.type === 'tool_call')
+    const state = play([ready(), ...running, personaChanged(ADV)])
+    expect(isBusy(state)).toBe(true)
+    expect(state.personaMarks[0].afterTurns).toBe(1)
+  })
+
+  it('asking for the current profile again adds no separator', () => {
+    const state = play([ready(), ...nominal, personaChanged(ANALYSTE)])
+    expect(state.personaMarks).toEqual([])
+  })
+
+  it('a reload replays the separator in place, even when the profile is already the new one', () => {
+    const live = play([ready(), ...nominal, personaChanged(ADV)])
+    const reloaded = play([ready([...nominal, personaChanged(ADV)], 1, ADV)], live)
+    expect(reloaded.personaMarks).toEqual(live.personaMarks)
+    expect(reloaded.session?.persona).toEqual(ADV)
+  })
+
+  it('a reset removes the separators and keeps the profile', () => {
+    const state = play([
+      ready(),
+      ...nominal,
+      personaChanged(ADV),
+      { type: 'session_reset', session_id: 's-fixture', ts: 0 },
+    ])
+    expect(state.personaMarks).toEqual([])
+    expect(state.session?.persona).toEqual(ADV)
   })
 })

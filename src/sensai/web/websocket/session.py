@@ -99,6 +99,10 @@ class Session:
             self.broker.reject_all(reason)
             self.engine.cancel()
 
+    def remember(self, message: dict[str, Any]) -> None:
+        """A web message replayed with the history, in place: only persona_changed (§5.2)."""
+        self.history.append({key: value for key, value in message.items() if key != "reply_to"})
+
     def clear_history(self) -> None:
         self.history.clear()
         self._live_turns.clear()

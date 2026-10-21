@@ -9,14 +9,14 @@
   justify-content: flex-end;
 }
 
-/* Model selector: the native select keeps keyboard and screen reader support */
-.model-select {
+/* Profile and model selectors: the native select keeps keyboard and screen reader support */
+.chip-select {
   gap: var(--space-1);
   padding-right: 4px;
 }
 
-.model-select select {
-  /* As wide as the chosen model, not as the longest one of the list */
+.chip-select select {
+  /* As wide as the chosen option, not as the longest one of the list */
   field-sizing: content;
   max-width: 220px;
   padding: 0 4px;
@@ -27,7 +27,7 @@
   cursor: pointer;
 }
 
-.model-select select:disabled {
+.chip-select select:disabled {
   cursor: default;
 }
 

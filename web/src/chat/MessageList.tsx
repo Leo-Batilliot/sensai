@@ -1,5 +1,6 @@
-import { useLayoutEffect, useRef } from 'react'
-import type { Turn } from '../session/reducer'
+import { Fragment, useLayoutEffect, useRef } from 'react'
+import type { Persona } from '../protocol'
+import type { PersonaMark, Turn } from '../session/reducer'
 import { AssistantMessage } from './AssistantMessage'
 
 // Below this distance from the bottom, the list follows the new tokens
@@ -7,13 +8,21 @@ const STICK_THRESHOLD_PX = 48
 
 interface Props {
   turns: Turn[]
+  personaMarks: PersonaMark[]
   canAsk: boolean
   onAsk: (question: string) => void
   onShowSteps: (turnId: string) => void
   onShowMemory: () => void
 }
 
-export function MessageList({ turns, canAsk, onAsk, onShowSteps, onShowMemory }: Props) {
+export function MessageList({
+  turns,
+  personaMarks,
+  canAsk,
+  onAsk,
+  onShowSteps,
+  onShowMemory,
+}: Props) {
   const listRef = useRef<HTMLDivElement>(null)
   const followBottom = useRef(true)
 
@@ -21,7 +30,7 @@ export function MessageList({ turns, canAsk, onAsk, onShowSteps, onShowMemory }:
   useLayoutEffect(() => {
     const list = listRef.current
     if (list !== null && followBottom.current) list.scrollTop = list.scrollHeight
-  }, [turns])
+  }, [turns, personaMarks])
 
   const onScroll = () => {
     const list = listRef.current
@@ -32,29 +41,52 @@ export function MessageList({ turns, canAsk, onAsk, onShowSteps, onShowMemory }:
   return (
     <div className="messages" ref={listRef} onScroll={onScroll}>
       <div className="thread">
-        {turns.map((turn) => (
-          <section key={turn.id} className="turn" aria-label="Échange">
-            {turn.origin === 'user' ? (
-              <p className="bubble-user">{turn.userMessage}</p>
-            ) : (
-              // A turn started from the interface (memory panel) has no user bubble
-              <p className="ui-action">
-                Action depuis le panneau Mémoire : <code>{turn.steps[0]?.tool ?? 'outil'}</code>
-                {turn.steps[0]?.result && ` · ${turn.steps[0].result.summary}`}
-              </p>
-            )}
-            {turn.origin === 'user' && (
-              <AssistantMessage
-                turn={turn}
-                canAsk={canAsk}
-                onAsk={onAsk}
-                onShowSteps={onShowSteps}
-                onShowMemory={onShowMemory}
-              />
-            )}
-          </section>
+        {turns.map((turn, index) => (
+          <Fragment key={turn.id}>
+            {personaMarks
+              .filter((mark) => mark.afterTurns === index)
+              .map((mark, number) => (
+                <PersonaSeparator key={number} persona={mark.persona} />
+              ))}
+            <section className="turn" aria-label="Échange">
+              {turn.origin === 'user' ? (
+                <p className="bubble-user">{turn.userMessage}</p>
+              ) : (
+                // A turn started from the interface (memory panel) has no user bubble
+                <p className="ui-action">
+                  Action depuis le panneau Mémoire : <code>{turn.steps[0]?.tool ?? 'outil'}</code>
+                  {turn.steps[0]?.result && ` · ${turn.steps[0].result.summary}`}
+                </p>
+              )}
+              {turn.origin === 'user' && (
+                <AssistantMessage
+                  turn={turn}
+                  canAsk={canAsk}
+                  onAsk={onAsk}
+                  onShowSteps={onShowSteps}
+                  onShowMemory={onShowMemory}
+                />
+              )}
+            </section>
+          </Fragment>
         ))}
+        {personaMarks
+          .filter((mark) => mark.afterTurns >= turns.length)
+          .map((mark, number) => (
+            <PersonaSeparator key={`end-${number}`} persona={mark.persona} />
+          ))}
       </div>
     </div>
+  )
+}
+
+// The profile changed here: the turns below are answered with it (A5, act 4)
+function PersonaSeparator({ persona }: { persona: Persona }) {
+  return (
+    <p className="persona-mark" role="note">
+      <span>
+        Profil : <strong>{persona.name}</strong> · {persona.role}
+      </span>
+    </p>
   )
 }
