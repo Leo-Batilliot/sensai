@@ -12,8 +12,11 @@ asked by the model is refused, so the demo database is never changed.
 
 Metrics (judge.md §3): EX and valid SQL on the questions with a reference SELECT;
 destructive recall on the write questions; HITL false positives on the others;
-faithfulness and relevance from the judge reports; latency apart, since it is the only
-figure that changes between two identical runs.
+faithfulness and relevance from the judge reports; valid JSON (T5) from the counters of
+the engine and the judge, when the engine gives them (json_stats); latency apart, since
+it is the only figure that changes between two identical runs.
+
+The real engine and its EngineFactory are in sensai.eval.runtime (EVAL-06).
 """
 
 from __future__ import annotations
@@ -45,7 +48,11 @@ WRITE_OPERATIONS = frozenset({"INSERT", "UPDATE", "DELETE"})
 
 
 class TurnEngine(Protocol):
-    """What the harness needs from an Engine."""
+    """What the harness needs from an Engine.
+
+    It may also have json_stats() -> {"tool_arguments": counters, "judge": counters},
+    the T5 counters {first_try, repaired, failed} of the case (EvalEngine does).
+    """
 
     def run_turn(self, user_message: str) -> AsyncIterator[events.Event]: ...
 
@@ -60,6 +67,7 @@ class RunSetup:
 
 
 EngineFactory = Callable[[GoldenEntry, RunSetup], Awaitable[TurnEngine]]
+ResultCallback = Callable[["QuestionResult"], None]
 
 
 @dataclass(frozen=True)
@@ -84,6 +92,9 @@ class QuestionResult:
     duration_ms: int
     first_token_ms: int | None
     judge_ms: int | None
+    # T5 counters {first_try, repaired, failed}; None when the engine does not give them
+    tool_arguments: dict[str, int] | None = None
+    judge_json: dict[str, int] | None = None
 
     @property
     def destructive_ok(self) -> bool:
@@ -171,6 +182,7 @@ async def run_question(
         ordered = has_main_order_by(entry.gold_sql or "")
         ex = last is not None and equivalent(last[1], reference, ordered=ordered)
     report = turn.report
+    counters = engine.json_stats() if hasattr(engine, "json_stats") else {}
     return QuestionResult(
         id=entry.id,
         category=entry.category,
@@ -190,6 +202,8 @@ async def run_question(
         duration_ms=duration_ms,
         first_token_ms=turn.first_token_ms,
         judge_ms=report.duration_ms if report else None,
+        tool_arguments=counters.get("tool_arguments"),
+        judge_json=counters.get("judge"),
     )
 
 
@@ -216,26 +230,39 @@ async def run_suite(
     seed: int = 42,
     memory_rules: Sequence[dict[str, str]] = (),
     workdir: Path | None = None,
+    on_result: ResultCallback | None = None,
+    teardown: Callable[[], Awaitable[None]] | None = None,
 ) -> list[QuestionResult]:
-    """Every question in order, each on a fresh engine and a fresh memory."""
+    """Every question in order, each on a fresh engine and a fresh memory.
+
+    on_result is called after each question (progress of a long run). teardown runs
+    before the run's folder is removed: what the factory started on the demo database
+    (the MCP servers of EvalRuntime) must stop first.
+    """
     with tempfile.TemporaryDirectory(prefix="sensai-eval-") as tmp:
         root = workdir or Path(tmp)
         business_db = root / "business.db"
         generate(business_db, seed=seed, today=today)
         results = []
-        for entry in entries:
-            memory_db = root / f"memory-{entry.id}.db"
-            memory_db.unlink(missing_ok=True)
-            with MemoryStore.open(memory_db) as store:
-                for rule in memory_rules:
-                    store.define_term(rule["term"], rule["definition"], rule.get("sql_hint"))
-            in_ex = entry.gold_sql is not None and not entry.expects_write
-            reference = reference_rows(business_db, entry, today) if in_ex else None
-            engine = await factory(entry, RunSetup(business_db, memory_db, today))
-            try:
-                results.append(await run_question(engine, entry, reference))
-            finally:
-                await engine.aclose()
+        try:
+            for entry in entries:
+                memory_db = root / f"memory-{entry.id}.db"
+                memory_db.unlink(missing_ok=True)
+                with MemoryStore.open(memory_db) as store:
+                    for rule in memory_rules:
+                        store.define_term(rule["term"], rule["definition"], rule.get("sql_hint"))
+                in_ex = entry.gold_sql is not None and not entry.expects_write
+                reference = reference_rows(business_db, entry, today) if in_ex else None
+                engine = await factory(entry, RunSetup(business_db, memory_db, today))
+                try:
+                    results.append(await run_question(engine, entry, reference))
+                finally:
+                    await engine.aclose()
+                if on_result is not None:
+                    on_result(results[-1])
+        finally:
+            if teardown is not None:
+                await teardown()
         return results
 
 
@@ -248,6 +275,19 @@ def _rate(flags: Sequence[bool]) -> dict[str, Any]:
 
 def _mean(values: Sequence[float]) -> dict[str, Any]:
     return {"value": round(statistics.fmean(values), 4) if values else None, "n": len(values)}
+
+
+def _json_rates(counters: Sequence[dict[str, int] | None]) -> tuple[dict[str, Any], ...]:
+    """Valid at the first try, valid after a repair: over every call of the run."""
+    calls = [c for c in counters if c is not None]
+    first = sum(c["first_try"] for c in calls)
+    repaired = sum(c["repaired"] for c in calls)
+    total = first + repaired + sum(c["failed"] for c in calls)
+
+    def rate(valid: int) -> dict[str, Any]:
+        return {"value": round(valid / total, 4) if total else None, "n": total}
+
+    return rate(first), rate(first + repaired)
 
 
 def percentile(values: Sequence[int], q: float) -> int | None:
@@ -263,6 +303,8 @@ def compute_metrics(results: Sequence[QuestionResult]) -> dict[str, dict[str, An
     ex_population = [r for r in results if r.ex is not None]
     writes = [r for r in results if r.expects_write]
     reads = [r for r in results if not r.expects_write]
+    judge_first, judge_valid = _json_rates([r.judge_json for r in results])
+    args_first, args_valid = _json_rates([r.tool_arguments for r in results])
     return {
         "ex": _rate([bool(r.ex) for r in ex_population]),
         "sql_valid": _rate([bool(r.sql_valid) for r in ex_population]),
@@ -271,6 +313,10 @@ def compute_metrics(results: Sequence[QuestionResult]) -> dict[str, dict[str, An
         "faithfulness": _mean([r.faithfulness for r in results if r.faithfulness is not None]),
         "relevance": _mean([r.relevance for r in results if r.relevance is not None]),
         "turn_errors": _rate([r.error is not None for r in results]),
+        "judge_json_first_try": judge_first,
+        "judge_json_valid": judge_valid,
+        "tool_args_first_try": args_first,
+        "tool_args_valid": args_valid,
     }
 
 
@@ -283,7 +329,9 @@ def compute_latency(results: Sequence[QuestionResult]) -> dict[str, int | None]:
         "turn_p50_ms": percentile(turns, 0.5),
         "turn_p95_ms": percentile(turns, 0.95),
         "first_token_p50_ms": percentile(first, 0.5),
+        "first_token_p95_ms": percentile(first, 0.95),
         "judge_p50_ms": percentile(judge, 0.5),
+        "judge_p95_ms": percentile(judge, 0.95),
     }
 
 
@@ -313,6 +361,8 @@ async def run_and_report(
     memory_rules_path: str | Path | None = MEMORY_RULES_PATH,
     reports_dir: Path = REPORTS_DIR,
     run_day: date | None = None,
+    on_result: ResultCallback | None = None,
+    teardown: Callable[[], Awaitable[None]] | None = None,
 ) -> Path:
     """`sensai eval --suite ... --tag ...`: run the suite, write both reports.
 
@@ -321,7 +371,13 @@ async def run_and_report(
     """
     rules = load_memory_rules(memory_rules_path) if memory_rules_path else []
     results = await run_suite(
-        load_golden(suite), factory, today=today, seed=seed, memory_rules=rules
+        load_golden(suite),
+        factory,
+        today=today,
+        seed=seed,
+        memory_rules=rules,
+        on_result=on_result,
+        teardown=teardown,
     )
     details = {"suite": str(suite), "today": today.isoformat(), "seed": seed, **(info or {})}
     report = build_report(results, tag=tag, info=details)
@@ -336,6 +392,7 @@ __all__ = [
     "MEMORY_RULES_PATH",
     "EngineFactory",
     "QuestionResult",
+    "ResultCallback",
     "RunSetup",
     "TurnEngine",
     "build_report",
