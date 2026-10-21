@@ -148,7 +148,10 @@ export function ConfirmationModal({ confirmation, connected, onAnswer }: Props) 
             <h3>
               Échantillon{' '}
               <span className="muted">
-                · {impact.sample.length} sur {rowsLabel(impact.rows_affected)}
+                {/* A memory deletion lists its cascades too: "2 sur 1 ligne" would be wrong */}
+                {impact.sample.length < impact.rows_affected
+                  ? `· ${impact.sample.length} sur ${rowsLabel(impact.rows_affected)}`
+                  : `· ${rowsLabel(impact.sample.length)}`}
               </span>
             </h3>
             <Sample rows={impact.sample} />

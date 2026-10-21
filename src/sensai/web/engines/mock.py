@@ -25,6 +25,8 @@ from typing import Any
 
 from sensai.core.config import Config
 from sensai.core.confirm import ConfirmationBroker, Decision, PendingAction
+from sensai.memory.errors import MemoryStoreError
+from sensai.memory.store import AuditContext, MemoryStore
 from sensai.web.engines.backend import ModelInfo
 from sensai.web.paths import FIXTURES_DIR
 from sensai.web.websocket.confirm import WebConfirmationBroker
@@ -173,8 +175,10 @@ class MockEngine:
         broker: ConfirmationBroker,
         turns: dict[str, list[Turn]],
         pacing: Pacing,
+        memory: MemoryStore | None = None,
     ) -> None:
         self.session_id = session_id
+        self._memory = memory  # kept in step with the replayed memory_updated events
         self.model = config.ollama.model
         self.session_config = session_settings(config)
         self._broker = broker
@@ -196,6 +200,14 @@ class MockEngine:
 
     def run_ui_action(self, tool: str, arguments: dict[str, Any]) -> AsyncIterator[Event]:
         prefix, branches = _ui_action_turn(tool, arguments)
+        if tool == "memory_delete" and branches is not None and self._memory is not None:
+            # The real preview of the store, cascades included, as the engine would show it
+            try:
+                impact = self._memory.delete_impact(arguments["kind"], arguments["ref"])
+            except (MemoryStoreError, KeyError):
+                impact = None
+            if impact is not None:
+                prefix = [*prefix[:-1], {**prefix[-1], "impact": impact}]
         return self._replay(prefix, branches, None)
 
     def cancel(self) -> bool:
@@ -270,6 +282,7 @@ class MockEngine:
         ids: dict[str, str] = {}
         tokens: list[str] = []
         decision: Decision | None = None
+        last_call: Event | None = None  # the tool behind the next memory_updated
         queue = list(prefix)
         index = 0
         while index < len(queue):
@@ -292,6 +305,10 @@ class MockEngine:
                 tokens.append(event["delta"])
             elif kind == "message_done":
                 event["duration_ms"] = _elapsed_ms(started)
+            elif kind == "tool_call":
+                last_call = event
+            elif kind == "memory_updated":
+                self._remember(last_call, origin_ui=user_message is None)
             yield event
             if kind == "confirmation_required" and branches is not None:
                 decision = await self._confirm(_pending_action(event))
@@ -331,6 +348,24 @@ class MockEngine:
             if message is not None:
                 event["error"] = {"code": "ACTION_REJECTED", "message": message}
         return event
+
+    def _remember(self, call: Event | None, *, origin_ui: bool) -> None:
+        """Apply the replayed write to the mock memory, so that GET /api/memory shows it."""
+        if self._memory is None or call is None:
+            return
+        args = call["arguments"]
+        ctx = AuditContext(actor="user" if origin_ui else "agent", session_id=self.session_id)
+        try:
+            if call["tool"] == "glossary_define":
+                self._memory.define_term(
+                    args["term"], args["definition"], args.get("sql_hint"), ctx
+                )
+            elif call["tool"] == "memory_update":
+                self._memory.update(args["kind"], args["ref"], args["patch"], ctx)
+            elif call["tool"] == "memory_delete":
+                self._memory.delete(args["kind"], args["ref"], ctx)
+        except (MemoryStoreError, KeyError):
+            logger.debug("Mock memory left unchanged by %s", call["tool"], exc_info=True)
 
     def _event(self, kind: str, turn_id: str, **fields: Any) -> Event:
         return {
@@ -436,12 +471,25 @@ class MockBackend:
         self._pacing = pacing or Pacing()
         # Loaded once and shared read-only by every session: a missing fixture fails at startup
         self._turns = {name: load_turns(fixtures_dir / f"{name}.jsonl") for name in FIXTURES}
+        # A real store, in RAM and shared by the sessions, so that the memory panel has real
+        # data. Opened on first use: SQLite wants the thread of the server's event loop.
+        self._memory: MemoryStore | None = None
 
     async def start(self) -> None:
         return None  # no server to start
 
     async def stop(self) -> None:
-        return None
+        if self._memory is not None:
+            self._memory.close()
+            self._memory = None
+
+    async def memory_snapshot(self) -> dict[str, list[dict[str, Any]]]:
+        return self._store().dump()
+
+    def _store(self) -> MemoryStore:
+        if self._memory is None:
+            self._memory = mock_memory()
+        return self._memory
 
     async def list_models(self) -> list[ModelInfo]:
         models = [ModelInfo(**model) for model in MOCK_MODELS]
@@ -455,4 +503,17 @@ class MockBackend:
         return True  # simulated
 
     def new_engine(self, session_id: str, broker: WebConfirmationBroker) -> MockEngine:
-        return MockEngine(session_id, self._config, broker, self._turns, self._pacing)
+        return MockEngine(
+            session_id, self._config, broker, self._turns, self._pacing, memory=self._store()
+        )
+
+
+def mock_memory() -> MemoryStore:
+    """What the agent already knows in demo mode. The glossary starts empty: act 2 fills it."""
+    store = MemoryStore.open(":memory:")
+    lemaire = store.upsert_entity(
+        "client", "Brasserie Lemaire", aliases=["Lemaire"], external_ref="clients:81"
+    )
+    store.add_fact("Compte stratégique, suivi par Julien Marchand", "note", entity=lemaire.ref)
+    store.add_fact("Claire veut les montants en k€", "preference", source="user")
+    return store

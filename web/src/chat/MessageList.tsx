@@ -10,9 +10,10 @@ interface Props {
   canAsk: boolean
   onAsk: (question: string) => void
   onShowSteps: (turnId: string) => void
+  onShowMemory: () => void
 }
 
-export function MessageList({ turns, canAsk, onAsk, onShowSteps }: Props) {
+export function MessageList({ turns, canAsk, onAsk, onShowSteps, onShowMemory }: Props) {
   const listRef = useRef<HTMLDivElement>(null)
   const followBottom = useRef(true)
 
@@ -38,11 +39,18 @@ export function MessageList({ turns, canAsk, onAsk, onShowSteps }: Props) {
             ) : (
               // A turn started from the interface (memory panel) has no user bubble
               <p className="ui-action">
-                Action depuis l'interface : <code>{turn.steps[0]?.tool ?? 'outil'}</code>
+                Action depuis le panneau Mémoire : <code>{turn.steps[0]?.tool ?? 'outil'}</code>
+                {turn.steps[0]?.result && ` · ${turn.steps[0].result.summary}`}
               </p>
             )}
             {turn.origin === 'user' && (
-              <AssistantMessage turn={turn} canAsk={canAsk} onAsk={onAsk} onShowSteps={onShowSteps} />
+              <AssistantMessage
+                turn={turn}
+                canAsk={canAsk}
+                onAsk={onAsk}
+                onShowSteps={onShowSteps}
+                onShowMemory={onShowMemory}
+              />
             )}
           </section>
         ))}

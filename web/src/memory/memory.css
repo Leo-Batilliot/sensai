@@ -1,0 +1,113 @@
+/* Memory panel (docs/keynote/ui/PanneauMemoire) */
+.memory-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.memory-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.memory-empty p {
+  margin: 0;
+}
+
+.memory-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.memory-section h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.memory-section ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.memory-entry {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  font-size: 13px;
+}
+
+.memory-entry .chip-small {
+  align-self: flex-start;
+}
+
+.memory-recent {
+  border-color: var(--ok);
+}
+
+.memory-view {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+
+.memory-sql {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.memory-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.memory-delete {
+  color: var(--bad);
+}
+
+.memory-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 12px;
+}
+
+.memory-edit textarea,
+.memory-edit input {
+  padding: var(--space-1) var(--space-2);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13px;
+  resize: vertical;
+}
+
+/* "Contexte mémoire fourni" under the answer: what the model was given */
+.context-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: 12px;
+}
+
+.context-chips .chip {
+  cursor: pointer;
+}
