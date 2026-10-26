@@ -59,6 +59,19 @@ args = ["mcp-server-time", "--local-timezone=Europe/Paris"]
 # command = "npx"
 # args = ["-y", "@modelcontextprotocol/server-filesystem", "./reports"]
 
+[files]                         # file tools: nothing is reachable outside the roots below
+max_read_bytes = 200000
+write_extensions = [".md", ".csv", ".json", ".txt"]
+deny = [".env", "config.toml", "*.db", "*.sqlite", "*.key", "*.pem"]   # always refused, even under a root
+
+[[files.roots]]
+path = "reports"                # relative to the launch directory
+mode = "rw"
+
+[[files.roots]]
+path = "data/imports"
+mode = "r"
+
 [web]
 host = "127.0.0.1"
 port = 8000
