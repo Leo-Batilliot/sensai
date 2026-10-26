@@ -18,6 +18,7 @@ from collections.abc import Callable, Coroutine
 from types import FrameType
 from typing import Any, TypeVar
 
+from sensai.cli.ask import CliQuestionBroker
 from sensai.cli.confirm import CliConfirmationBroker
 from sensai.cli.render import Renderer
 from sensai.core import events
@@ -60,15 +61,27 @@ class ChatSession:
     """One CLI conversation: an Engine and the terminal it is displayed on."""
 
     def __init__(
-        self, engine: Engine, renderer: Renderer, broker: CliConfirmationBroker | None = None
+        self,
+        engine: Engine,
+        renderer: Renderer,
+        broker: CliConfirmationBroker | None = None,
+        questions: CliQuestionBroker | None = None,
     ) -> None:
         self.engine = engine
         self.render = renderer
         self.broker = broker
+        self.questions = questions
 
     def interrupt(self) -> bool:
-        """Ctrl+C during a turn: refuse a pending confirmation, else stop the answer."""
+        """Ctrl+C during a turn: refuse a pending confirmation, else stop the answer.
+
+        A pending question is cancelled and the turn stops with it, as with `cancel` on
+        the web.
+        """
         if self.broker is not None and self.broker.interrupt():
+            return True
+        if self.questions is not None and self.questions.interrupt():
+            self.engine.cancel()
             return True
         return self.engine.cancel()
 
@@ -143,6 +156,17 @@ class ChatSession:
                 self.render.info("  confirmé : exécution")
             else:
                 self.render.warning("  refusé : rien n'est exécuté")
+        elif isinstance(event, events.QuestionAsked):
+            self.render.question(
+                event.question,
+                event.reason,
+                event.options,
+                event.allow_free_text,
+                event.expires_in_s,
+            )
+        elif isinstance(event, events.QuestionAnswered):
+            if event.status != "answered":
+                self.render.hint("  sans réponse : l'agent fait une hypothèse")
         elif isinstance(event, events.ContextInjected):
             labels = ", ".join(ref.label for ref in event.refs)
             self.render.hint(f"  contexte mémoire fourni : {labels}")
@@ -324,6 +348,7 @@ def run_chat(
 
     renderer = Renderer()
     broker = CliConfirmationBroker(renderer, read_line)
+    questions = CliQuestionBroker(renderer, read_line)
     loop = asyncio.new_event_loop()
     services: Services | None = None
     engine: Engine | None = None
@@ -337,14 +362,14 @@ def run_chat(
             services = services_factory(config)
             renderer.hint("Démarrage des serveurs MCP…")
             run_interruptible(loop, services.start())
-            engine = services.new_engine(broker)
+            engine = services.new_engine(broker, questions=questions)
         else:
             renderer.warning(
                 f"Base de démonstration absente ({business_db}) : lancez `sensai seed`. "
                 "Chat sans outils, sans mémoire et sans vérification."
             )
             engine = Engine(config, broker=broker)
-        session = ChatSession(engine, renderer, broker)
+        session = ChatSession(engine, renderer, broker, questions)
         if services is not None:
             session.show_servers()
         if not run_interruptible(loop, session.check_model()):
