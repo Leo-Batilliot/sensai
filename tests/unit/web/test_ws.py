@@ -268,6 +268,11 @@ def test_deleting_from_the_panel_shows_the_cascade_and_empties_the_memory(
             {"type": "confirm", "id": "c-9", "action_id": "nope", "decision": "approve"},
             "UNKNOWN_ACTION",
         ),
+        (
+            {"type": "answer", "id": "c-9", "question_id": "nope", "option_id": "trimestre"},
+            "UNKNOWN_QUESTION",
+        ),
+        ({"type": "answer", "id": "c-9", "question_id": "q-1"}, "INVALID_MESSAGE"),
         ({"type": "set_model", "id": "c-9", "model": "absent:1b"}, "MODEL_NOT_FOUND"),
         ({"type": "set_config", "id": "c-9", "patch": {"row_limit": 5}}, "INVALID_CONFIG"),
         ({"type": "set_config", "id": "c-9", "patch": {"num_ctx": 100}}, "INVALID_CONFIG"),

@@ -121,6 +121,7 @@ def check_turns(events: list[dict[str, Any]]) -> None:
         tools: dict[str, str] = {}
         results: set[str] = set()
         required: set[str] = set()
+        asked: set[str] = set()  # v1.1 §2.3: every question is answered in its turn
         run_select_ok = False
         for event in turn:
             kind = event["type"]
@@ -134,12 +135,20 @@ def check_turns(events: list[dict[str, Any]]) -> None:
             elif kind == "confirmation_resolved":
                 assert event["action_id"] in required, f"{where} : résolution sans demande"
                 required.discard(event["action_id"])
+            elif kind == "question_asked":
+                assert event["call_id"] in tools, f"{where} : question sans tool_call"
+                assert event["call_id"] not in results, f"{where} : question après tool_result"
+                asked.add(event["question_id"])
+            elif kind == "question_answered":
+                assert event["question_id"] in asked, f"{where} : réponse sans question"
+                asked.discard(event["question_id"])
             elif kind == "tool_result":
                 assert event["call_id"] in tools, f"{where} : tool_result sans tool_call"
                 results.add(event["call_id"])
                 if event["ok"] and tools[event["call_id"]].endswith("run_select"):
                     run_select_ok = True
         assert not required, f"{where} : confirmation jamais résolue"
+        assert not asked, f"{where} : question jamais résolue"
 
         done = next((e for e in turn if e["type"] == "message_done"), None)
         judged = types.count("judge_started")
