@@ -18,7 +18,7 @@ config.toml
 # Generated databases (make seed / make demo-reset)
 /data/
 
-# Exports from the filesystem MCP server
+# Exports written by the file_write tool
 /reports/
 
 # Frontend: web/dist is force-added at release tags (git add -f web/dist)
