@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any, Protocol, TypedDict
 
+from sensai.web.websocket.ask import WebQuestionBroker
 from sensai.web.websocket.confirm import WebConfirmationBroker
 
 
@@ -92,4 +93,9 @@ class WebBackend(Protocol):
         """The profile a new session starts with, and every profile (GET /api/personas)."""
         ...
 
-    def new_engine(self, session_id: str, broker: WebConfirmationBroker) -> WebEngine: ...
+    def new_engine(
+        self,
+        session_id: str,
+        broker: WebConfirmationBroker,
+        questions: WebQuestionBroker | None = None,
+    ) -> WebEngine: ...

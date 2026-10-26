@@ -38,6 +38,18 @@ def check_turn(emitted: list[events.Event]) -> None:
             if isinstance(sql, events.SqlGenerated) and sql.call_id == call.call_id:
                 assert position[id(call)] < position[id(sql)] < position[id(result)]
 
+    # Questions: tool_call -> question_asked -> question_answered -> tool_result
+    answered = {e.question_id: e for e in emitted if isinstance(e, events.QuestionAnswered)}
+    for asked in [event for event in emitted if isinstance(event, events.QuestionAsked)]:
+        call = next(c for c in calls if c.call_id == asked.call_id)
+        assert asked.question_id in answered, "question jamais résolue"
+        answer = answered.pop(asked.question_id)
+        assert position[id(call)] < position[id(asked)] < position[id(answer)]
+        for result in results:
+            if result.call_id == call.call_id:
+                assert position[id(answer)] < position[id(result)]
+    assert not answered, "réponse sans question"
+
     if isinstance(ends[0], events.MessageDone):
         assert len(results) == len(calls)
         tokens = "".join(event.delta for event in emitted if isinstance(event, events.Token))

@@ -2,7 +2,8 @@
 
 Started once with the application (FastAPI lifespan) and shared by every session: the
 Services of the application (core/app_factory.py, CORE-10), as for the CLI. Each session
-gets its own Engine from them, with the WebConfirmationBroker of its socket.
+gets its own Engine from them, with the WebConfirmationBroker and WebQuestionBroker of
+its socket.
 
 The Engine does not cover the whole web protocol: RealEngine adds the servers and tools
 of session_ready, the session settings of set_config, and run_ui_action until the
@@ -25,6 +26,7 @@ from sensai.mcp.manager import McpManager
 from sensai.tools.policy import SqlClassifier, evaluate
 from sensai.tools.registry import Registry
 from sensai.web.engines.backend import ModelInfo, Persona, PersonaTools
+from sensai.web.websocket.ask import WebQuestionBroker
 from sensai.web.websocket.confirm import WebConfirmationBroker
 from sensai.web.websocket.settings import SESSION_SETTINGS, session_settings
 
@@ -176,7 +178,12 @@ class RealBackend:
             return False
         return True
 
-    def new_engine(self, session_id: str, broker: WebConfirmationBroker) -> RealEngine:
-        engine = self._services.new_engine(broker, session_id)
+    def new_engine(
+        self,
+        session_id: str,
+        broker: WebConfirmationBroker,
+        questions: WebQuestionBroker | None = None,
+    ) -> RealEngine:
+        engine = self._services.new_engine(broker, session_id, questions)
         assert isinstance(engine.registry, Registry)  # Services always gives one
         return RealEngine(engine, engine.registry, engine.client)

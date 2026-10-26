@@ -46,7 +46,8 @@
         "BUSY",
         "UNKNOWN_ACTION",
         "INVALID_CONFIG",
-        "UI_ACTION_FORBIDDEN"
+        "UI_ACTION_FORBIDDEN",
+        "UNKNOWN_QUESTION"
       ]
     },
     "message": {
