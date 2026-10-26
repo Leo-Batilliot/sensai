@@ -110,11 +110,17 @@ def test_a_turn_replays_contract_events(client: TestClient) -> None:
     assert events[-1]["badge"] == "verified"
 
 
+ACT_5 = "Exporte la note du comité dans reports/, en Markdown."
+
+
+@pytest.mark.parametrize("question", [ACT_4, ACT_5], ids=["sql", "file"])
 @pytest.mark.parametrize("decision", ["approve", "reject"])
-def test_destructive_action_waits_for_the_decision(client: TestClient, decision: str) -> None:
+def test_destructive_action_waits_for_the_decision(
+    client: TestClient, decision: str, question: str
+) -> None:
     with client.websocket_connect(f"/ws/{SESSION}") as ws:
         ws.receive_json()
-        ws.send_json({"type": "user_message", "content": ACT_4})
+        ws.send_json({"type": "user_message", "content": question})
         pause = until(ws, of_type("confirmation_required"))
         action = pause[-1]["action_id"]
         ws.send_json({"type": "confirm", "action_id": action, "decision": decision})

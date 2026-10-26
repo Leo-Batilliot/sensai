@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from 'react'
-import type { ConfirmationRequired } from '../protocol'
+import type { ConfirmationRequired, FileImpact } from '../protocol'
 import { columnFormat, formatCell, type Cell } from '../results/table'
 import { SqlCode } from '../sql/SqlCode'
-import { confirmLabel, formatCountdown, formatDelta, impactLines, rowsLabel } from './confirmation'
+import {
+  bytesLabel,
+  confirmLabel,
+  formatCountdown,
+  formatDelta,
+  impactLines,
+  rowsLabel,
+} from './confirmation'
 
 const COMMENT_MAX = 500 // websocket.md §4.3
 const TICK_MS = 250
@@ -62,6 +69,7 @@ export function ConfirmationModal({ confirmation, connected, onAnswer }: Props) 
 
   const lines = impactLines(impact)
   const writes = impact.operation !== 'INSERT'
+  const file = impact.file ?? null // file_write (FILE-01): a file instead of table rows
 
   return (
     <dialog
@@ -89,8 +97,18 @@ export function ConfirmationModal({ confirmation, connected, onAnswer }: Props) 
 
       <div className="hitl-body">
         <p id="hitl-summary">
-          L'agent veut exécuter{' '}
-          {writes ? <strong>une action irréversible</strong> : 'une écriture'} via <code>{tool}</code>.
+          {file !== null ? (
+            <>
+              L'agent veut{' '}
+              {file.exists ? <strong>remplacer un fichier existant</strong> : 'créer un fichier'} via{' '}
+              <code>{tool}</code>.
+            </>
+          ) : (
+            <>
+              L'agent veut exécuter{' '}
+              {writes ? <strong>une action irréversible</strong> : 'une écriture'} via <code>{tool}</code>.
+            </>
+          )}
         </p>
 
         {sql !== null && (
@@ -100,35 +118,39 @@ export function ConfirmationModal({ confirmation, connected, onAnswer }: Props) 
           </section>
         )}
 
-        <section className="hitl-section">
-          <h3>
-            Impact <span className="muted">· simulé puis annulé, rien n'est encore modifié</span>
-          </h3>
-          {lines.length > 0 ? (
-            <ul className="hitl-impact">
-              {lines.map((line) => (
-                <li key={line.table}>
-                  <code>{line.table}</code>
-                  <strong className={line.delta < 0 ? 'minus' : undefined}>
-                    {formatDelta(line.delta)}
-                  </strong>
-                </li>
-              ))}
-            </ul>
-          ) : impact.rows_affected > 0 ? (
-            <p>
-              <strong>{rowsLabel(impact.rows_affected)}</strong>{' '}
-              {impact.operation === 'UPDATE' ? 'modifiée' : 'concernée'}
-              {impact.rows_affected > 1 ? 's' : ''}
-            </p>
-          ) : (
-            <p className="muted">Aucune ligne ne serait modifiée.</p>
-          )}
-        </section>
+        {file !== null && <FilePreview file={file} />}
+
+        {file === null && (
+          <section className="hitl-section">
+            <h3>
+              Impact <span className="muted">· simulé puis annulé, rien n'est encore modifié</span>
+            </h3>
+            {lines.length > 0 ? (
+              <ul className="hitl-impact">
+                {lines.map((line) => (
+                  <li key={line.table}>
+                    <code>{line.table}</code>
+                    <strong className={line.delta < 0 ? 'minus' : undefined}>
+                      {formatDelta(line.delta)}
+                    </strong>
+                  </li>
+                ))}
+              </ul>
+            ) : impact.rows_affected > 0 ? (
+              <p>
+                <strong>{rowsLabel(impact.rows_affected)}</strong>{' '}
+                {impact.operation === 'UPDATE' ? 'modifiée' : 'concernée'}
+                {impact.rows_affected > 1 ? 's' : ''}
+              </p>
+            ) : (
+              <p className="muted">Aucune ligne ne serait modifiée.</p>
+            )}
+          </section>
+        )}
 
         {impact.blocked.length > 0 && (
           <section className="hitl-section hitl-blocked">
-            <h3>Protégés, non modifiables</h3>
+            <h3>{file !== null ? 'Refusé par les permissions' : 'Protégés, non modifiables'}</h3>
             <ul>
               {impact.blocked.map((block, index) => (
                 <li key={index}>
@@ -137,8 +159,12 @@ export function ConfirmationModal({ confirmation, connected, onAnswer }: Props) 
                 </li>
               ))}
             </ul>
-            {impact.rows_affected === 0 && (
-              <p>La base refusera cette instruction tant que ces lignes sont visées.</p>
+            {file !== null ? (
+              <p>Cette écriture sera refusée : aucun fichier ne sera écrit.</p>
+            ) : (
+              impact.rows_affected === 0 && (
+                <p>La base refusera cette instruction tant que ces lignes sont visées.</p>
+              )
             )}
           </section>
         )}
@@ -200,6 +226,30 @@ export function ConfirmationModal({ confirmation, connected, onAnswer }: Props) 
         </button>
       </footer>
     </dialog>
+  )
+}
+
+// file_write: where, how big, new or replaced, and the start of the content as written
+function FilePreview({ file }: { file: FileImpact }) {
+  return (
+    <>
+      <section className="hitl-section">
+        <h3>
+          Fichier <span className="muted">· rien n'est encore écrit</span>
+        </h3>
+        <p className="hitl-file">
+          <code>{file.path}</code>
+          <span className={`hitl-file-tag${file.exists ? ' warn' : ''}`}>
+            {file.exists ? 'remplace le fichier existant' : 'nouveau fichier'}
+          </span>
+          <span className="muted">{bytesLabel(file.bytes)}</span>
+        </p>
+      </section>
+      <section className="hitl-section">
+        <h3>Début du contenu</h3>
+        <pre className="hitl-excerpt">{file.excerpt}</pre>
+      </section>
+    </>
   )
 }
 

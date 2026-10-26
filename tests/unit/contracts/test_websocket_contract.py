@@ -39,6 +39,8 @@ def test_expected_fixtures_exist() -> None:
         "nominal.jsonl",
         "hitl_approve.jsonl",
         "hitl_reject.jsonl",
+        "file_write_approve.jsonl",
+        "file_write_reject.jsonl",
         "judge_contradiction.jsonl",
         "errors.jsonl",
         "memory.jsonl",
@@ -63,16 +65,33 @@ def events_of(name: str, kind: str) -> list[dict[str, Any]]:
     return [e for e in load_jsonl(FIXTURES / name) if e["type"] == kind]
 
 
-def test_hitl_branches_share_the_same_beginning() -> None:
+@pytest.mark.parametrize("scenario", ["hitl", "file_write"])
+def test_hitl_branches_share_the_same_beginning(scenario: str) -> None:
     # The MockEngine plays this common part, waits for `confirm`, then picks a branch.
-    approve = load_jsonl(FIXTURES / "hitl_approve.jsonl")
-    reject = load_jsonl(FIXTURES / "hitl_reject.jsonl")
+    approve = load_jsonl(FIXTURES / f"{scenario}_approve.jsonl")
+    reject = load_jsonl(FIXTURES / f"{scenario}_reject.jsonl")
     pause = [e["type"] for e in approve].index("confirmation_required") + 1
     assert approve[:pause] == reject[:pause]
-    assert events_of("hitl_approve.jsonl", "confirmation_resolved")[0]["decision"] == "approve"
-    assert events_of("hitl_reject.jsonl", "confirmation_resolved")[0]["decision"] == "reject"
-    refused = events_of("hitl_reject.jsonl", "tool_result")[-1]
+    resolved = events_of(f"{scenario}_approve.jsonl", "confirmation_resolved")[0]
+    assert resolved["decision"] == "approve"
+    assert events_of(f"{scenario}_reject.jsonl", "confirmation_resolved")[0]["decision"] == "reject"
+    refused = events_of(f"{scenario}_reject.jsonl", "tool_result")[-1]
     assert refused["error"]["code"] == "ACTION_REJECTED"
+
+
+def test_the_file_write_preview_matches_what_would_be_written() -> None:
+    # Act 5: impact.file (FILE-01) is what file_write would write, before anything is written
+    required = events_of("file_write_approve.jsonl", "confirmation_required")[0]
+    call = next(
+        e
+        for e in events_of("file_write_approve.jsonl", "tool_call")
+        if e["call_id"] == required["call_id"]
+    )
+    file = required["impact"]["file"]
+    content = call["arguments"]["content"]
+    assert file["path"] == call["arguments"]["path"] and file["exists"] is False
+    assert file["bytes"] == len(content.encode("utf-8"))
+    assert content.startswith(file["excerpt"].rstrip("…"))
 
 
 def test_each_fixture_shows_its_scenario() -> None:
