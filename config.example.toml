@@ -27,6 +27,8 @@ max_result_rows = 50           # rows of a tool result sent to the model
 max_result_chars = 8000        # characters of a tool result sent to the model
 max_sql_retries = 2
 language = "fr"
+max_questions_per_turn = 1     # clarifying questions (ask_user) per turn; 0 = never ask
+question_timeout_s = 120       # without an answer, the agent makes an explicit assumption
 
 [database]
 business_path = "data/business.db"

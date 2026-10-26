@@ -85,6 +85,10 @@ class AgentConfig(_Section):
     max_result_chars: int = Field(default=8000, ge=500)
     max_sql_retries: int = Field(default=2, ge=0)
     language: str = Field(default="fr", min_length=1)
+    # Clarifying questions (ask_user): beyond the limit the call fails, without an answer
+    # in time the model makes an explicit assumption
+    max_questions_per_turn: int = Field(default=1, ge=0)
+    question_timeout_s: float = Field(default=120, gt=0)
 
 
 class DatabaseConfig(_Section):

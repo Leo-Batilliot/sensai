@@ -249,6 +249,102 @@ def test_disconnection_during_a_confirmation_refuses_it(
         assert [fact["content"] for fact in store.dump()["facts"]] == [FACT]
 
 
+PERIOD = {
+    "question": "Le délai moyen de paiement doit-il porter sur ce trimestre ou sur tout l'historique ?",
+    "reason": "Les deux périodes donnent des délais très différents.",
+    "options": [
+        {"id": "trimestre", "label": "Ce trimestre"},
+        {"id": "historique", "label": "Tout l'historique"},
+    ],
+}
+
+
+def ask_period(ws: WebSocketTestSession) -> Message:
+    ws.receive_json()
+    ws.send_json({"type": "user_message", "content": "Quel est le délai moyen de paiement ?"})
+    return until(ws, of_type("question_asked"))[-1]
+
+
+def test_the_question_is_answered_in_the_browser(web: Callable[..., TestClient]) -> None:
+    script = Clients(tool_request("ask_user", **PERIOD), answer("Sur ce trimestre : 41 jours."))
+    with web(script) as client, client.websocket_connect(f"/ws/{SESSION}") as ws:
+        asked = ask_period(ws)
+        assert asked["options"] == PERIOD["options"] and asked["expires_in_s"] == 120
+        ws.send_json(
+            {"type": "answer", "question_id": asked["question_id"], "option_id": "trimestre"}
+        )
+        events = until(ws, of_type("message_done"))
+    for event in events:
+        check_event(event)
+    answered = next(e for e in events if e["type"] == "question_answered")
+    assert (answered["status"], answered["option_id"]) == ("answered", "trimestre")
+    assert (
+        next(e for e in events if e["type"] == "tool_result")["summary"] == "Réponse : Ce trimestre"
+    )
+    sent = script.created[-1].calls[-1][1][-1]["content"]  # the tool message of the last call
+    assert '"label": "Ce trimestre"' in sent
+
+
+def test_an_invalid_answer_keeps_the_question_pending(web: Callable[..., TestClient]) -> None:
+    script = Clients(tool_request("ask_user", **PERIOD), answer("Ok."))
+    with web(script) as client, client.websocket_connect(f"/ws/{SESSION}") as ws:
+        asked = ask_period(ws)
+        ws.send_json(
+            {
+                "type": "answer",
+                "id": "c-1",
+                "question_id": asked["question_id"],
+                "option_id": "semestre",
+            }
+        )
+        error = ws.receive_json()
+        assert (error["code"], error["reply_to"]) == ("INVALID_MESSAGE", "c-1")
+        ws.send_json(
+            {"type": "answer", "question_id": asked["question_id"], "text": "Depuis janvier"}
+        )
+        events = until(ws, of_type("message_done"))
+    check_event(error)
+    answered = next(e for e in events if e["type"] == "question_answered")
+    assert (answered["status"], answered["text"]) == ("answered", "Depuis janvier")
+
+
+def test_cancel_resolves_a_pending_question(web: Callable[..., TestClient]) -> None:
+    script = Clients(tool_request("ask_user", **PERIOD), answer("jamais"))
+    with web(script) as client, client.websocket_connect(f"/ws/{SESSION}") as ws:
+        asked = ask_period(ws)
+        ws.send_json({"type": "cancel"})
+        events = until(ws, of_type("message_done"))
+        ws.send_json(
+            {
+                "type": "answer",
+                "id": "c-2",
+                "question_id": asked["question_id"],
+                "option_id": "trimestre",
+            }
+        )
+        late = ws.receive_json()
+    answered = next(e for e in events if e["type"] == "question_answered")
+    assert answered["status"] == "cancelled"
+    assert events[-1]["interrupted"] is True
+    assert (late["code"], late["reply_to"]) == ("UNKNOWN_QUESTION", "c-2")
+    check_event(late)
+
+
+def test_disconnection_during_a_question_cancels_it(web: Callable[..., TestClient]) -> None:
+    script = Clients(tool_request("ask_user", **PERIOD), answer("jamais"))
+    with web(script) as client:
+        with client.websocket_connect(f"/ws/{SESSION}") as ws:
+            ask_period(ws)
+        with client.websocket_connect(f"/ws/{SESSION}") as ws:
+            history = ws.receive_json()["history"]
+            while not any(e["type"] == "message_done" for e in history):
+                history.append(ws.receive_json())
+    check_turns(history)
+    answered = next(e for e in history if e["type"] == "question_answered")
+    assert answered["status"] == "cancelled"
+    assert history[-1]["interrupted"] is True
+
+
 def test_shutdown_closes_every_engine(web: Callable[..., TestClient]) -> None:
     clients = Clients(answer("OK."))
     with web(clients) as client, client.websocket_connect(f"/ws/{SESSION}") as ws:

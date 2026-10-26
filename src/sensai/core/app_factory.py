@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from sensai.core.ask import AskUserTool, QuestionBroker
 from sensai.core.config import Config
 from sensai.core.confirm import ConfirmationBroker
 from sensai.core.engine import ChatClient, Engine
@@ -87,11 +88,12 @@ class Services:
             self._store = None
 
     def registry(self, session_id: str | None = None) -> Registry:
-        """MCP tools, memory tools and file tools; both write session_id in their audit."""
+        """MCP tools, memory tools, file tools and ask_user; memory and file tools write
+        session_id in their audit."""
         store = self.store
         return Registry(
             self.manager,
-            [*memory_tools(store, session_id), *file_tools(self.files, session_id)],
+            [*memory_tools(store, session_id), *file_tools(self.files, session_id), AskUserTool()],
             previewers={
                 MEMORY_DELETE: lambda args: store.delete_impact(args["kind"], args["ref"]),
                 FILE_WRITE: file_write_impact(self.files),
@@ -99,9 +101,12 @@ class Services:
         )
 
     def new_engine(
-        self, broker: ConfirmationBroker | None = None, session_id: str | None = None
+        self,
+        broker: ConfirmationBroker | None = None,
+        session_id: str | None = None,
+        questions: QuestionBroker | None = None,
     ) -> Engine:
-        """A fully wired Engine for one session (tools, HITL, memory, judge)."""
+        """A fully wired Engine for one session (tools, HITL, questions, memory, judge)."""
         if self._prompt is None:
             raise RuntimeError("Services.start() must run before the first engine")
         client = self.client_factory(self.config)
@@ -115,4 +120,5 @@ class Services:
             memory=MemoryContext(self.store),
             judge=OnlineJudge.from_config(self.config, client),
             sql_classifier=self._sql_classifier,
+            questions=questions,
         )
