@@ -61,6 +61,23 @@ SAMPLES: list[ev.Event] = [
     ev.ConfirmationResolved(
         **COMMON, action_id="a-3", decision="timeout", reason="timeout", comment=None
     ),
+    ev.QuestionAsked(
+        **COMMON,
+        question_id="q-1",
+        call_id="k-4",
+        question="Le délai moyen de paiement doit-il porter sur ce trimestre ou sur tout l'historique ?",
+        reason="Les deux périodes donnent des délais très différents.",
+        options=[
+            {"id": "trimestre", "label": "Ce trimestre"},
+            {"id": "historique", "label": "Tout l'historique"},
+        ],
+        allow_free_text=True,
+        expires_in_s=120,
+    ),
+    ev.QuestionAnswered(
+        **COMMON, question_id="q-1", status="answered", option_id="trimestre", text=None
+    ),
+    ev.QuestionAnswered(**COMMON, question_id="q-1", status="timeout", option_id=None, text=None),
     ev.ToolResult(
         **COMMON,
         call_id="k-2",
@@ -168,6 +185,11 @@ def changed(sample_type: str, **fields: Any) -> dict[str, Any]:
         changed("token", delta=""),
         changed("tool_call", tool="nom avec espaces"),
         changed("token", extra="champ inconnu"),
+        changed("question_asked", options=[], allow_free_text=False),
+        changed("question_asked", options=[{"id": "Avec Espace", "label": "x"}]),
+        changed("question_answered", status="answered", option_id=None, text=None),
+        changed("question_answered", status="timeout", option_id="trimestre"),
+        changed("error", code="QUESTION_LIMIT"),  # a tool_result code, not an error event
         {k: v for k, v in SAMPLES[0].to_dict().items() if k != "user_message"},
     ],
     ids=[
@@ -182,6 +204,11 @@ def changed(sample_type: str, **fields: Any) -> dict[str, Any]:
         "empty-delta",
         "invalid-tool-name",
         "extra-field",
+        "question-without-any-answer-possible",
+        "invalid-option-id",
+        "answered-without-answer",
+        "option-without-answer",
+        "tool-code-in-error-event",
         "missing-field",
     ],
 )
