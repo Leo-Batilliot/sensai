@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "events/question_answered.v1",
+  "title": "Événement question_answered",
+  "description": "Fin de la pause d'une question : réponse reçue, délai dépassé ou pause interrompue. Fait foi : docs/contracts/v1.1-extensions.md §2.1. Propriétaire : P2.",
+  "type": "object",
+  "required": [
+    "type",
+    "session_id",
+    "turn_id",
+    "ts",
+    "question_id",
+    "status",
+    "option_id",
+    "text"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "question_answered"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "turn_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ts": {
+      "type": "number",
+      "description": "Secondes depuis l'epoch (flottant)"
+    },
+    "question_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "answered",
+        "timeout",
+        "cancelled"
+      ]
+    },
+    "option_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "text": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 500
+    }
+  },
+  "if": {
+    "properties": {
+      "status": {
+        "const": "answered"
+      }
+    }
+  },
+  "then": {
+    "anyOf": [
+      {
+        "properties": {
+          "option_id": {
+            "type": "string"
+          }
+        }
+      },
+      {
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        }
+      }
+    ]
+  },
+  "else": {
+    "properties": {
+      "option_id": {
+        "type": "null"
+      },
+      "text": {
+        "type": "null"
+      }
+    }
+  }
+}

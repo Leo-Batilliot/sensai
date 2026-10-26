@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "events/question_asked.v1",
+  "title": "Événement question_asked",
+  "description": "Le modèle a appelé ask_user : le tour est en pause jusqu'à question_answered. Fait foi : docs/contracts/v1.1-extensions.md §2.1. Propriétaire : P2.",
+  "type": "object",
+  "required": [
+    "type",
+    "session_id",
+    "turn_id",
+    "ts",
+    "question_id",
+    "call_id",
+    "question",
+    "reason",
+    "options",
+    "allow_free_text",
+    "expires_in_s"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "question_asked"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "turn_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ts": {
+      "type": "number",
+      "description": "Secondes depuis l'epoch (flottant)"
+    },
+    "question_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "call_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "options": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "label"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]{1,32}$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        }
+      }
+    },
+    "allow_free_text": {
+      "type": "boolean"
+    },
+    "expires_in_s": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    }
+  },
+  "if": {
+    "properties": {
+      "options": {
+        "maxItems": 0
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "allow_free_text": {
+        "const": true
+      }
+    }
+  }
+}

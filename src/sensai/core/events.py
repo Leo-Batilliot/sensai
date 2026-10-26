@@ -22,6 +22,7 @@ DecisionReason = Literal["user", "cancelled", "disconnected", "timeout"]
 MemoryOp = Literal["create", "update", "delete"]
 MemoryKind = Literal["glossary", "entity", "relation", "fact"]
 Badge = Literal["verified", "needs_review", "contradicted", "unavailable"]
+AnswerStatus = Literal["answered", "timeout", "cancelled"]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -130,6 +131,29 @@ class ConfirmationResolved(Event):
 
 
 @dataclass(frozen=True, kw_only=True)
+class QuestionAsked(Event):
+    """The model called ask_user: the turn waits for an answer (v1.1-extensions.md §2.1)."""
+
+    type: ClassVar[str] = "question_asked"
+    question_id: str
+    call_id: str
+    question: str
+    reason: str
+    options: list[dict[str, str]]  # [{id, label}], empty when only a free answer is possible
+    allow_free_text: bool
+    expires_in_s: float
+
+
+@dataclass(frozen=True, kw_only=True)
+class QuestionAnswered(Event):
+    type: ClassVar[str] = "question_answered"
+    question_id: str
+    status: AnswerStatus
+    option_id: str | None
+    text: str | None
+
+
+@dataclass(frozen=True, kw_only=True)
 class ToolResult(Event):
     type: ClassVar[str] = "tool_result"
     call_id: str
@@ -192,6 +216,8 @@ EVENT_TYPES: dict[str, type[Event]] = {
         SqlGenerated,
         ConfirmationRequired,
         ConfirmationResolved,
+        QuestionAsked,
+        QuestionAnswered,
         ToolResult,
         MemoryUpdated,
         MessageDone,
