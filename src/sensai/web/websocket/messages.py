@@ -139,6 +139,13 @@ class MessageHandler:
                 reply_to,
             )
 
+    async def _on_answer(self, message: dict[str, Any], reply_to: str | None) -> None:
+        refusal = self.session.questions.resolve(
+            message["question_id"], message.get("option_id"), message.get("text")
+        )
+        if refusal is not None:
+            await self._error(refusal.code, refusal.message, reply_to)
+
     async def _on_cancel(self, message: dict[str, Any], reply_to: str | None) -> None:
         self.session.interrupt("cancelled")  # ignored without a running turn (§4.4)
 

@@ -30,6 +30,7 @@ from sensai.memory.errors import MemoryStoreError
 from sensai.memory.store import AuditContext, MemoryStore
 from sensai.web.engines.backend import ModelInfo, Persona, PersonaTools
 from sensai.web.paths import FIXTURES_DIR
+from sensai.web.websocket.ask import WebQuestionBroker
 from sensai.web.websocket.confirm import WebConfirmationBroker
 from sensai.web.websocket.settings import session_settings
 
@@ -571,7 +572,12 @@ class MockBackend:
             for persona in MOCK_PERSONAS
         ]
 
-    def new_engine(self, session_id: str, broker: WebConfirmationBroker) -> MockEngine:
+    def new_engine(
+        self,
+        session_id: str,
+        broker: WebConfirmationBroker,
+        questions: WebQuestionBroker | None = None,  # the scripted turns ask nothing yet
+    ) -> MockEngine:
         return MockEngine(
             session_id, self._config, broker, self._turns, self._pacing, memory=self._store()
         )
