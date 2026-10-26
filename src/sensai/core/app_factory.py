@@ -24,11 +24,14 @@ from sensai.llm.ollama_client import OllamaClient
 from sensai.mcp.manager import McpManager
 from sensai.memory.context import MemoryContext
 from sensai.memory.store import MemoryStore
+from sensai.tools.file_permissions import FilePermissions
+from sensai.tools.file_tools import file_tools, file_write_impact
 from sensai.tools.memory_tools import memory_tools
 from sensai.tools.policy import SqlClassifier
 from sensai.tools.registry import Registry
 
 MEMORY_DELETE = "memory_delete"
+FILE_WRITE = "file_write"
 
 ClientFactory = Callable[[Config], ChatClient]
 
@@ -55,6 +58,8 @@ class Services:
         self.manager = manager if manager is not None else McpManager.from_config(config)
         self.client_factory = client_factory
         self._sql_classifier = sql_classifier  # tests only: None = the business database
+        # Roots resolved once, relative to the launch directory
+        self.files = FilePermissions.from_config(config.files)
         self._store: MemoryStore | None = None
         self._prompt: Callable[[str], str] | None = None
 
@@ -82,12 +87,15 @@ class Services:
             self._store = None
 
     def registry(self, session_id: str | None = None) -> Registry:
-        """MCP tools and memory tools; the memory tools write session_id in the audit."""
+        """MCP tools, memory tools and file tools; both write session_id in their audit."""
         store = self.store
         return Registry(
             self.manager,
-            memory_tools(store, session_id),
-            previewers={MEMORY_DELETE: lambda args: store.delete_impact(args["kind"], args["ref"])},
+            [*memory_tools(store, session_id), *file_tools(self.files, session_id)],
+            previewers={
+                MEMORY_DELETE: lambda args: store.delete_impact(args["kind"], args["ref"]),
+                FILE_WRITE: file_write_impact(self.files),
+            },
         )
 
     def new_engine(
