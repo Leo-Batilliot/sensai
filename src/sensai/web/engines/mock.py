@@ -7,6 +7,8 @@ follows tests/fixtures/events/README.md:
 - ids, `session_id`, `ts` and the user's message are rewritten; pacing is realistic;
 - on `confirmation_required`, it really waits for the decision through the broker, then
   plays the approve or reject branch (hitl_approve.jsonl / hitl_reject.jsonl);
+- on `question_asked`, it really waits for the answer through the question broker, then
+  replays question_answered and the ask_user result with that answer (question.jsonl);
 - `cancel()` sets a flag: the turn ends with `message_done {interrupted: true}`.
 """
 
@@ -24,6 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from sensai.core.ask import Answer, PendingQuestion, QuestionBroker, answer_result, pending_question
 from sensai.core.config import Config
 from sensai.core.confirm import ConfirmationBroker, Decision, PendingAction
 from sensai.memory.errors import MemoryStoreError
@@ -47,6 +50,7 @@ FIXTURES = (
     "hitl_reject",
     "file_write_approve",
     "file_write_reject",
+    "question",
     "errors",
 )
 
@@ -65,6 +69,7 @@ class Route:
 ROUTES = (
     Route(("supprime",), "hitl", 0),
     Route(("exporte",), "file_write", 0),  # act 5
+    Route(("délai moyen", "delai moyen"), "question", 0),  # act 1 with its clarifying question
     Route(("retiens", "mémorise", "memorise"), "memory", 0),
     Route(("clients rentables",), "memory", 1),
     Route(("piège", "piege", "brasserie lemaire"), "judge_contradiction", 0),
@@ -232,8 +237,11 @@ class MockEngine:
         turns: dict[str, list[Turn]],
         pacing: Pacing,
         memory: MemoryStore | None = None,
+        questions: QuestionBroker | None = None,
     ) -> None:
         self.session_id = session_id
+        self._questions = questions  # None: nobody answers, as NoHumanQuestionBroker
+        self._question_timeout_s = config.agent.question_timeout_s
         self._memory = memory  # kept in step with the replayed memory_updated events
         self.model = config.ollama.model
         self.session_config = session_settings(config)
@@ -352,6 +360,8 @@ class MockEngine:
         ids: dict[str, str] = {}
         tokens: list[str] = []
         decision: Decision | None = None
+        question: PendingQuestion | None = None
+        answer: Answer | None = None
         last_call: Event | None = None  # the tool behind the next memory_updated
         queue = list(prefix)
         index = 0
@@ -371,6 +381,16 @@ class MockEngine:
                 return
             await asyncio.sleep(self._pacing.before(kind))
             event = self._instantiate(template, turn_id, ids, user_message, decision)
+            if kind == "question_answered" and answer is not None:
+                event.update(status=answer.status, option_id=answer.option_id, text=answer.text)
+            elif (
+                kind == "tool_result"
+                and question is not None
+                and answer is not None
+                and event["call_id"] == question.call_id
+            ):
+                result = answer_result(answer, question)  # what Engine sends for ask_user
+                event.update(ok=result.ok, summary=result.summary, data=result.data)
             if kind == "token":
                 tokens.append(event["delta"])
             elif kind == "message_done":
@@ -380,9 +400,23 @@ class MockEngine:
             elif kind == "memory_updated":
                 self._remember(last_call, origin_ui=user_message is None)
             yield event
+            if kind == "question_asked":
+                question = pending_question(
+                    event["question_id"], event["call_id"], event, event["expires_in_s"]
+                )
+                answer = await self._answer(question)
             if kind == "confirmation_required" and branches is not None:
                 decision = await self._confirm(_pending_action(event))
                 queue[index:] = branches["approve" if decision.approved else "reject"]
+
+    async def _answer(self, question: PendingQuestion) -> Answer:
+        """Same pause as Engine._ask: the user's answer, or "timeout" after the delay."""
+        if self._questions is None:
+            return Answer("cancelled")
+        try:
+            return await asyncio.wait_for(self._questions.ask(question), question.expires_in_s)
+        except asyncio.TimeoutError:
+            return Answer("timeout")
 
     async def _confirm(self, action: PendingAction) -> Decision:
         """Same pause as Engine._confirm: the broker's answer, or "timeout" after the delay."""
@@ -401,7 +435,7 @@ class MockEngine:
     ) -> Event:
         event = copy.deepcopy(template)
         event.update(session_id=self.session_id, turn_id=turn_id, ts=time.time())
-        for key in ("call_id", "action_id"):
+        for key in ("call_id", "action_id", "question_id"):
             if key in event:
                 event[key] = ids.setdefault(event[key], _new_id())
         kind = event["type"]
@@ -409,6 +443,8 @@ class MockEngine:
             event["user_message"] = user_message
         elif kind == "confirmation_required":
             event["expires_in_s"] = self._confirmation_timeout_s
+        elif kind == "question_asked":
+            event["expires_in_s"] = self._question_timeout_s
         elif kind == "confirmation_resolved" and decision is not None:
             event.update(
                 decision=decision.decision, reason=decision.reason, comment=decision.comment
@@ -585,10 +621,16 @@ class MockBackend:
         self,
         session_id: str,
         broker: WebConfirmationBroker,
-        questions: WebQuestionBroker | None = None,  # the scripted turns ask nothing yet
+        questions: WebQuestionBroker | None = None,
     ) -> MockEngine:
         return MockEngine(
-            session_id, self._config, broker, self._turns, self._pacing, memory=self._store()
+            session_id,
+            self._config,
+            broker,
+            self._turns,
+            self._pacing,
+            memory=self._store(),
+            questions=questions,
         )
 
 

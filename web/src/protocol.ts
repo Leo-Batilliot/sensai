@@ -95,6 +95,26 @@ export interface ToolResult extends Common {
   duration_ms: number
 }
 
+// The model called ask_user: the turn waits for the answer (X4, v1.1-extensions.md §2.1)
+export interface QuestionAsked extends Common {
+  type: 'question_asked'
+  question_id: string
+  call_id: string
+  question: string
+  reason: string
+  options: { id: string; label: string }[] // [] when only a free answer is possible
+  allow_free_text: boolean
+  expires_in_s: number
+}
+
+export interface QuestionAnswered extends Common {
+  type: 'question_answered'
+  question_id: string
+  status: 'answered' | 'timeout' | 'cancelled'
+  option_id: string | null
+  text: string | null
+}
+
 export interface MemoryUpdated extends Common {
   type: 'memory_updated'
   op: 'create' | 'update' | 'delete'
@@ -174,6 +194,8 @@ export type EngineEvent =
   | ConfirmationRequired
   | ConfirmationResolved
   | ToolResult
+  | QuestionAsked
+  | QuestionAnswered
   | MemoryUpdated
   | MessageDone
   | JudgeStarted
@@ -278,3 +300,4 @@ export type ClientMessage =
   | { type: 'set_model'; id?: string; model: string }
   | { type: 'set_config'; id?: string; patch: Partial<SessionConfig> }
   | { type: 'set_persona'; id?: string; persona: string }
+  | { type: 'answer'; id?: string; question_id: string; option_id?: string; text?: string }
