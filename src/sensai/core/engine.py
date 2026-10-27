@@ -19,6 +19,11 @@ question: they go into the system prompt and the context_injected event. With an
 OnlineJudge (EVAL-05), an answer built on a successful run_select is checked after
 message_done (judge_started, judge_report), once the session is free again.
 
+With an ExampleIndex (A7, core/fewshot.py) and a prompt that has an $examples hole, the
+closest validated examples of the question go into the system prompt (examples_injected);
+with a DocumentStore (M4), the plan of the committee note fills $document_outline and an
+effective write of a document tool gives document_updated.
+
 With [demo] alter_answer (CORE-20, core/demo.py), the answer to the question of act 3
 gets one wrong figure while it streams, before the judge: the demo of a caught mistake.
 """
@@ -56,7 +61,9 @@ from sensai.core.confirm import (
 )
 from sensai.core.demo import AnswerAlteration
 from sensai.core.errors import SensaiError
+from sensai.core.fewshot import ExampleIndex, Selected, examples_block
 from sensai.core.history import History
+from sensai.documents.store import DocumentStore
 from sensai.eval.online import OnlineJudge, SelectResult, select_result
 from sensai.llm.ollama_client import (
     Chunk,
@@ -125,12 +132,16 @@ class Engine:
         judge: OnlineJudge | None = None,
         sql_classifier: SqlClassifier | None = None,
         questions: QuestionBroker | None = None,
+        examples: ExampleIndex | None = None,
+        documents: DocumentStore | None = None,
     ) -> None:
         self.config = config
         # Sent first in every model call, never stored in the history (CORE-08)
         self.system_prompt = system_prompt
         self.memory = memory  # memory context of each turn (MEM-04)
         self.judge = judge  # online judge of numeric answers (EVAL-05)
+        self.examples = examples  # bank of validated examples (A7)
+        self.documents = documents  # committee note (M4)
         self.client: ChatClient = (
             client
             if client is not None
@@ -174,10 +185,11 @@ class Engine:
     def busy(self) -> bool:
         return self._running
 
-    def _system_messages(self, memory: str = "") -> list[Message]:
-        """The system prompt of a turn, with the memory block of its question (MEM-04)."""
+    def _system_messages(self, memory: str = "", **blocks: str) -> list[Message]:
+        """The system prompt of a turn, with the memory block of its question (MEM-04) and
+        the other blocks its version shows (examples, plan of the note)."""
         if callable(self.system_prompt):
-            prompt = self.system_prompt(memory)
+            prompt = self.system_prompt(memory, **blocks)
         else:
             block = f"{MEMORY_HEADING}\n{memory}" if memory else ""
             prompt = "\n\n".join(part for part in (self.system_prompt, block) if part)
@@ -250,8 +262,23 @@ class Engine:
                 yield events.ContextInjected(
                     session_id=self.session_id, turn_id=turn_id, refs=list(context.refs)
                 )
+            blocks: dict[str, str] = {}
+            holes = getattr(self.system_prompt, "holes", frozenset())
+            if "examples" in holes:
+                chosen = self._examples_for(user_message)
+                if chosen:
+                    blocks["examples"] = examples_block(chosen)
+                    yield events.ExamplesInjected(
+                        session_id=self.session_id,
+                        turn_id=turn_id,
+                        examples=[item.ref() for item in chosen],
+                    )
+            if "document_outline" in holes and self.documents is not None:
+                blocks["document_outline"] = self.documents.outline_text()
             # Only this turn sees the tool messages: the history keeps the final answer
-            messages = self._system_messages(context.text) + self.history.messages_for(user_message)
+            messages = self._system_messages(context.text, **blocks) + self.history.messages_for(
+                user_message
+            )
             tools = self.registry.ollama_tools() if self.registry else None
             parts: list[str] = []  # every token of the turn: message_done.content
             usage: Usage | None = None
@@ -359,6 +386,18 @@ class Engine:
     def _release(self) -> None:
         self._running = False
         self._cancel_requested = False
+
+    def _examples_for(self, question: str) -> list[Selected]:
+        """The closest examples of the question (A7), [] when disabled or on a failure:
+        an example problem never stops a turn. [fewshot] is read at each turn."""
+        fewshot = self.config.fewshot
+        if self.examples is None or not fewshot.enabled:
+            return []
+        try:
+            return self.examples.select(question, fewshot.k, fewshot.min_score)
+        except Exception:
+            logger.exception("examples unavailable")
+            return []
 
     async def _judge(
         self, turn_id: str, question: str, select: SelectResult, answer: str
@@ -499,6 +538,17 @@ class Engine:
                 kind=change.kind,
                 ref=change.ref,
                 summary=change.summary,
+            )
+        if result.document_change is not None:
+            written = result.document_change
+            yield events.DocumentUpdated(
+                session_id=self.session_id,
+                turn_id=turn_id,
+                doc_id=written.doc_id,
+                revision=written.revision,
+                section_id=written.section_id,
+                op=written.op,
+                summary=written.summary,
             )
         content = retries.advice(result) or self._for_model(call.name, result)
         messages.append({"role": "tool", "tool_name": call.name, "content": content})
