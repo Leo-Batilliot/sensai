@@ -12,15 +12,24 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from sensai.core.config import Config, McpServerConfig
-from sensai.core.prompts import DATE_TOOL_SUFFIX, SYSTEM_SQL
-from sensai.eval.harness import QuestionResult, compute_latency, compute_metrics
+from sensai.core.errors import PromptVersionNotFound
+from sensai.core.prompts import DATE_TOOL_SUFFIX, SYSTEM_SQL, PromptRegistry
+from sensai.eval.harness import (
+    QuestionResult,
+    compute_ex_by_category,
+    compute_latency,
+    compute_metrics,
+    compute_tokens,
+)
 from sensai.eval.report import compare, to_markdown
 from sensai.eval.runtime import (
     FROZEN_CLOCK,
+    EvalRuntime,
     FrozenClock,
     SeededOllamaClient,
     check_models,
     eval_config,
+    fewshot_info,
     frozen_now,
     prompt_info,
 )
@@ -124,6 +133,17 @@ def test_prompt_info_gives_the_version_and_fingerprint_of_the_file() -> None:
     }
 
 
+def test_report_records_the_prompt_version() -> None:
+    # US-A4-01: each report names the prompt of its run, from the registry
+    runtime = EvalRuntime(Config(agent={"prompt_version": "v1"}))
+
+    prompt = runtime.info()["prompt"]
+    assert (prompt["name"], prompt["version"]) == ("system_sql", "v1")
+    assert prompt["sha256"] == PromptRegistry.load().get("v1").sha256
+    with pytest.raises(PromptVersionNotFound):
+        prompt_info("v9")
+
+
 async def test_check_models_when_ollama_is_down() -> None:
     config = Config(ollama={"host": "http://127.0.0.1:9", "timeout_s": 2})
 
@@ -153,16 +173,19 @@ def question(
     judge_json: dict[str, int] | None,
     *,
     first_token_ms: int | None = None,
+    category: str = "aggregate",
+    ex: bool | None = None,
+    prompt_tokens: int | None = None,
 ) -> QuestionResult:
     return QuestionResult(
         id=question_id,
-        category="aggregate",
+        category=category,
         expects_write=False,
         requires_memory=False,
         answer="",
         sql=None,
         sql_valid=None,
-        ex=None,
+        ex=ex,
         confirmation_requested=False,
         unconfirmed_write=False,
         memory_refs=[],
@@ -175,6 +198,8 @@ def question(
         judge_ms=None,
         tool_arguments=tool_arguments,
         judge_json=judge_json,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=None if prompt_tokens is None else 40,
     )
 
 
@@ -206,6 +231,28 @@ def test_latency_has_p95_of_the_first_token() -> None:
 
     assert (latency["first_token_p50_ms"], latency["first_token_p95_ms"]) == (100, 190)
     assert latency["judge_p95_ms"] is None
+
+
+def test_ex_by_category_and_tokens() -> None:
+    # EVAL-08: where the examples help, and what they cost
+    results = [
+        question("q1", None, None, category="join", ex=True, prompt_tokens=1000),
+        question("q2", None, None, category="join", ex=False, prompt_tokens=1500),
+        question("q3", None, None, category="top_n", ex=True),
+        question("q4", None, None, category="out_of_scope"),  # outside the EX population
+    ]
+
+    assert compute_ex_by_category(results) == {
+        "join": {"value": 0.5, "n": 2},
+        "top_n": {"value": 1.0, "n": 1},
+    }
+    assert compute_tokens(results) == {"prompt_mean": 1250, "completion_mean": 40, "n": 2}
+
+
+def test_examples_are_off_with_a_prompt_that_has_no_hole() -> None:
+    # The v1 has no $examples: the report must not claim examples were used
+    assert fewshot_info(Config()) == {"enabled": False, "bank": None}
+    assert fewshot_info(Config(fewshot={"enabled": False}))["enabled"] is False
 
 
 # --- the run information in the reports ------------------------------------------------
@@ -252,6 +299,40 @@ def test_compare_says_what_changed_in_the_run() -> None:
     assert "| Prompt | system_sql v1 (3f2a9c1b) | system_sql v2 (77aa00bb) |" in table
     assert "| Exemples dynamiques | désactivés | activés |" in table
     assert "| Modèle |" not in table  # unchanged: not repeated
+
+
+def test_markdown_and_compare_show_categories_tokens_and_memory() -> None:
+    before = report(
+        "sans-memoire",
+        memory=None,
+        ex_by_category={"glossary": {"value": 0.0, "n": 2}, "join": {"value": 1.0, "n": 3}},
+        tokens={"prompt_mean": 2400, "completion_mean": 90, "n": 5},
+        latency={"turn_p50_ms": 4000},
+    )
+    after = report(
+        "avec-memoire",
+        memory="eval/memory_rules.json",
+        ex_by_category={"glossary": {"value": 1.0, "n": 2}, "join": {"value": 1.0, "n": 3}},
+        tokens={"prompt_mean": 2550, "completion_mean": 95, "n": 5},
+        latency={"turn_p50_ms": 4300},
+    )
+
+    markdown = to_markdown(before)
+    table = compare(before, after)
+
+    assert "mémoire : vide (ablation)" in markdown
+    assert "| glossary | 0.00 | 2 |" in markdown
+    assert "| Prompt | 2400 |" in markdown
+    assert "| Mémoire | vide (ablation) | eval/memory_rules.json |" in table
+    assert "| glossary | 0.00 | 1.00 | +1.00 |" in table
+    assert "| Tokens : prompt | 2400 | 2550 | +150 |" in table
+    assert "| Durée du tour p50 | 4000 | 4300 | +300 |" in table
+
+
+def test_compare_reads_reports_without_the_new_keys() -> None:
+    # judge.md §5: a key added later is optional for compare
+    table = compare(report("a"), report("b"))
+    assert "EX par catégorie" not in table and "| Coût |" not in table
 
 
 def test_compare_of_identical_runs_has_no_run_table() -> None:

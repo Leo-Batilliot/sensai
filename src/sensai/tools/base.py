@@ -12,11 +12,12 @@ import re
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
-from sensai.core.events import MemoryKind, ToolError
+from sensai.core.events import DocumentOp, MemoryKind, ToolError
 from sensai.mcp.client import ToolAnnotations
 
 __all__ = [
     "TOOL_NAME",
+    "DocumentChange",
     "MemoryChange",
     "ServerStatus",
     "Tool",
@@ -55,6 +56,17 @@ class MemoryChange:
 
 
 @dataclass(frozen=True)
+class DocumentChange:
+    """An effective write of the committee note: the Engine turns it into document_updated."""
+
+    doc_id: str
+    revision: int
+    section_id: str | None  # None for a restore
+    op: DocumentOp
+    summary: str
+
+
+@dataclass(frozen=True)
 class ToolResult:
     """Result of a tool call. ok is True if and only if error is None."""
 
@@ -65,6 +77,7 @@ class ToolResult:
     error: ToolError | None = None
     duration_ms: int = 0
     memory_change: MemoryChange | None = None
+    document_change: DocumentChange | None = None
 
     def __post_init__(self) -> None:
         if self.ok != (self.error is None):

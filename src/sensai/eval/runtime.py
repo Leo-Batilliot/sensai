@@ -12,7 +12,9 @@ What makes two runs give the same figures (judge.md §3):
   reference date under the same tool name (the system prompt does not change);
 - the model: temperature 0 and Ollama's options.seed on every call, judge included
   (SeededOllamaClient);
-- the memory: a fresh memory.db per case, filled by the harness.
+- the memory: a fresh memory.db per case, filled by the harness (the committee note of a
+  case starts from its template in that same file);
+- the examples: the bank of the package (A7), when the prompt version shows them.
 
 The engine confirms nothing (AutoRejectBroker by default): a write asked by the model is
 refused, so the demo database is never changed.
@@ -20,12 +22,9 @@ refused, so the demo database is never changed.
 
 from __future__ import annotations
 
-import hashlib
 import json
-import re
 from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from datetime import date, datetime, time, timezone
-from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +34,17 @@ from sensai.core.config import Config, McpServerConfig
 from sensai.core.confirm import ConfirmationBroker
 from sensai.core.engine import ChatClient, Engine, new_id
 from sensai.core.errors import ModelNotFound, SensaiError
-from sensai.core.prompts import DATE_TOOL_SUFFIX, SYSTEM_SQL, system_prompt_template
+from sensai.core.fewshot import BANK_FILE, ExampleIndex
+from sensai.core.prompts import (
+    DATE_TOOL_SUFFIX,
+    DEFAULT_VERSION,
+    PromptRegistry,
+    SystemPrompt,
+    load,
+    placeholders,
+    system_prompt_template,
+)
+from sensai.documents.store import DocumentStore
 from sensai.eval.golden import GoldenEntry
 from sensai.eval.harness import RunSetup, TurnEngine
 from sensai.eval.online import OnlineJudge
@@ -45,6 +54,7 @@ from sensai.mcp.manager import SQL_TOOLBOX_MODULE, McpManager
 from sensai.memory.context import MemoryContext
 from sensai.memory.store import MemoryStore
 from sensai.tools.base import Tool, ToolResult
+from sensai.tools.document_tools import DELETE_SECTION, document_tools
 from sensai.tools.memory_tools import memory_tools
 from sensai.tools.registry import Registry
 
@@ -53,9 +63,6 @@ FROZEN_CLOCK = f"time__{DATE_TOOL_SUFFIX}"
 CLOCK_TIMEZONE = "Europe/Paris"
 CLOCK_TIME = time(9, 0)  # a run happens on the morning of the reference date
 TIME_SERVER_PACKAGE = "mcp-server-time"
-PROMPT_NAME = "system_sql"
-# system_sql_v1.md -> v1: the file name carries the version (registry.toml, A4)
-_PROMPT_VERSION = re.compile(r"_(v\d+)\.md$")
 
 
 class FrozenClock:
@@ -180,24 +187,29 @@ def _on_run_database(server: McpServerConfig) -> McpServerConfig:
     return server.model_copy(update={"args": tuple(args)})
 
 
-def prompt_info(file: str = SYSTEM_SQL) -> dict[str, str | None]:
-    """Name, version and fingerprint of the system prompt (A4), for the report."""
-    data = resources.files("sensai.core").joinpath("prompts", file).read_bytes()
-    match = _PROMPT_VERSION.search(file)
-    return {
-        "name": PROMPT_NAME,
-        "version": match.group(1) if match else None,
-        "file": file,
-        "sha256": hashlib.sha256(data).hexdigest(),
-    }
+def prompt_info(version: str = DEFAULT_VERSION) -> dict[str, str]:
+    """Name, version and fingerprint of the system prompt (A4), for the report: those of
+    registry.toml, whose fingerprints are checked when it is loaded."""
+    return PromptRegistry.load().get(version).info()
+
+
+def fewshot_info(config: Config) -> dict[str, Any]:
+    """Whether the run shows dynamic examples (A7), for the report: [fewshot] enabled and a
+    prompt version with an $examples hole (the v1 has none)."""
+    entry = PromptRegistry.load().get(config.agent.prompt_version)
+    enabled = config.fewshot.enabled and "examples" in placeholders(load(entry.file))
+    return {"enabled": enabled, "bank": BANK_FILE if enabled else None}
 
 
 class EvalEngine:
-    """An Engine of a run, with its own memory store, closed together."""
+    """An Engine of a run, with its own memory store and note, closed together."""
 
-    def __init__(self, engine: Engine, store: MemoryStore) -> None:
+    def __init__(
+        self, engine: Engine, store: MemoryStore, documents: DocumentStore | None = None
+    ) -> None:
         self.engine = engine
         self.store = store
+        self.documents = documents
 
     def run_turn(self, user_message: str) -> AsyncIterator[events.Event]:
         return self.engine.run_turn(user_message)
@@ -215,6 +227,8 @@ class EvalEngine:
             await self.engine.aclose()
         finally:
             self.store.close()
+            if self.documents is not None:
+                self.documents.close()
 
 
 class EvalRuntime:
@@ -237,7 +251,8 @@ class EvalRuntime:
         self.manager_factory = manager_factory
         self.config: Config | None = None
         self.manager: McpManager | None = None
-        self._prompt: Callable[[str], str] | None = None
+        self._prompt: SystemPrompt | None = None
+        self.examples: ExampleIndex | None = None
 
     async def __aenter__(self) -> EvalRuntime:
         return self
@@ -254,14 +269,19 @@ class EvalRuntime:
         self.config = eval_config(self.base_config, business_db)
         self.manager = self.manager_factory(self.config)
         await self.manager.start_all()
-        with MemoryStore.open(":memory:") as store:
-            names = [info.name for info in self._registry(store, None, date.min).tools()]
-        self._prompt = system_prompt_template(business_db, names)
+        with MemoryStore.open(":memory:") as store, DocumentStore.open(":memory:") as documents:
+            registry = self._registry(store, documents, None, date.min)
+            names = [info.name for info in registry.tools()]
+        self._prompt = system_prompt_template(business_db, names, self.config.agent.prompt_version)
+        self.examples = ExampleIndex.from_package()
 
     async def aclose(self) -> None:
         if self.manager is not None:
             await self.manager.stop_all()
             self.manager = None
+        if self.examples is not None:
+            self.examples.close()
+            self.examples = None
 
     def new_engine(
         self, memory_db: Path, today: date, broker: ConfirmationBroker | None = None
@@ -273,19 +293,22 @@ class EvalRuntime:
             update={"database": self.config.database.model_copy(update={"memory_path": memory_db})}
         )
         store = MemoryStore.open(memory_db)
+        documents = DocumentStore.open(memory_db, config.documents.template)
         session_id = new_id()
         client = self.client_factory(config)
         engine = Engine(
             config,
             client,
-            registry=self._registry(store, session_id, today),
+            registry=self._registry(store, documents, session_id, today),
             system_prompt=self._prompt,
             broker=broker,
             session_id=session_id,
             memory=MemoryContext(store),
             judge=OnlineJudge.from_config(config, client),
+            examples=self.examples,
+            documents=documents,
         )
-        return EvalEngine(engine, store)
+        return EvalEngine(engine, store, documents)
 
     async def factory(self, entry: GoldenEntry, setup: RunSetup) -> TurnEngine:
         """The EngineFactory of the harness (run_suite, run_and_report)."""
@@ -303,17 +326,30 @@ class EvalRuntime:
             "ollama_seed": self.seed,
             "num_ctx": config.ollama.num_ctx,
             "persona": None,  # profiles arrive with A5 (PERS-01)
-            "prompt": prompt_info(),
-            "fewshot": {"enabled": False, "bank": None},  # dynamic examples: A7 (FEWSHOT-01)
+            "prompt": prompt_info(config.agent.prompt_version),
+            "fewshot": fewshot_info(config),
             "date_tool": "frozen",
         }
 
-    def _registry(self, store: MemoryStore, session_id: str | None, today: date) -> Registry:
-        tools: list[Tool] = [*memory_tools(store, session_id), FrozenClock(today)]
+    def _registry(
+        self,
+        store: MemoryStore,
+        documents: DocumentStore,
+        session_id: str | None,
+        today: date,
+    ) -> Registry:
+        tools: list[Tool] = [
+            *memory_tools(store, session_id),
+            *document_tools(documents, session_id),
+            FrozenClock(today),
+        ]
         return Registry(
             self.manager,
             tools,
-            previewers={MEMORY_DELETE: lambda args: store.delete_impact(args["kind"], args["ref"])},
+            previewers={
+                MEMORY_DELETE: lambda args: store.delete_impact(args["kind"], args["ref"]),
+                DELETE_SECTION: lambda args: documents.delete_impact(args["section_id"]),
+            },
         )
 
     def _seeded_client(self, config: Config) -> ChatClient:
@@ -353,6 +389,7 @@ __all__ = [
     "SeededOllamaClient",
     "check_models",
     "eval_config",
+    "fewshot_info",
     "frozen_now",
     "is_time_server",
     "prompt_info",

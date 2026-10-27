@@ -1,0 +1,23 @@
+# Template of the committee note (M4): the sections of a new note, in order.
+# A section id is a stable slug: the agent and the interface address sections by it.
+title = "Note au comité de direction"
+
+[[sections]]
+id = "synthese"
+title = "Synthèse"
+
+[[sections]]
+id = "chiffres-cles"
+title = "Chiffres clés"
+
+[[sections]]
+id = "rentabilite"
+title = "Rentabilité"
+
+[[sections]]
+id = "encours-retards"
+title = "Encours et retards de paiement"
+
+[[sections]]
+id = "actions"
+title = "Actions proposées"

@@ -38,6 +38,7 @@ LATENCY_LABELS = {
     "judge_p50_ms": "Juge p50",
     "judge_p95_ms": "Juge p95",
 }
+TOKEN_LABELS = {"prompt_mean": "Prompt", "completion_mean": "Réponse"}
 # Run information compared by `compare`: a delta means little if one of them changed
 RUN_LABELS = {
     "model": "Modèle",
@@ -45,6 +46,7 @@ RUN_LABELS = {
     "prompt": "Prompt",
     "persona": "Profil",
     "fewshot": "Exemples dynamiques",
+    "memory": "Mémoire",
     "suite": "Jeu",
     "today": "Date de référence",
     "seed": "Graine",
@@ -117,6 +119,8 @@ def run_value(report: dict[str, Any], key: str) -> str:
         return "activés" if value.get("enabled") else "désactivés"
     if key == "persona" and value is None and "persona" in report:
         return "aucun"
+    if key == "memory" and value is None and "memory" in report:
+        return "vide (ablation)"
     return "?" if value is None else str(value)
 
 
@@ -128,7 +132,8 @@ def to_markdown(report: dict[str, Any]) -> str:
         f"- Date de référence : {report.get('today', '?')}, graine {report.get('seed', '?')}",
         f"- Modèle : {report.get('model', '?')}, juge : {report.get('judge_model', '?')}",
         f"- Prompt : {run_value(report, 'prompt')} ; profil : {run_value(report, 'persona')} ; "
-        f"exemples dynamiques : {run_value(report, 'fewshot')}",
+        f"exemples dynamiques : {run_value(report, 'fewshot')} ; "
+        f"mémoire : {run_value(report, 'memory')}",
         "",
         "## Métriques",
         "",
@@ -138,10 +143,26 @@ def to_markdown(report: dict[str, Any]) -> str:
     for key, label in METRIC_LABELS.items():
         metric = report["metrics"].get(key, {})
         lines.append(f"| {label} | {_value(metric)} | {metric.get('n', 0)} |")
+    by_category = report.get("ex_by_category") or {}
+    if by_category:
+        lines += [
+            "",
+            "## EX par catégorie",
+            "",
+            "| Catégorie | EX | Questions |",
+            "|---|---:|---:|",
+        ]
+        for category, metric in by_category.items():
+            lines.append(f"| {category} | {_value(metric)} | {metric.get('n', 0)} |")
     lines += ["", "## Latence", "", "| Mesure | ms |", "|---|---:|"]
     for key, label in LATENCY_LABELS.items():
         value = report["latency"].get(key)
         lines.append(f"| {label} | {'—' if value is None else value} |")
+    tokens = report.get("tokens") or {}
+    lines += ["", "## Tokens (dernier appel du tour, moyenne)", "", "| Mesure | Tokens |"]
+    lines.append("|---|---:|")
+    for key, label in TOKEN_LABELS.items():
+        lines.append(f"| {label} | {_number(tokens.get(key))} |")
     lines += [
         "",
         "## Questions",
@@ -183,6 +204,22 @@ def compare(before: dict[str, Any], after: dict[str, Any]) -> str:
         new = after["metrics"].get(key, {}).get("value")
         delta = "—" if old is None or new is None else f"{new - old:+.2f}"
         lines.append(f"| {label} | {_value({'value': old})} | {_value({'value': new})} | {delta} |")
+    lines += _compare_rows(
+        before, after, "EX par catégorie", _category_rows(before, after), as_rate=True
+    )
+    token_rows = [
+        (
+            f"Tokens : {label.lower()}",
+            (before.get("tokens") or {}).get(key),
+            (after.get("tokens") or {}).get(key),
+        )
+        for key, label in TOKEN_LABELS.items()
+    ]
+    latency_rows = [
+        (label, before["latency"].get(key), after["latency"].get(key))
+        for key, label in LATENCY_LABELS.items()
+    ]
+    lines += _compare_rows(before, after, "Coût", token_rows + latency_rows, as_rate=False)
     old_ex = {result["id"]: result["ex"] for result in before["results"]}
     changed = [
         (result["id"], old_ex[result["id"]], result["ex"])
@@ -195,6 +232,44 @@ def compare(before: dict[str, Any], after: dict[str, Any]) -> str:
     for question_id, old, new in changed:
         lines.append(f"- {question_id} : {_flag(old)} → {_flag(new)}")
     return "\n".join(lines) + "\n"
+
+
+def _number(value: Any) -> str:
+    """A count or a duration, with the placeholder of the other tables when missing."""
+    return _value({"value": None}) if value is None else str(value)
+
+
+def _category_rows(before: dict[str, Any], after: dict[str, Any]) -> list[tuple[str, Any, Any]]:
+    old, new = before.get("ex_by_category") or {}, after.get("ex_by_category") or {}
+    return [
+        (category, old.get(category, {}).get("value"), new.get(category, {}).get("value"))
+        for category in sorted(set(old) | set(new))
+    ]
+
+
+def _compare_rows(
+    before: dict[str, Any],
+    after: dict[str, Any],
+    title: str,
+    rows: list[tuple[str, Any, Any]],
+    *,
+    as_rate: bool,
+) -> list[str]:
+    """A table of deltas; nothing when no row has a value (an older report)."""
+    if not any(old is not None or new is not None for _, old, new in rows):
+        return []
+    lines = ["", f"| {title} | {before['tag']} | {after['tag']} | Écart |", "|---|---:|---:|---:|"]
+    for label, old, new in rows:
+        if old is None or new is None:
+            delta = _number(None)
+        else:
+            delta = f"{new - old:+.2f}" if as_rate else f"{new - old:+d}"
+        if as_rate:
+            shown = [_value({"value": value}) for value in (old, new)]
+        else:
+            shown = [_number(value) for value in (old, new)]
+        lines.append(f"| {label} | {shown[0]} | {shown[1]} | {delta} |")
+    return lines
 
 
 __all__ = [

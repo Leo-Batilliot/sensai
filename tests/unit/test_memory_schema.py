@@ -1,13 +1,24 @@
 import json
 import sqlite3
 from collections.abc import Iterator
+from contextlib import closing
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
-from sensai.memory.schema import SCHEMA_VERSION, connect, create_schema, now_iso
+from sensai.memory.schema import (
+    SCHEMA_VERSION,
+    connect,
+    create_schema,
+    now_iso,
+    open_database,
+    schema_sql,
+)
 
 TABLES = {"entities", "relations", "facts", "glossary", "memory_audit", "memory_fts"}
+# Committee note (M4), added by the schema v2
+DOCUMENT_TABLES = {"documents", "document_sections", "document_revisions"}
 
 
 @pytest.fixture
@@ -50,11 +61,40 @@ def test_all_tables_created(db: sqlite3.Connection) -> None:
     rows = db.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'memory_fts_%'"
     ).fetchall()
-    assert {name for (name,) in rows} == TABLES
+    assert {name for (name,) in rows} == TABLES | DOCUMENT_TABLES
 
 
 def test_schema_version(db: sqlite3.Connection) -> None:
     assert db.execute("PRAGMA user_version").fetchone() == (SCHEMA_VERSION,)
+
+
+def test_a_v1_database_is_migrated_to_the_schema_of_a_new_one(tmp_path: Path) -> None:
+    # memory.md §7.2: the migration only adds the note tables, as schema.sql creates them
+    old = tmp_path / "memory.db"
+    with closing(connect(old)) as conn:
+        v1 = schema_sql().replace("PRAGMA user_version = 2;", "PRAGMA user_version = 1;")
+        conn.executescript(v1[: v1.index("-- Committee note")])
+        conn.execute("INSERT INTO glossary (term, definition) VALUES ('ca', 'chiffre')")
+        conn.commit()
+
+    with closing(open_database(old)) as migrated, closing(open_database(":memory:")) as new:
+        assert migrated.execute("PRAGMA user_version").fetchone() == (SCHEMA_VERSION,)
+        assert ddl(migrated) == ddl(new)
+        assert migrated.execute("SELECT term FROM glossary").fetchall() == [("ca",)]
+
+
+def test_a_database_of_an_unknown_version_is_left_alone(tmp_path: Path) -> None:
+    path = tmp_path / "memory.db"
+    with closing(connect(path)) as conn:
+        conn.execute("PRAGMA user_version = 99")
+
+    with pytest.raises(RuntimeError, match="v99"):
+        open_database(path)
+
+
+def ddl(conn: sqlite3.Connection) -> dict[str, str]:
+    rows = conn.execute("SELECT name, sql FROM sqlite_master WHERE name LIKE 'document%'")
+    return dict(rows.fetchall())
 
 
 def test_connect_enforces_foreign_keys(db: sqlite3.Connection) -> None:
