@@ -13,7 +13,7 @@ from sensai.core import events
 from sensai.core.config import Config, HitlConfig, OllamaConfig
 from sensai.core.confirm import AutoRejectBroker, Decision, PendingAction
 from sensai.core.engine import Engine
-from sensai.core.errors import OllamaUnavailable, StreamInterrupted
+from sensai.core.errors import ModelNoTools, OllamaUnavailable, StreamInterrupted
 from sensai.llm.ollama_client import Chunk, OllamaClient
 
 
@@ -104,6 +104,37 @@ async def test_ollama_down_ends_the_turn_with_a_recoverable_error() -> None:
     assert (error.code, error.recoverable) == ("OLLAMA_UNAVAILABLE", True)
     assert error.turn_id == emitted[0].turn_id
     assert len(engine.history) == 0
+
+
+async def test_ollama_down_mid_session_keeps_the_history() -> None:
+    engine = make_engine(
+        answer("42 jours."), [OllamaUnavailable("http://localhost:11434")], answer("Oui.")
+    )
+    await run(engine, "Délai moyen ?")
+
+    failed = await run(engine, "Et sur le T3 ?")
+    assert types(failed) == ["turn_started", "error"]
+    assert failed[-1].recoverable is True  # type: ignore[attr-defined]
+
+    await run(engine, "Et sur le T3 ?")  # Ollama is back: the session goes on
+    _model, messages, _options = fake(engine).calls[2]
+    assert messages == [
+        {"role": "user", "content": "Délai moyen ?"},
+        {"role": "assistant", "content": "42 jours."},
+        {"role": "user", "content": "Et sur le T3 ?"},
+    ]
+
+
+async def test_a_model_without_tools_gets_a_clear_message() -> None:
+    engine = make_engine([ModelNoTools("gemma:2b")])
+
+    emitted = await run(engine, "Chiffre d'affaires ?")
+
+    check_turn(emitted)  # MODEL_NO_TOOLS is in the closed list of error codes
+    error = emitted[-1]
+    assert isinstance(error, events.Error)
+    assert (error.code, error.recoverable) == ("MODEL_NO_TOOLS", True)
+    assert "ne gère pas les outils" in error.message
 
 
 async def test_cut_stream_ends_the_turn_and_is_not_recorded() -> None:

@@ -33,7 +33,7 @@ from sensai.core.errors import OllamaUnavailable, StreamInterrupted
 from sensai.core.personas import load_personas
 from sensai.data.schema import connect, create_schema
 from sensai.llm.ollama_client import Chunk, Message
-from sensai.tools.base import ToolResult
+from sensai.tools.base import ServerStatus, ToolResult
 
 
 def make_session(client: FakeClient) -> tuple[ChatSession, io.StringIO]:
@@ -675,3 +675,27 @@ async def test_compaction_is_reported() -> None:
     text = out.getvalue()
     assert "Historique allégé : 6 échange(s), 6 120 tokens ramenés à 2 480" in text
     assert "Chiffres : Marge Brasserie Lemaire : 48712.4 €" in text
+
+
+class DownServerRegistry(FakeToolRegistry):
+    """The date server could not start: its tools are gone, the others still work."""
+
+    def servers(self) -> list[ServerStatus]:
+        return [
+            ServerStatus(name="sql_toolbox", status="up"),
+            ServerStatus(name="time", status="down", error="la commande `uvx` est introuvable"),
+        ]
+
+
+async def test_a_server_down_at_startup_is_visible_in_tools() -> None:
+    out = io.StringIO()
+    console = Console(file=out, width=100, color_system=None, highlight=False)
+    engine = Engine(Config(), FakeClient(), registry=DownServerRegistry(select_tool()))
+    session = ChatSession(engine, Renderer(console))
+
+    await session.handle("/tools")
+
+    text = out.getvalue()
+    assert "Serveur MCP time : indisponible (la commande `uvx` est introuvable)" in text
+    assert "Serveur MCP sql_toolbox : en ligne" in text
+    assert "sql_toolbox__run_select" in text  # the other tools are still there

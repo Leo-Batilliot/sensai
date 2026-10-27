@@ -327,7 +327,7 @@ Les codes propres aux outils mémoire restent ceux de `memory.md` §3.4, en minu
 | # | Sujet | Avec |
 |---|---|---|
 | T-1 | Serveurs de confiance (ALL-02, question 7) : `sql_toolbox` et les outils natifs en v1. À confirmer, et à noter dans `docs/decisions.md` | P2 |
-| T-2 | Ajouter `UNKNOWN_TOOL` à `events.md` §5.2, et y renvoyer vers le §8 de ce document | P1 |
+| T-2 | ~~Ajouter `UNKNOWN_TOOL` à `events.md` §5.2, et y renvoyer vers le §8 de ce document~~ Fait (CORE-11), avec `QUESTION_LIMIT` ; messages dans [`errors.md`](errors.md) §4 | P1 |
 | T-3 | Valeur de `reason` pour un refus automatique (`AutoRejectBroker`) : proposer `"auto"` dans `events.md` §3.7 ; `"cancelled"` en attendant | P1, P4 |
 | T-4 | Aperçu d'une suppression en mémoire (cascades de `memory_delete`) : méthode du `MemoryStore` qui renvoie un `impact` (§7.4) | P3 |
 | T-5 | Section §7 à valider et compléter (descriptions, schémas, `outputSchema`) | P2 |

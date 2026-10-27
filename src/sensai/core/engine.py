@@ -720,6 +720,13 @@ class Engine:
         try:
             return await asyncio.wait_for(self.broker.request(action), action.expires_in_s)
         except asyncio.TimeoutError:  # distinct from the builtin TimeoutError in 3.10
+            # Logged without the SQL: it may hold confidential business data
+            logger.warning(
+                "Confirmation of %s (action %s) not given in %g s: refused",
+                action.tool,
+                action.action_id,
+                action.expires_in_s,
+            )
             return Decision("timeout", "timeout")
 
     async def _ask(self, question: PendingQuestion) -> Answer:
@@ -731,6 +738,11 @@ class Engine:
         try:
             answer = await asyncio.wait_for(self.questions.ask(question), question.expires_in_s)
         except asyncio.TimeoutError:  # distinct from the builtin TimeoutError in 3.10
+            logger.info(
+                "Question %s not answered in %g s: the model makes an assumption",
+                question.question_id,
+                question.expires_in_s,
+            )
             return Answer("timeout")
         return checked(answer, question)
 

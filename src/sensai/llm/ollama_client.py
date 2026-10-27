@@ -18,6 +18,7 @@ import httpx
 
 from sensai.core.errors import (
     ModelNotFound,
+    ModelNoTools,
     OllamaError,
     OllamaTimeout,
     OllamaUnavailable,
@@ -28,6 +29,8 @@ from sensai.core.errors import (
 logger = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT_S = 5.0
+# Ollama's HTTP 400 when the request offers tools to a model that cannot call them
+NO_TOOLS_ERROR = "does not support tools"
 
 Message = dict[str, Any]
 
@@ -248,7 +251,10 @@ class OllamaClient:
     def _status_error(self, response: httpx.Response, model: str | None) -> SensaiError:
         if response.status_code == 404 and model is not None:
             return ModelNotFound(model)
-        return OllamaError(_error_detail(response), response.status_code)
+        detail = _error_detail(response)
+        if model is not None and NO_TOOLS_ERROR in detail:
+            return ModelNoTools(model)  # a French message that says what to do
+        return OllamaError(detail, response.status_code)
 
     def _transport_error(
         self, exc: httpx.TransportError, partial: str | None = None

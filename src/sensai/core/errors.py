@@ -40,6 +40,19 @@ class ModelNotFound(SensaiError):
         self.model = model
 
 
+class ModelNoTools(SensaiError):
+    """The model cannot call tools: Ollama refuses a request that offers some."""
+
+    code = "MODEL_NO_TOOLS"
+
+    def __init__(self, model: str) -> None:
+        super().__init__(
+            f"Le modèle « {model} » ne gère pas les outils : il ne peut pas interroger les "
+            "données. Choisissez un modèle qui les gère, par exemple qwen3:8b."
+        )
+        self.model = model
+
+
 class PersonaNotFound(SensaiError):
     """The requested agent profile is not one of personas/*.toml (A5)."""
 
