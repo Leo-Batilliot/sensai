@@ -25,6 +25,10 @@ gets one wrong figure while it streams, before the judge: the demo of a caught m
 With agent profiles (A5, core/personas.py), each turn uses the profile it started with:
 the model only gets its tools, the policy refuses the others, and its block ends the
 system prompt. A change keeps the history and is noted in it at the next turn.
+
+Before the first model call of a turn, the prompt is kept under the token budget (M2,
+core/context.py): over it, the oldest exchanges give way to a rolling summary
+(context_compacted). The estimate is rescaled on Ollama's count after each answer.
 """
 
 from __future__ import annotations
@@ -58,6 +62,7 @@ from sensai.core.confirm import (
     Decision,
     PendingAction,
 )
+from sensai.core.context import Compactor, ContextBudget
 from sensai.core.demo import AnswerAlteration
 from sensai.core.errors import PersonaNotFound, SensaiError
 from sensai.core.history import History
@@ -101,6 +106,17 @@ class ChatClient(Protocol):
         tools: list[dict[str, Any]] | None = None,
         options: dict[str, Any] | None = None,
     ) -> AsyncGenerator[Chunk, None]: ...
+
+    async def chat(
+        self,
+        model: str,
+        messages: list[Message],
+        *,
+        format: dict[str, Any] | str | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> Chunk:
+        """One whole answer: the structured summary of the history (M2)."""
+        ...
 
     async def show(self, model: str) -> ModelDetails: ...
 
@@ -176,6 +192,9 @@ class Engine:
         self.persona = self._find_persona(config.agent.persona) if self.personas else None
         # The profile the history last told the model about: a change is noted once
         self._noted_persona = self.persona
+        # Token budget of the prompt (M2): a long session gives way to a rolling summary
+        self.budget = ContextBudget()
+        self.compactor = Compactor(self.client, self.budget)
 
     async def aclose(self) -> None:
         await self.client.aclose()
@@ -229,6 +248,7 @@ class Engine:
     def set_model(self, model: str) -> None:
         """Model of the next turns; a running turn keeps its own. Check it with model_details()."""
         self.model = model
+        self.budget.reset()  # another tokenizer: the token estimate starts over
 
     def set_persona(self, persona_id: str) -> Persona:
         """Profile of the next turns (A5); a running turn keeps its own. The history is
@@ -295,12 +315,25 @@ class Engine:
                     session_id=self.session_id, turn_id=turn_id, refs=list(context.refs)
                 )
             self._note_persona(persona)
-            # Only this turn sees the tool messages: the history keeps the final answer
-            messages = self._system_messages(context.text, persona) + self.history.messages_for(
-                user_message
-            )
+            head = self._system_messages(context.text, persona)
             allowed = persona.allows if persona else None
             tools = self.registry.ollama_tools(allowed) if self.registry else None
+            # Room for this turn (M2): the oldest exchanges may give way to a summary
+            compaction = await self.compactor.fit(
+                self.history, head, user_message, tools, model=model, config=self.config
+            )
+            if compaction is not None:
+                yield events.ContextCompacted(
+                    session_id=self.session_id,
+                    turn_id=turn_id,
+                    turns=compaction.turns,
+                    tokens_before=compaction.tokens_before,
+                    tokens_after=compaction.tokens_after,
+                    summary=compaction.summary,
+                )
+            # Only this turn sees the tool messages: the history keeps the final answer
+            messages = head + self.history.messages_for(user_message)
+            sent = 0  # raw size estimate of the last prompt sent, rescaled on Ollama's count
             parts: list[str] = []  # every token of the turn: message_done.content
             usage: Usage | None = None
             interrupted = answered = False
@@ -312,6 +345,7 @@ class Engine:
                 for _ in range(self.config.agent.max_tool_iterations):
                     text: list[str] = []
                     calls: list[ToolCall] = []
+                    sent = self.budget.raw(messages, tools)
                     stream = self.client.chat_stream(
                         model, messages, tools=tools, options=self.chat_options()
                     )
@@ -385,9 +419,11 @@ class Engine:
                 yield self._error(turn_id, "MAX_ITERATIONS", message, recoverable=True)
                 return
 
+            if usage is not None and not interrupted:
+                self.budget.calibrate(sent, usage.prompt_tokens)  # the final call's prompt
             content = "".join(parts)
             if not interrupted and epoch == self._epoch:
-                self.history.commit(user_message, content)
+                self.history.commit(user_message, content, turn_id)
             yield events.MessageDone(
                 session_id=self.session_id,
                 turn_id=turn_id,
@@ -433,6 +469,8 @@ class Engine:
             return
         yield events.JudgeStarted(session_id=self.session_id, turn_id=turn_id)
         verdict = await self.judge.verdict(question, select, answer)
+        if verdict.report is not None:  # the figures that a summary must keep (M2)
+            self.history.add_key_figures(turn_id, verdict.report.get("key_figures") or [])
         yield events.JudgeReport(session_id=self.session_id, turn_id=turn_id, **verdict.to_dict())
 
     async def _run_tool(

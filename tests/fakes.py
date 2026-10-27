@@ -73,11 +73,15 @@ class FakeClient:
         models: tuple[str, ...] = (MODEL, OTHER_MODEL),
         capabilities: tuple[str, ...] = ("completion", "tools"),
         show_error: Exception | None = None,
+        summaries: tuple[dict[str, Any] | str | Exception, ...] = (),
     ) -> None:
         self.replies = list(replies)
         self.models = models
         self.capabilities = capabilities
         self.show_error = show_error
+        # Answers of chat() (the summary of the history, M2): JSON, raw text or an error
+        self.summaries = list(summaries)
+        self.chat_calls: list[list[Message]] = []
         # Copies of what each call received: the engine keeps extending its message list
         self.calls: list[tuple[str, list[Message], dict[str, Any] | None]] = []
         self.tools_sent: list[list[dict[str, Any]] | None] = []
@@ -111,6 +115,21 @@ class FakeClient:
                 yield item
         finally:
             self.open_streams -= 1
+
+    async def chat(
+        self,
+        model: str,
+        messages: list[Message],
+        *,
+        format: dict[str, Any] | str | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> Chunk:
+        self.chat_calls.append(list(messages))
+        reply = self.summaries.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        content = reply if isinstance(reply, str) else json.dumps(reply, ensure_ascii=False)
+        return Chunk(content=content, done=True)
 
     async def show(self, model: str) -> ModelDetails:
         if self.show_error is not None:

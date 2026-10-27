@@ -32,6 +32,12 @@ question_timeout_s = 120       # without an answer, the agent makes an explicit 
 persona = "analyste"           # agent profile of a new session: personas/<id>.toml (A5)
 personas_dir = "personas"      # one TOML file per profile, relative to the launch directory
 
+[context]                      # token budget of a long session (M2)
+strategy = "compress"          # "compress": oldest exchanges summarized; "truncate": dropped
+budget_ratio = 0.75            # share of num_ctx for the prompt (the rest: answer, tool results)
+keep_recent_turns = 4          # recent exchanges never summarized
+summary_max_tokens = 500       # maximum size of the rolling summary
+
 [database]
 business_path = "data/business.db"
 memory_path = "data/memory.db"

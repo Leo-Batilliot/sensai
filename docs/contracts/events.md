@@ -271,6 +271,9 @@ Le juge ne tourne pas (ni `judge_started` ni `judge_report`) : sans `run_select`
  "summary": "Client rentable = marge brute > 25 % ; top 5 du T4 : Brasserie Lemaire (18,4 k€)…"}
 ```
 
+- Aussi émis quand les tours sont retirés **sans** résumé : stratégie `truncate`, résumé en échec (repli, jamais d'`error`), ou tours récents trop longs à eux seuls. `summary` dit alors pourquoi : « Troncature : 4 échange(s) retiré(s) sans résumé. », « Résumé impossible : … », « Échanges récents trop longs : … ».
+- Les estimations sont en tokens (caractères / 3,5, recalées sur le `prompt_eval_count` d'Ollama) et comptent le prompt système, l'historique, la question et la définition des outils.
+
 ### 3.14 `examples_injected` (v1.1)
 
 Émis quand des exemples question → SQL de la banque (`[fewshot]`, A7) ont été ajoutés au prompt du tour. Il est distinct de `context_injected`, qui reste réservé à la mémoire et à son ablation (point V-3).

@@ -174,6 +174,12 @@ class ChatSession:
         elif isinstance(event, events.ContextInjected):
             labels = ", ".join(ref.label for ref in event.refs)
             self.render.hint(f"  contexte mémoire fourni : {labels}")
+        elif isinstance(event, events.ContextCompacted):
+            before, after = _thousands(event.tokens_before), _thousands(event.tokens_after)
+            self.render.hint(
+                f"Historique allégé : {event.turns} échange(s), {before} tokens ramenés à {after}"
+            )
+            self.render.hint(f"  {event.summary}")
         elif isinstance(event, events.JudgeStarted):
             self.render.hint("(vérification de la réponse…)")
         elif isinstance(event, events.JudgeReport):
@@ -311,6 +317,11 @@ class ChatSession:
                 f"Le modèle {details.name} ne gère pas les outils : "
                 "les questions sur les données ne fonctionneront pas avec lui."
             )
+
+
+def _thousands(number: int) -> str:
+    """6120 -> '6 120', with a plain space (cp1252)."""
+    return f"{number:,}".replace(",", " ")
 
 
 def run_interruptible(

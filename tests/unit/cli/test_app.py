@@ -657,3 +657,21 @@ def test_an_invalid_profile_stops_the_chat(
 
     error = capsys.readouterr().err
     assert "analyste.toml" in error and "name" in error
+
+
+async def test_compaction_is_reported() -> None:
+    session, out = make_session(FakeClient())
+    compacted = events.ContextCompacted(
+        session_id="s-1",
+        turn_id="t-19",
+        turns=6,
+        tokens_before=6120,
+        tokens_after=2480,
+        summary="Chiffres : Marge Brasserie Lemaire : 48712.4 €",
+    )
+
+    session._show(compacted)
+
+    text = out.getvalue()
+    assert "Historique allégé : 6 échange(s), 6 120 tokens ramenés à 2 480" in text
+    assert "Chiffres : Marge Brasserie Lemaire : 48712.4 €" in text
