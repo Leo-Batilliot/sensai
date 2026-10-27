@@ -11,6 +11,8 @@ Une ligne = un événement complet, tel que le serveur l'envoie sur le WebSocket
 | `judge_contradiction.jsonl` | Acte 3 : chiffre faux | Badge ❌, affirmation `contradicted` avec `expected_value`, nombre listé dans `numeric_check.unmatched` |
 | `hitl_approve.jsonl` | Acte 4 : purge confirmée | `confirmation_required` (27 clients, 41 contacts), `approve`, suppression effectuée |
 | `hitl_reject.jsonl` | Acte 4 : purge refusée | Même début, `reject` avec commentaire, `tool_result` en échec `ACTION_REJECTED`, base intacte |
+| `file_write_approve.jsonl` | Acte 5 : export de la note dans `reports/` | `file_write` sous confirmation, `impact.file` (chemin, taille, nouveau fichier, début du contenu), `approve`, « Fichier créé » |
+| `file_write_reject.jsonl` | Acte 5 : export refusé | Même début, `reject` avec commentaire, `ACTION_REJECTED`, aucun fichier écrit |
 | `errors.jsonl` | Trois pannes, un tour chacune | `OLLAMA_UNAVAILABLE` (fin de tour) ; serveur de date indisponible (`MCP_SERVER_UNAVAILABLE`, l'agent demande la période) ; requêtes en échec (`SQL_ERROR`), un appel répété ignoré (`DUPLICATE_CALL`, le tour continue), puis la limite de 6 appels atteinte (`MAX_ITERATIONS`, fin de tour) |
 
 ## Règles pour le `MockEngine`
@@ -22,6 +24,7 @@ Implémentation : [`src/sensai/web/engines/mock.py`](../../../src/sensai/web/eng
   | Le message contient | Scénario rejoué |
   |---|---|
   | « supprime » | Acte 4 (`hitl_*`) : attend la décision, puis la branche correspondante |
+  | « exporte » | Acte 5 (`file_write_*`) : même pause que l'acte 4, pour une écriture de fichier |
   | « retiens », « mémorise » | Acte 2, tour 1 (`memory.jsonl`) |
   | « clients rentables » | Acte 2, tour 2 (`memory.jsonl`) |
   | « piège », « brasserie lemaire » | Acte 3 (`judge_contradiction.jsonl`) |
@@ -32,7 +35,7 @@ Implémentation : [`src/sensai/web/engines/mock.py`](../../../src/sensai/web/eng
 - **Un tour par message** : un fichier peut contenir plusieurs tours (`memory.jsonl`, `errors.jsonl`) ; le `MockEngine` rejoue le tour suivant à chaque `user_message`.
 - **Identifiants** : `session_id` (`s-fixture`) est remplacé par celui de la session ; les `turn_id`, `call_id` et `action_id` peuvent être régénérés, puisqu'ils sont opaques.
 - **Rythme** : les `ts` donnent l'ordre, pas le rythme. Le `MockEngine` impose le sien (environ 30 ms par `token`, 400 ms par outil) et réécrit `ts` à l'émission.
-- **HITL** : `hitl_approve.jsonl` et `hitl_reject.jsonl` sont identiques jusqu'à `confirmation_required` inclus. Le `MockEngine` joue cette partie commune, attend le message `confirm`, puis continue avec la suite du fichier qui correspond à la décision. Sans réponse avant `expires_in_s`, il émet lui-même `confirmation_resolved {decision: "timeout", reason: "timeout"}`.
+- **HITL** : `hitl_approve.jsonl` et `hitl_reject.jsonl` (de même `file_write_approve.jsonl` et `file_write_reject.jsonl`) sont identiques jusqu'à `confirmation_required` inclus. Le `MockEngine` joue cette partie commune, attend le message `confirm`, puis continue avec la suite du fichier qui correspond à la décision. Sans réponse avant `expires_in_s`, il émet lui-même `confirmation_resolved {decision: "timeout", reason: "timeout"}`.
 - **`cancel`** : le `MockEngine` arrête la lecture et émet `message_done {interrupted: true, usage: null}` avec les `token` déjà envoyés, sans juge.
 
 ## Modifier une fixture

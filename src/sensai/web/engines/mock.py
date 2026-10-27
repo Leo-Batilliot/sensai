@@ -45,8 +45,13 @@ FIXTURES = (
     "judge_contradiction",
     "hitl_approve",
     "hitl_reject",
+    "file_write_approve",
+    "file_write_reject",
     "errors",
 )
+
+# Scenarios that wait for a confirmation: <name>_approve.jsonl and <name>_reject.jsonl
+PAUSED = frozenset({"hitl", "file_write"})
 
 
 @dataclass(frozen=True)
@@ -59,6 +64,7 @@ class Route:
 # First match wins; the user's message is lowercased. Default: nominal.jsonl (act 1).
 ROUTES = (
     Route(("supprime",), "hitl", 0),
+    Route(("exporte",), "file_write", 0),  # act 5
     Route(("retiens", "mémorise", "memorise"), "memory", 0),
     Route(("clients rentables",), "memory", 1),
     Route(("piège", "piege", "brasserie lemaire"), "judge_contradiction", 0),
@@ -133,6 +139,9 @@ MOCK_TOOLS = (
     _tool("glossary_define", None, "Définit un terme métier", False, False, False),
     _tool("memory_update", None, "Modifie une entrée de la mémoire", False, False, False),
     _tool("memory_delete", None, "Supprime une entrée de la mémoire", False, True, True),
+    _tool("file_list", None, "Liste les dossiers autorisés", True, False, False),
+    _tool("file_read", None, "Lit un fichier d'un dossier autorisé", True, False, False),
+    _tool("file_write", None, "Écrit un fichier dans un dossier autorisé", False, True, True),
 )
 
 
@@ -297,9 +306,9 @@ class MockEngine:
         route = next((r for r in ROUTES if any(k in text for k in r.keywords)), None)
         if route is None:
             return self._turns["nominal"][0], None
-        if route.fixture == "hitl":
-            approve = self._turns["hitl_approve"][0]
-            reject = self._turns["hitl_reject"][0]
+        if route.fixture in PAUSED:
+            approve = self._turns[f"{route.fixture}_approve"][0]
+            reject = self._turns[f"{route.fixture}_reject"][0]
             pause = [e["type"] for e in approve].index("confirmation_required") + 1
             return approve[:pause], {"approve": approve[pause:], "reject": reject[pause:]}
         turns = self._turns[route.fixture]
