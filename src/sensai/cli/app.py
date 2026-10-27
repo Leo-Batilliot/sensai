@@ -26,7 +26,8 @@ from sensai.core.app_factory import Services
 from sensai.core.config import Config, ConfigError, load_config
 from sensai.core.demo import demo_notice
 from sensai.core.engine import Engine
-from sensai.core.errors import ModelNotFound, SensaiError
+from sensai.core.errors import ModelNotFound, PromptVersionNotFound, SensaiError
+from sensai.core.prompts import RegistryError, check_version
 from sensai.llm.ollama_client import ModelDetails
 from sensai.tools.policy import evaluate
 
@@ -337,14 +338,26 @@ def run_chat(
     model: str | None = None,
     host: str | None = None,
     *,
+    prompt_version: str | None = None,
     read_line: Callable[[str], str] = input,
     services_factory: ServicesFactory = Services,
 ) -> int:
     """`sensai chat`. Returns the exit code: 0, 1 if the chat cannot start, 130 on Ctrl+C."""
     try:
-        config = load_config(config_path, overrides={"ollama.model": model, "ollama.host": host})
-    except ConfigError as exc:
+        config = load_config(
+            config_path,
+            overrides={
+                "ollama.model": model,
+                "ollama.host": host,
+                "agent.prompt_version": prompt_version,
+            },
+        )
+        check_version(config.agent.prompt_version)
+    except (ConfigError, RegistryError) as exc:
         print(exc, file=sys.stderr)
+        return 1
+    except PromptVersionNotFound as exc:
+        print(exc.message, file=sys.stderr)
         return 1
 
     renderer = Renderer()

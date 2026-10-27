@@ -29,6 +29,7 @@ max_sql_retries = 2
 language = "fr"
 max_questions_per_turn = 1     # clarifying questions (ask_user) per turn; 0 = never ask
 question_timeout_s = 120       # without an answer, the agent makes an explicit assumption
+prompt_version = "v1"          # system prompt version (src/sensai/core/prompts/registry.toml)
 
 [database]
 business_path = "data/business.db"
@@ -44,6 +45,14 @@ deny = []                      # tool names that are always refused
 [eval]
 judge_enabled = true
 numeric_tolerance = 0.01       # 1 %
+
+[fewshot]                       # dynamic examples: closest question -> SQL pairs in the prompt
+enabled = true
+k = 3                           # examples injected at most
+min_score = 0.0                 # minimal bm25 score (0 = always the k best)
+
+[documents]                     # committee note written section by section by the agent
+template = "note_comite"
 
 # MCP servers started at launch. Adding a [mcp.servers.<name>] table is enough to
 # plug in a new server. <name> always prefixes its tools (time__get_current_time);
