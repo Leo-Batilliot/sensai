@@ -51,8 +51,25 @@ CLIENT_TYPES = {
     "reset",
     "set_model",
     "set_config",
+    # v1.1 (v1.1-extensions.md §4)
+    "answer",
+    "set_persona",
+    "share",
+    "unshare",
+    "run_schedule",
 }
-SERVER_TYPES = {"session_ready", "session_reset", "model_changed", "config_updated"}
+SERVER_TYPES = {
+    "session_ready",
+    "session_reset",
+    "model_changed",
+    "config_updated",
+    # v1.1
+    "persona_changed",
+    "share_created",
+    "share_revoked",
+    "schedule_run_started",
+    "schedule_run_finished",
+}
 
 # Emitted before the first model call of a turn, in this order (events.md §4.1, point 2)
 PRELUDE = ("context_injected", "context_compacted", "examples_injected")

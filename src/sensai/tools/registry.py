@@ -37,6 +37,8 @@ NON_TEXT_BLOCK = "[contenu non textuel ignoré]"
 # Tool of an SQL server that previews a write without keeping it (MCP-05)
 PREVIEW_TOOL = "preview_write"
 IMPACT_KEYS = {"operation", "rows_affected", "per_table", "sample", "blocked"}
+# Optional: what a file_write would write (path, size, existing or not, start of the content)
+OPTIONAL_IMPACT_KEYS = {"file"}
 
 Previewer = Callable[[dict[str, Any]], dict[str, Any]]
 
@@ -276,7 +278,7 @@ def _valid_impact(impact: Any) -> dict[str, Any] | None:
     """The impact if it has the fields of confirmation_required.impact, else None."""
     if not isinstance(impact, dict) or not set(impact) >= IMPACT_KEYS:
         return None
-    return {key: impact[key] for key in IMPACT_KEYS}
+    return {key: impact[key] for key in IMPACT_KEYS | OPTIONAL_IMPACT_KEYS if key in impact}
 
 
 def _ms(started: float) -> int:

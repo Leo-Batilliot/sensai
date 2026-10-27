@@ -69,6 +69,9 @@ export function badgeView(judge: 'pending' | JudgeReport): BadgeView {
         label: 'Vérification indisponible',
         hint: "Le juge n'a pas pu vérifier cette réponse : les chiffres n'ont pas été contrôlés.",
       }
+    default:
+      // A badge added after this version of the interface: shown neutral, never a crash
+      return { tone: 'unavailable', icon: '?', label: 'Vérification', hint: null }
   }
 }
 

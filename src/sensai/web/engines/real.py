@@ -2,11 +2,12 @@
 
 Started once with the application (FastAPI lifespan) and shared by every session: the
 Services of the application (core/app_factory.py, CORE-10), as for the CLI. Each session
-gets its own Engine from them, with the WebConfirmationBroker of its socket.
+gets its own Engine from them, with the WebConfirmationBroker and WebQuestionBroker of
+its socket.
 
 The Engine does not cover the whole web protocol: RealEngine adds the servers and tools
 of session_ready, the session settings of set_config, and run_ui_action until the
-Engine has its own (point P-6, P1).
+Engine has its own (point P-6, P1). Profiles (A5) wait for PERS-01: none for now.
 """
 
 from __future__ import annotations
@@ -24,7 +25,8 @@ from sensai.eval.online import OnlineJudge
 from sensai.mcp.manager import McpManager
 from sensai.tools.policy import SqlClassifier, evaluate
 from sensai.tools.registry import Registry
-from sensai.web.engines.backend import ModelInfo
+from sensai.web.engines.backend import ModelInfo, Persona, PersonaTools
+from sensai.web.websocket.ask import WebQuestionBroker
 from sensai.web.websocket.confirm import WebConfirmationBroker
 from sensai.web.websocket.settings import SESSION_SETTINGS, session_settings
 
@@ -41,6 +43,7 @@ class RealEngine:
         self.registry = registry
         self._client = client
         self.session_config = session_settings(engine.config)
+        self.persona: Persona | None = None  # no profiles before PERS-01 (P1)
 
     @property
     def model(self) -> str:
@@ -65,6 +68,9 @@ class RealEngine:
             for info in self.registry.tools()
         ]
         return servers, tools
+
+    def set_persona(self, persona_id: str) -> bool:
+        return False  # PERS-01: every profile is unknown until the Engine loads them
 
     def run_turn(self, user_message: str) -> AsyncIterator[Any]:
         return self.engine.run_turn(user_message)
@@ -162,6 +168,9 @@ class RealBackend:
     async def memory_snapshot(self) -> dict[str, list[dict[str, Any]]]:
         return self._services.store.dump()
 
+    def personas(self) -> tuple[str | None, list[PersonaTools]]:
+        return None, []  # PERS-01
+
     async def ollama_available(self) -> bool:
         try:
             await self._client.list_models()
@@ -169,7 +178,12 @@ class RealBackend:
             return False
         return True
 
-    def new_engine(self, session_id: str, broker: WebConfirmationBroker) -> RealEngine:
-        engine = self._services.new_engine(broker, session_id)
+    def new_engine(
+        self,
+        session_id: str,
+        broker: WebConfirmationBroker,
+        questions: WebQuestionBroker | None = None,
+    ) -> RealEngine:
+        engine = self._services.new_engine(broker, session_id, questions)
         assert isinstance(engine.registry, Registry)  # Services always gives one
         return RealEngine(engine, engine.registry, engine.client)

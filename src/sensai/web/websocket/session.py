@@ -3,7 +3,8 @@
 Concurrency per connection:
 - the receive loop (endpoint.py) reads client messages and dispatches them; it never runs a turn;
 - each turn runs in its own task, which sends the engine events as they come;
-- `confirm` resolves the broker from the receive loop, while the turn task waits on it.
+- `confirm` and `answer` resolve the brokers from the receive loop, while the turn task
+  waits on them.
 
 A turn is "busy" from `turn_started` to its end (`message_done` or `error`). The judge
 events that follow do not keep the session busy (websocket.md §6.1): the turn task keeps
@@ -22,6 +23,7 @@ from fastapi import WebSocket
 
 from sensai.core.events import DecisionReason
 from sensai.web.engines.backend import WebBackend, WebEngine
+from sensai.web.websocket.ask import WebQuestionBroker
 from sensai.web.websocket.confirm import WebConfirmationBroker
 
 logger = logging.getLogger(__name__)
@@ -38,12 +40,19 @@ def to_payload(event: Any) -> dict[str, Any]:
 
 
 class Session:
-    """One conversation: an engine, its broker, its history, and at most one socket."""
+    """One conversation: an engine, its brokers, its history, and at most one socket."""
 
-    def __init__(self, session_id: str, engine: WebEngine, broker: WebConfirmationBroker) -> None:
+    def __init__(
+        self,
+        session_id: str,
+        engine: WebEngine,
+        broker: WebConfirmationBroker,
+        questions: WebQuestionBroker | None = None,
+    ) -> None:
         self.id = session_id
         self.engine = engine
         self.broker = broker
+        self.questions = questions if questions is not None else WebQuestionBroker()
         self.websocket: WebSocket | None = None
         self.disconnected_at: float | None = None
         self.history: list[dict[str, Any]] = []
@@ -94,10 +103,16 @@ class Session:
         task.add_done_callback(self._tasks.discard)
 
     def interrupt(self, reason: DecisionReason) -> None:
-        """`cancel`, `reset` or disconnection: refuse pending confirmations, stop the turn."""
+        """`cancel`, `reset` or disconnection: refuse pending confirmations, cancel pending
+        questions, stop the turn."""
         if self.turn_active:
             self.broker.reject_all(reason)
+            self.questions.cancel_all()
             self.engine.cancel()
+
+    def remember(self, message: dict[str, Any]) -> None:
+        """A web message replayed with the history, in place: only persona_changed (§5.2)."""
+        self.history.append({key: value for key, value in message.items() if key != "reply_to"})
 
     def clear_history(self) -> None:
         self.history.clear()
@@ -158,8 +173,9 @@ class SessionManager:
         await self._purge()
         session = self._sessions.get(session_id)
         if session is None:
-            broker = WebConfirmationBroker()
-            session = Session(session_id, self.backend.new_engine(session_id, broker), broker)
+            broker, questions = WebConfirmationBroker(), WebQuestionBroker()
+            engine = self.backend.new_engine(session_id, broker, questions)
+            session = Session(session_id, engine, broker, questions)
             self._sessions[session_id] = session
             return session, False
         previous = session.websocket

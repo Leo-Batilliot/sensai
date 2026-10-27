@@ -65,6 +65,12 @@ class MessageHandler:
             "config": dict(engine.session_config),
             "servers": servers,
             "tools": tools,
+            "persona": engine.persona,
+            "personas": [
+                {"id": p["id"], "name": p["name"], "role": p["role"]}
+                for p in self.backend.personas()[1]
+            ],
+            "document_id": None,  # no committee note before M4
         }
 
     async def handle(self, text: str) -> None:
@@ -82,7 +88,14 @@ class MessageHandler:
         if problem is not None:
             await self._error("INVALID_MESSAGE", problem, reply_to)
             return
-        handler = getattr(self, f"_on_{message['type']}")
+        handler = getattr(self, f"_on_{message['type']}", None)
+        if handler is None:  # a v1.1 message this server does not handle yet (§4)
+            await self._error(
+                "INVALID_MESSAGE",
+                f"Le message « {message['type']} » n'est pas encore pris en charge par ce serveur.",
+                reply_to,
+            )
+            return
         await handler(message, reply_to)
 
     def _invalid(self, message: dict[str, Any]) -> str | None:
@@ -125,6 +138,13 @@ class MessageHandler:
                 "Cette demande de confirmation n'est plus active (déjà traitée ou expirée).",
                 reply_to,
             )
+
+    async def _on_answer(self, message: dict[str, Any], reply_to: str | None) -> None:
+        refusal = self.session.questions.resolve(
+            message["question_id"], message.get("option_id"), message.get("text")
+        )
+        if refusal is not None:
+            await self._error(refusal.code, refusal.message, reply_to)
 
     async def _on_cancel(self, message: dict[str, Any], reply_to: str | None) -> None:
         self.session.interrupt("cancelled")  # ignored without a running turn (§4.4)
@@ -173,6 +193,20 @@ class MessageHandler:
                 "config_updated", reply_to, config=dict(engine.session_config), changed=changed
             )
         )
+
+    async def _on_set_persona(self, message: dict[str, Any], reply_to: str | None) -> None:
+        engine = self.session.engine
+        previous = engine.persona
+        if not engine.set_persona(message["persona"]):
+            await self._error(
+                "PERSONA_NOT_FOUND", f"Le profil « {message['persona']} » n'existe pas.", reply_to
+            )
+            return
+        _, tools = engine.describe()
+        changed = self._ack("persona_changed", reply_to, persona=engine.persona, tools=tools)
+        if engine.persona != previous:  # the same profile again: acknowledged, no separator
+            self.session.remember(changed)  # the separator survives a reload (§5.2, V-7)
+        await self.session.send(changed)
 
     # --- helpers --------------------------------------------------------------------------
 

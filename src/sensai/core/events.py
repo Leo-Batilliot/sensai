@@ -22,7 +22,7 @@ DecisionReason = Literal["user", "cancelled", "disconnected", "timeout"]
 MemoryOp = Literal["create", "update", "delete"]
 MemoryKind = Literal["glossary", "entity", "relation", "fact"]
 Badge = Literal["verified", "needs_review", "contradicted", "unavailable"]
-QuestionStatus = Literal["answered", "timeout", "cancelled"]
+AnswerStatus = Literal["answered", "timeout", "cancelled"]
 DocumentOp = Literal["replace", "append", "insert_after", "delete", "restore"]
 
 
@@ -73,12 +73,6 @@ class ExampleRef:
     id: str
     question: str
     score: float
-
-
-@dataclass(frozen=True)
-class QuestionOption:
-    id: str
-    label: str
 
 
 # --- Events (events.md §3) ---
@@ -163,12 +157,14 @@ class ConfirmationResolved(Event):
 
 @dataclass(frozen=True, kw_only=True)
 class QuestionAsked(Event):
+    """The model called ask_user: the turn waits for an answer (events.md §3.15)."""
+
     type: ClassVar[str] = "question_asked"
     question_id: str
     call_id: str
     question: str
     reason: str
-    options: list[QuestionOption]
+    options: list[dict[str, str]]  # [{id, label}], empty when only a free answer is possible
     allow_free_text: bool
     expires_in_s: float
 
@@ -177,7 +173,7 @@ class QuestionAsked(Event):
 class QuestionAnswered(Event):
     type: ClassVar[str] = "question_answered"
     question_id: str
-    status: QuestionStatus
+    status: AnswerStatus
     option_id: str | None
     text: str | None
 

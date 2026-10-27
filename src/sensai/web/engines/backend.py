@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any, Protocol, TypedDict
 
+from sensai.web.websocket.ask import WebQuestionBroker
 from sensai.web.websocket.confirm import WebConfirmationBroker
 
 
@@ -20,14 +21,33 @@ class ModelInfo(TypedDict):
     supports_tools: bool
 
 
+class Persona(TypedDict):
+    """An agent profile as the selector shows it (websocket.md §5.2, A5)."""
+
+    id: str
+    name: str
+    role: str
+
+
+class PersonaTools(Persona):
+    """A profile and the names of the tools it allows, for GET /api/personas (§9)."""
+
+    tools: list[str]
+
+
 class WebEngine(Protocol):
     """One engine per web session."""
 
     model: str
     session_config: dict[str, Any]
+    persona: Persona | None  # None for a server without profiles
 
     def describe(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        """MCP servers and tools, as sent in `session_ready` (websocket.md §5.2)."""
+        """MCP servers and the tools of the active profile, as sent in `session_ready` (§5.2)."""
+        ...
+
+    def set_persona(self, persona_id: str) -> bool:
+        """Profile used from the next turn on. False for an unknown one, which changes nothing."""
         ...
 
     def run_turn(self, user_message: str) -> AsyncIterator[Any]: ...
@@ -69,4 +89,13 @@ class WebBackend(Protocol):
         """Every memory entry, for GET /api/memory (memory.md §5)."""
         ...
 
-    def new_engine(self, session_id: str, broker: WebConfirmationBroker) -> WebEngine: ...
+    def personas(self) -> tuple[str | None, list[PersonaTools]]:
+        """The profile a new session starts with, and every profile (GET /api/personas)."""
+        ...
+
+    def new_engine(
+        self,
+        session_id: str,
+        broker: WebConfirmationBroker,
+        questions: WebQuestionBroker | None = None,
+    ) -> WebEngine: ...

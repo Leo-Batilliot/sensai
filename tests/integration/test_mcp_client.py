@@ -158,3 +158,13 @@ async def test_mcp_server_time() -> None:
         assert datetime.fromisoformat(now["datetime"]).year >= 2026
 
         assert (await client.call_tool("get_current_time", {"timezone": "Mars/Olympus"})).is_error
+
+
+@pytest.mark.parametrize("version", ["2025-03-26", "2025-06-18", "2025-11-25", "2024-11-05"])
+async def test_older_protocol_revisions_still_work(version: str) -> None:
+    # A server that only speaks an older revision answers with it: we accept and go on
+    async with echo_client("--protocol-version", version) as client:
+        assert client.server_info is not None
+        assert client.server_info.protocol_version == version
+        assert len(await client.list_tools()) == 4
+        assert (await client.call_tool("echo", {"text": version})).text == version

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ConfirmationResolved, EngineEvent, Impact } from '../protocol'
 import { fixture, turnsOf, until } from '../test/fixtures'
 import {
+  bytesLabel,
   confirmLabel,
   confirmationOutcome,
   formatCountdown,
@@ -111,6 +112,30 @@ describe('impact', () => {
       'Confirmer la modification de 1 ligne',
     )
     expect(confirmLabel(impact({ rows_affected: 0, per_table: {} }))).toBe('Confirmer')
+  })
+
+  describe('file write (FILE-01, act 5)', () => {
+    const file = { path: 'reports/note.md', bytes: 2841, exists: false, excerpt: '# Note' }
+    const write = (patch: Partial<Impact>) =>
+      impact({ operation: 'OTHER', rows_affected: 0, per_table: {}, file, ...patch })
+
+    it('says whether the file is created or replaced', () => {
+      expect(confirmLabel(write({}))).toBe('Confirmer la création du fichier')
+      expect(confirmLabel(write({ file: { ...file, exists: true } }))).toBe(
+        'Confirmer le remplacement du fichier',
+      )
+    })
+
+    it('promises nothing when the permissions refuse the path', () => {
+      const blocked = [{ reason: 'PATH_FORBIDDEN : hors des dossiers autorisés', count: null }]
+      expect(confirmLabel(write({ blocked }))).toBe('Confirmer')
+    })
+
+    it('shows the size in octets, then in ko', () => {
+      expect(bytesLabel(1)).toBe('1 octet')
+      expect(bytesLabel(636)).toBe('636 octets')
+      expect(bytesLabel(2841)).toBe('2,8 ko')
+    })
   })
 })
 

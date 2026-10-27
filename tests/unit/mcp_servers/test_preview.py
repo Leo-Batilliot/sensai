@@ -74,24 +74,89 @@ def test_preview_is_exact_and_leaves_no_trace(server: SqlToolboxServer, db_path:
         " (SELECT client_id FROM orders))",
     )
     before = dump_hash(db_path)
-    result = call(server, "preview_write", PURGE)
-    assert result["structuredContent"] == {
-        "operation": "DELETE",
-        "rows_affected": 25,
-        "per_table": {"clients": -25, "contacts": -contacts},  # cascade included
-        "sample": [],
-        "blocked": [],
-    }
+    impact = call(server, "preview_write", PURGE)["structuredContent"]
+    assert impact["operation"] == "DELETE"
+    assert impact["rows_affected"] == 25
+    assert impact["per_table"] == {"clients": -25, "contacts": -contacts}  # cascade included
+    assert impact["blocked"] == []
     assert dump_hash(db_path) == before
 
 
-def test_preview_of_a_blocked_delete(server: SqlToolboxServer, db_path: Path) -> None:
+def test_the_sample_shows_targeted_rows_as_they_are(
+    server: SqlToolboxServer, db_path: Path
+) -> None:
+    sample = call(server, "preview_write", PURGE)["structuredContent"]["sample"]
+    assert len(sample) == 5
+    purgeable = {
+        row
+        for (row,) in sqlite3.connect(db_path).execute(
+            "SELECT id FROM clients WHERE status = 'inactive'"
+            " AND id NOT IN (SELECT client_id FROM orders)"
+        )
+    }
+    assert {row["id"] for row in sample} <= purgeable
+    assert all(row["status"] == "inactive" for row in sample)
+
+
+def test_preview_of_a_blocked_delete_counts_the_protected_rows(
+    server: SqlToolboxServer, db_path: Path
+) -> None:
     before = dump_hash(db_path)
     impact = call(server, "preview_write", NAIVE_PURGE)["structuredContent"]
     assert impact["rows_affected"] == 0 and impact["per_table"] == {}
-    (blocked,) = impact["blocked"]
-    assert "conservées" in blocked["reason"] and blocked["count"] is None
+    # Same figures as independent control queries
+    with_orders = count(
+        db_path,
+        "SELECT COUNT(*) FROM clients c WHERE status = 'inactive'"
+        " AND EXISTS (SELECT 1 FROM orders o WHERE o.client_id = c.id)",
+    )
+    with_invoices = count(
+        db_path,
+        "SELECT COUNT(*) FROM clients c WHERE status = 'inactive'"
+        " AND EXISTS (SELECT 1 FROM invoices i WHERE i.client_id = c.id)",
+    )
+    assert impact["blocked"] == [
+        {"reason": "commandes à conserver", "count": with_orders},
+        {"reason": "factures à conserver", "count": with_invoices},
+    ]
+    assert with_invoices == 15
+    assert len(impact["sample"]) == 5  # the targeted rows are still shown
     assert dump_hash(db_path) == before
+
+
+def test_the_hint_gives_a_statement_that_works(server: SqlToolboxServer) -> None:
+    impact = call(server, "preview_write", NAIVE_PURGE)["structuredContent"]
+    corrected = impact["hint"].split(" : ", 1)[1]
+    assert corrected.startswith("DELETE FROM clients WHERE (status = 'inactive') AND NOT EXISTS")
+    fixed = call(server, "preview_write", corrected)["structuredContent"]
+    assert fixed["rows_affected"] == 25 and fixed["blocked"] == []
+
+
+def test_a_refused_execute_tells_the_model_how_to_fix_it(server: SqlToolboxServer) -> None:
+    message = call(server, "execute_write", NAIVE_PURGE)["structuredContent"]["message"]
+    assert "15 ligne(s) visée(s) : factures à conserver" in message
+    assert "Requête qui exclut les lignes protégées : DELETE FROM clients" in message
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "WITH x AS (SELECT id FROM clients WHERE status = 'inactive') DELETE FROM contacts"
+        " WHERE client_id IN x",
+        "INSERT INTO sales_reps (full_name, email, region, hired_on)"
+        " VALUES ('A B', 'ab@x.fr', 'Lille', '2020-01-01')",
+    ],
+)
+def test_forms_without_a_sample_still_get_a_preview(server: SqlToolboxServer, sql: str) -> None:
+    impact = call(server, "preview_write", sql)["structuredContent"]
+    assert impact["sample"] == []
+    assert impact["rows_affected"] > 0
+
+
+def test_long_texts_are_cut_in_the_sample(server: SqlToolboxServer) -> None:
+    long_update = "UPDATE clients SET name = name WHERE name LIKE 'SARL Ignore%'"
+    (row,) = call(server, "preview_write", long_update)["structuredContent"]["sample"]
+    assert len(row["name"]) == 60 and row["name"].endswith("…")
 
 
 def test_execute_writes_and_audits(server: SqlToolboxServer, db_path: Path) -> None:

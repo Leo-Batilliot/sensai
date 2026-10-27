@@ -62,6 +62,9 @@ export function confirmationOutcome(turn: Turn): Outcome | null {
       )
     case 'user':
       return outcome('rejected', 'neutral', 'Action refusée', "Rien n'a été modifié. L'agent en tient compte.")
+    default:
+      // A reason added after this version of the interface: the action did not run
+      return outcome('rejected', 'neutral', 'Action non exécutée', "Rien n'a été modifié.")
   }
 }
 
@@ -69,6 +72,14 @@ const count = new Intl.NumberFormat('fr-FR')
 
 export function rowsLabel(rows: number): string {
   return `${count.format(rows)} ligne${rows > 1 ? 's' : ''}`
+}
+
+const decimal = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 })
+
+// Size of a file to write: "636 octets", "2,8 ko"
+export function bytesLabel(bytes: number): string {
+  if (bytes < 1000) return `${count.format(bytes)} octet${bytes > 1 ? 's' : ''}`
+  return `${decimal.format(bytes / 1000)} ko`
 }
 
 // "−27": signed difference of COUNT(*) for one table, with a real minus sign
@@ -93,6 +104,12 @@ export function impactLines(impact: Impact): ImpactLine[] {
 
 // The confirm button repeats what will happen (docs/keynote/ui/ModaleHITL, annotation 7)
 export function confirmLabel(impact: Impact): string {
+  if (impact.file) {
+    if (impact.blocked.length > 0) return 'Confirmer' // refused by the permissions anyway
+    return impact.file.exists
+      ? 'Confirmer le remplacement du fichier'
+      : 'Confirmer la création du fichier'
+  }
   const rows = rowsLabel(impact.rows_affected)
   if (impact.rows_affected === 0) return 'Confirmer'
   switch (impact.operation) {

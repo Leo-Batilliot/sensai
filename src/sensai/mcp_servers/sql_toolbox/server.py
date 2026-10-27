@@ -71,7 +71,7 @@ class SqlToolboxServer:
         # The server's own queries (schema, samples): read-only, built from checked names
         self._meta = open_readonly(db_path)
         self.writer = SqlWriter(db_path, timeout_ms)
-        self.tools = _tool_definitions(row_limit)
+        self.tools = [_accepting_errors(tool) for tool in _tool_definitions(row_limit)]
         self._handlers: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
             "list_tables": self._list_tables,
             "describe_table": self._describe_table,
@@ -92,23 +92,39 @@ class SqlToolboxServer:
     # ---- protocol ----------------------------------------------------------------------
 
     def handle_line(self, line: bytes) -> Message | None:
-        """Answer one line read on stdin; None for a notification."""
+        """Answer one line read on stdin; None for a notification. Never raises."""
         try:
-            message = jsonrpc.decode(line)
+            message = json.loads(line)
         except ValueError:
             return jsonrpc.error_response(None, jsonrpc.PARSE_ERROR, "Parse error")
-        return self.handle(message)
-
-    def handle(self, message: Message) -> Message | None:
-        if jsonrpc.is_notification(message) or jsonrpc.is_response(message):
-            # initialized, cancelled (requests are answered one by one, nothing to stop)
-            return None
-        if not jsonrpc.is_request(message):
+        try:
+            return self.handle(message)
+        except Exception:
+            # A bug must cost one answer, never the server
+            logger.exception("Unexpected error while handling a message")
+            request_id = message.get("id") if isinstance(message, dict) else None
             return jsonrpc.error_response(
-                message.get("id"), jsonrpc.INVALID_REQUEST, "Invalid request"
+                _valid_id(request_id), jsonrpc.INTERNAL_ERROR, "Internal error"
             )
+
+    def handle(self, message: Any) -> Message | None:
+        problem = _invalid_request(message)
+        if problem is not None:
+            request_id = message.get("id") if isinstance(message, dict) else None
+            return jsonrpc.error_response(
+                _valid_id(request_id), jsonrpc.INVALID_REQUEST, f"Invalid request: {problem}"
+            )
+        if "id" not in message:
+            # Notifications (initialized, cancelled…), known or not, get no answer
+            return None
+        if "method" not in message:
+            return None  # an answer from the client: we never send requests
         request_id, method = message["id"], message["method"]
-        params = message.get("params") or {}
+        params = message.get("params", {})
+        if not isinstance(params, dict):
+            return jsonrpc.error_response(
+                request_id, jsonrpc.INVALID_PARAMS, "Invalid params: params must be an object"
+            )
         if method == "initialize":
             return jsonrpc.result_response(request_id, self._initialize(params))
         if method == "ping":
@@ -277,8 +293,10 @@ class SqlToolboxServer:
         try:
             result = self.writer.execute(sql, operation)
         except WriteBlocked as exc:
+            hint = f" {exc.hint}." if exc.hint else ""
             raise ToolError(
-                "SQL_ERROR", f"Écriture refusée par la base, rien n'a été modifié : {exc.reason}."
+                "SQL_ERROR",
+                f"Écriture refusée par la base, rien n'a été modifié : {exc.reason}.{hint}",
             ) from exc
         except QueryTimeout as exc:
             raise self._timeout() from exc
@@ -333,6 +351,53 @@ def serve(server: SqlToolboxServer, stdin: IO[bytes], stdout: IO[bytes]) -> None
             stdout.flush()
 
 
+def _invalid_request(message: Any) -> str | None:
+    """Why a message is not a JSON-RPC 2.0 message MCP accepts, or None.
+
+    Batches (JSON arrays) were removed from MCP in 2025-06-18; an id is a string or a
+    number, never null; a method is a string.
+    """
+    if not isinstance(message, dict):
+        return "a message is a JSON object (batches are not supported)"
+    if message.get("jsonrpc") != jsonrpc.JSONRPC_VERSION:
+        return 'jsonrpc must be "2.0"'
+    if "id" in message and not _is_id(message["id"]):
+        return "id must be a string or a number"
+    if "method" in message and not isinstance(message["method"], str):
+        return "method must be a string"
+    if "method" not in message and "result" not in message and "error" not in message:
+        return "neither a request, a notification nor a response"
+    return None
+
+
+def _is_id(value: Any) -> bool:
+    return isinstance(value, str) or (isinstance(value, int) and not isinstance(value, bool))
+
+
+def _valid_id(value: Any) -> Any:
+    """The id to answer with: the request's, or null when it was not a valid id."""
+    return value if _is_id(value) else None
+
+
+# structuredContent of a failed call (isError: true): what the registry reads the code from
+ERROR_OUTPUT = {
+    "type": "object",
+    "properties": {"code": {"type": "string"}, "message": {"type": "string"}},
+    "required": ["code", "message"],
+}
+
+
+def _accepting_errors(tool: dict[str, Any]) -> dict[str, Any]:
+    """The tool with an outputSchema that also accepts our error results.
+
+    MCP: when a tool declares an outputSchema, every structuredContent it returns must
+    conform to it, failures included (MCP Inspector checks it). Our failures carry
+    {code, message}: the schema is "the result OR an error".
+    """
+    output = tool["outputSchema"]
+    return tool | {"outputSchema": {"type": "object", "anyOf": [output, ERROR_OUTPUT]}}
+
+
 def _error_result(code: str, message: str) -> dict[str, Any]:
     return {
         "content": [{"type": "text", "text": message}],
@@ -376,8 +441,9 @@ _IMPACT_OUTPUT = {
         "operation": {"enum": ["INSERT", "UPDATE", "DELETE"]},
         "rows_affected": {"type": "integer"},
         "per_table": {"type": "object", "additionalProperties": {"type": "integer"}},
-        "sample": {"type": "array", "items": {"type": "object"}},
+        "sample": {"type": "array", "maxItems": 5, "items": {"type": "object"}},
         "blocked": {"type": "array", "items": {"type": "object"}},
+        "hint": {"type": "string"},
     },
     "required": ["operation", "rows_affected", "per_table", "sample", "blocked"],
 }

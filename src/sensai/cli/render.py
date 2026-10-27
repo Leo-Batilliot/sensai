@@ -79,6 +79,30 @@ class Renderer:
             Panel(Text("\n".join(lines)), title="Confirmation requise", border_style="yellow")
         )
 
+    def question(
+        self,
+        question: str,
+        reason: str,
+        options: list[dict[str, str]],
+        allow_free_text: bool,
+        expires_in_s: float,
+    ) -> None:
+        """A clarifying question of the agent, with numbered choices."""
+        lines = [question]
+        if reason:
+            lines.append(f"Pourquoi : {reason}")
+        lines += [f"  {number}. {option['label']}" for number, option in enumerate(options, 1)]
+        if options and allow_free_text:
+            lines.append("  0. Autre réponse (texte libre)")
+        lines.append(
+            f"Entrée seule, ou sans réponse dans {expires_in_s:g} s : "
+            "l'agent fait une hypothèse et la dit."
+        )
+        self._close_line()
+        self.console.print(
+            Panel(Text("\n".join(lines)), title="Question de l'agent", border_style="cyan")
+        )
+
     def _print(self, text: str, style: str | None = None) -> None:
         self._close_line()
         self.console.print(text, style=style, markup=False, emoji=False)

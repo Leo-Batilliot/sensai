@@ -14,6 +14,7 @@ from contract_rules import SERVER, check_event, check_turns
 from sensai.core.config import Config
 from sensai.web.engines.mock import MockBackend, Pacing
 from sensai.web.server import create_app
+from sensai.web.websocket.messages import MessageHandler
 
 INSTANT = Pacing(token=0, tool=0, judge=0, other=0)
 # Slow enough for a message to arrive while a turn is still running
@@ -109,11 +110,17 @@ def test_a_turn_replays_contract_events(client: TestClient) -> None:
     assert events[-1]["badge"] == "verified"
 
 
+ACT_5 = "Exporte la note du comité dans reports/, en Markdown."
+
+
+@pytest.mark.parametrize("question", [ACT_4, ACT_5], ids=["sql", "file"])
 @pytest.mark.parametrize("decision", ["approve", "reject"])
-def test_destructive_action_waits_for_the_decision(client: TestClient, decision: str) -> None:
+def test_destructive_action_waits_for_the_decision(
+    client: TestClient, decision: str, question: str
+) -> None:
     with client.websocket_connect(f"/ws/{SESSION}") as ws:
         ws.receive_json()
-        ws.send_json({"type": "user_message", "content": ACT_4})
+        ws.send_json({"type": "user_message", "content": question})
         pause = until(ws, of_type("confirmation_required"))
         action = pause[-1]["action_id"]
         ws.send_json({"type": "confirm", "action_id": action, "decision": decision})
@@ -267,6 +274,11 @@ def test_deleting_from_the_panel_shows_the_cascade_and_empties_the_memory(
             {"type": "confirm", "id": "c-9", "action_id": "nope", "decision": "approve"},
             "UNKNOWN_ACTION",
         ),
+        (
+            {"type": "answer", "id": "c-9", "question_id": "nope", "option_id": "trimestre"},
+            "UNKNOWN_QUESTION",
+        ),
+        ({"type": "answer", "id": "c-9", "question_id": "q-1"}, "INVALID_MESSAGE"),
         ({"type": "set_model", "id": "c-9", "model": "absent:1b"}, "MODEL_NOT_FOUND"),
         ({"type": "set_config", "id": "c-9", "patch": {"row_limit": 5}}, "INVALID_CONFIG"),
         ({"type": "set_config", "id": "c-9", "patch": {"num_ctx": 100}}, "INVALID_CONFIG"),
@@ -298,6 +310,34 @@ def test_protocol_errors_keep_the_connection_open(
     assert (error["code"], error["reply_to"], error["recoverable"]) == (code, "c-9", True)
 
 
+V1_1_MESSAGES: list[Message] = [
+    {"type": "answer", "id": "c-9", "question_id": "q-1", "option_id": "trimestre"},
+    {"type": "set_persona", "id": "c-9", "persona": "adv"},
+    {"type": "share", "id": "c-9"},
+    {"type": "unshare", "id": "c-9", "token": "kq3Vb0wLr8nT2xYc5HdJ1A"},
+    {"type": "run_schedule", "id": "c-9", "schedule_id": "point-lundi"},
+]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [m for m in V1_1_MESSAGES if not hasattr(MessageHandler, f"_on_{m['type']}")],
+    ids=lambda m: m["type"],
+)
+def test_a_v1_1_message_not_handled_yet_is_refused_politely(
+    client: TestClient, message: Message
+) -> None:
+    # websocket.md §4: valid against the schema, but this server does not handle it yet
+    with client.websocket_connect(f"/ws/{SESSION}") as ws:
+        ws.receive_json()
+        ws.send_json(message)
+        error = ws.receive_json()
+        ws.send_json({"type": "reset", "id": "c-r"})
+        assert ws.receive_json()["type"] == "session_reset"  # still open
+    assert (error["code"], error["reply_to"]) == ("INVALID_MESSAGE", "c-9")
+    assert "pas encore pris en charge" in error["message"]
+
+
 def test_unreadable_json_is_an_invalid_message(client: TestClient) -> None:
     with client.websocket_connect(f"/ws/{SESSION}") as ws:
         ws.receive_json()
@@ -323,6 +363,84 @@ def test_set_model_and_set_config_are_acknowledged(client: TestClient) -> None:
     assert changed_model["reply_to"] == "c-1"
     assert sorted(updated["changed"]) == ["judge_enabled", "temperature"]
     assert updated["config"]["temperature"] == 0.2
+
+
+# --- profiles (A5, WEB-15) ----------------------------------------------------------------
+
+
+def tool_names(tools: list[Message]) -> set[str]:
+    return {tool["name"] for tool in tools}
+
+
+def test_session_ready_shows_the_profile_and_only_its_tools(client: TestClient) -> None:
+    with client.websocket_connect(f"/ws/{SESSION}") as ws:
+        ready = ws.receive_json()
+    assert ready["persona"]["id"] == "analyste"
+    assert [p["id"] for p in ready["personas"]] == ["analyste", "adv", "admin"]
+    # Contrôle de gestion reads only (US-A5-02): no SQL write is shown to the model
+    assert "sql_toolbox__execute_write" not in tool_names(ready["tools"])
+    assert "sql_toolbox__run_select" in tool_names(ready["tools"])
+
+
+def test_set_persona_changes_the_tools_and_keeps_the_padlocks(client: TestClient) -> None:
+    with client.websocket_connect(f"/ws/{SESSION}") as ws:
+        ws.receive_json()
+        ws.send_json({"type": "set_persona", "id": "c-1", "persona": "adv"})
+        changed = ws.receive_json()
+    SERVER.validate(changed)
+    assert (changed["persona"]["id"], changed["reply_to"]) == ("adv", "c-1")
+    write = next(t for t in changed["tools"] if t["name"] == "sql_toolbox__execute_write")
+    assert write["requires_confirmation"] is True  # a profile never lifts a confirmation
+
+
+def test_unknown_persona_is_refused(client: TestClient) -> None:
+    with client.websocket_connect(f"/ws/{SESSION}") as ws:
+        ws.receive_json()
+        ws.send_json({"type": "set_persona", "id": "c-1", "persona": "pirate"})
+        error = ws.receive_json()
+    assert (error["code"], error["reply_to"], error["turn_id"]) == (
+        "PERSONA_NOT_FOUND",
+        "c-1",
+        None,
+    )
+    with client.websocket_connect(f"/ws/{SESSION}") as ws:
+        assert ws.receive_json()["persona"]["id"] == "analyste"  # unchanged
+
+
+def test_set_persona_is_accepted_during_a_turn() -> None:
+    with make_client(SLOW) as client, client.websocket_connect(f"/ws/{SESSION}") as ws:
+        ws.receive_json()
+        ws.send_json({"type": "user_message", "content": ACT_1})
+        until(ws, of_type("turn_started"))
+        ws.send_json({"type": "set_persona", "id": "c-1", "persona": "adv"})
+        received = until(ws, of_type("persona_changed"))
+        rest = until(ws, of_type("message_done"))
+    assert not any(m["type"] == "error" for m in received + rest)
+
+
+def test_the_profile_change_is_replayed_in_place_after_a_reload(client: TestClient) -> None:
+    with client.websocket_connect(f"/ws/{SESSION}") as ws:
+        ws.receive_json()
+        ws.send_json({"type": "user_message", "content": ACT_1})
+        until(ws, of_type("judge_report"))
+        ws.send_json({"type": "set_persona", "id": "c-1", "persona": "adv"})
+        until(ws, of_type("persona_changed"))
+    with client.websocket_connect(f"/ws/{SESSION}") as ws:
+        ready = ws.receive_json()
+    SERVER.validate(ready)
+    assert ready["persona"]["id"] == "adv"
+    kinds = [m["type"] for m in ready["history"]]
+    assert kinds[-2:] == ["judge_report", "persona_changed"]  # after the turn, where it happened
+    assert "reply_to" not in ready["history"][-1]
+
+
+def test_rest_lists_the_profiles_and_their_tools(client: TestClient) -> None:
+    body = client.get("/api/personas").json()
+    assert body["current"] == "analyste"
+    adv = next(p for p in body["personas"] if p["id"] == "adv")
+    assert adv["name"] == "ADV" and "sql_toolbox__execute_write" in adv["tools"]
+    analyste = next(p for p in body["personas"] if p["id"] == "analyste")
+    assert "sql_toolbox__execute_write" not in analyste["tools"]
 
 
 def test_reconnection_returns_the_history_without_tokens(client: TestClient) -> None:

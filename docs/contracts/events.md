@@ -309,7 +309,7 @@ Le modèle a appelé l'outil natif `ask_user` (X4) : le tour est en pause jusqu'
 | `question_id` | chaîne | Question résolue |
 | `status` | `"answered"`, `"timeout"` ou `"cancelled"` | `cancelled` : `cancel`, `reset`, déconnexion, ou exécution sans humain (tâche planifiée, harness) |
 | `option_id` | chaîne ou `null` | Option choisie, `null` sinon |
-| `text` | chaîne ou `null` | Réponse libre, `null` sinon |
+| `text` | chaîne (500 caractères au plus) ou `null` | Réponse libre, `null` sinon |
 
 - Avec `"answered"`, `option_id` et `text` ne sont jamais `null` tous les deux.
 - Avec `"timeout"` ou `"cancelled"`, ils valent `null` tous les deux. Le `tool_result` qui suit dit au modèle de faire une hypothèse explicite et de l'annoncer.

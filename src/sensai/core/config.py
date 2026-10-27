@@ -28,7 +28,7 @@ import re
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, get_origin
+from typing import Any, Literal, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -85,6 +85,10 @@ class AgentConfig(_Section):
     max_result_chars: int = Field(default=8000, ge=500)
     max_sql_retries: int = Field(default=2, ge=0)
     language: str = Field(default="fr", min_length=1)
+    # Clarifying questions (ask_user): beyond the limit the call fails, without an answer
+    # in time the model makes an explicit assumption
+    max_questions_per_turn: int = Field(default=1, ge=0)
+    question_timeout_s: float = Field(default=120, gt=0)
 
 
 class DatabaseConfig(_Section):
@@ -144,6 +148,27 @@ class McpConfig(_Section):
         return servers
 
 
+class FileRootConfig(_Section):
+    path: Path  # relative to the launch directory
+    mode: Literal["r", "rw"] = "r"
+
+
+def _default_file_roots() -> tuple[FileRootConfig, ...]:
+    return (
+        FileRootConfig(path=Path("reports"), mode="rw"),
+        FileRootConfig(path=Path("data/imports"), mode="r"),
+    )
+
+
+class FilesConfig(_Section):
+    # Nothing is reachable by the file tools outside the declared roots
+    max_read_bytes: int = Field(default=200_000, ge=1)
+    write_extensions: tuple[str, ...] = (".md", ".csv", ".json", ".txt")
+    # Always refused, even under a root
+    deny: tuple[str, ...] = (".env", "config.toml", "*.db", "*.sqlite", "*.key", "*.pem")
+    roots: tuple[FileRootConfig, ...] = Field(default_factory=_default_file_roots)
+
+
 class WebConfig(_Section):
     host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65535)
@@ -163,6 +188,7 @@ class Config(_Section):
     hitl: HitlConfig = Field(default_factory=HitlConfig)
     eval: EvalConfig = Field(default_factory=EvalConfig)
     mcp: McpConfig = Field(default_factory=McpConfig)
+    files: FilesConfig = Field(default_factory=FilesConfig)
     web: WebConfig = Field(default_factory=WebConfig)
     demo: DemoConfig = Field(default_factory=DemoConfig)
 
@@ -221,9 +247,17 @@ def _env_keys() -> dict[str, tuple[str, str, bool]]:
         ):
             continue  # nested tables (mcp.servers.*) are configured in the file only
         for key, field in section_model.model_fields.items():
+            if _is_table_list(field.annotation):
+                continue  # arrays of tables ([[files.roots]]) are configured in the file only
             is_list = get_origin(field.annotation) is tuple
             keys[f"{ENV_PREFIX}{section.upper()}_{key.upper()}"] = (section, key, is_list)
     return keys
+
+
+def _is_table_list(annotation: Any) -> bool:
+    return get_origin(annotation) is tuple and any(
+        isinstance(arg, type) and issubclass(arg, BaseModel) for arg in get_args(annotation)
+    )
 
 
 def _from_env(env: Mapping[str, str]) -> dict[str, Any]:

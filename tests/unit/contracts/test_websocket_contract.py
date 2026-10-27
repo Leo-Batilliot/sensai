@@ -39,6 +39,8 @@ def test_expected_fixtures_exist() -> None:
         "nominal.jsonl",
         "hitl_approve.jsonl",
         "hitl_reject.jsonl",
+        "file_write_approve.jsonl",
+        "file_write_reject.jsonl",
         "judge_contradiction.jsonl",
         "errors.jsonl",
         "memory.jsonl",
@@ -63,16 +65,33 @@ def events_of(name: str, kind: str) -> list[dict[str, Any]]:
     return [e for e in load_jsonl(FIXTURES / name) if e["type"] == kind]
 
 
-def test_hitl_branches_share_the_same_beginning() -> None:
+@pytest.mark.parametrize("scenario", ["hitl", "file_write"])
+def test_hitl_branches_share_the_same_beginning(scenario: str) -> None:
     # The MockEngine plays this common part, waits for `confirm`, then picks a branch.
-    approve = load_jsonl(FIXTURES / "hitl_approve.jsonl")
-    reject = load_jsonl(FIXTURES / "hitl_reject.jsonl")
+    approve = load_jsonl(FIXTURES / f"{scenario}_approve.jsonl")
+    reject = load_jsonl(FIXTURES / f"{scenario}_reject.jsonl")
     pause = [e["type"] for e in approve].index("confirmation_required") + 1
     assert approve[:pause] == reject[:pause]
-    assert events_of("hitl_approve.jsonl", "confirmation_resolved")[0]["decision"] == "approve"
-    assert events_of("hitl_reject.jsonl", "confirmation_resolved")[0]["decision"] == "reject"
-    refused = events_of("hitl_reject.jsonl", "tool_result")[-1]
+    resolved = events_of(f"{scenario}_approve.jsonl", "confirmation_resolved")[0]
+    assert resolved["decision"] == "approve"
+    assert events_of(f"{scenario}_reject.jsonl", "confirmation_resolved")[0]["decision"] == "reject"
+    refused = events_of(f"{scenario}_reject.jsonl", "tool_result")[-1]
     assert refused["error"]["code"] == "ACTION_REJECTED"
+
+
+def test_the_file_write_preview_matches_what_would_be_written() -> None:
+    # Act 5: impact.file (FILE-01) is what file_write would write, before anything is written
+    required = events_of("file_write_approve.jsonl", "confirmation_required")[0]
+    call = next(
+        e
+        for e in events_of("file_write_approve.jsonl", "tool_call")
+        if e["call_id"] == required["call_id"]
+    )
+    file = required["impact"]["file"]
+    content = call["arguments"]["content"]
+    assert file["path"] == call["arguments"]["path"] and file["exists"] is False
+    assert file["bytes"] == len(content.encode("utf-8"))
+    assert content.startswith(file["excerpt"].rstrip("…"))
 
 
 def test_each_fixture_shows_its_scenario() -> None:
@@ -142,6 +161,15 @@ def test_websocket_examples_follow_the_contract() -> None:
         {"type": "set_config", "patch": {}},
         {"type": "launch_missiles"},
         {"type": "cancel", "id": ""},
+        # v1.1: exactly one of option_id and text (§4.8)
+        {"type": "answer", "question_id": "q-1"},
+        {"type": "answer", "question_id": "q-1", "option_id": None, "text": None},
+        {"type": "answer", "question_id": "q-1", "option_id": "trimestre", "text": "ce trimestre"},
+        {"type": "answer", "question_id": "q-1", "text": "  "},
+        {"type": "answer", "question_id": "q-1", "text": "x" * 501},
+        {"type": "set_persona", "persona": ""},
+        {"type": "unshare"},
+        {"type": "run_schedule"},
     ],
 )
 def test_client_schema_rejects_invalid_messages(message: dict[str, Any]) -> None:
@@ -151,3 +179,38 @@ def test_client_schema_rejects_invalid_messages(message: dict[str, Any]) -> None
 def test_client_schema_ignores_unknown_fields() -> None:
     # websocket.md §3: unknown fields are ignored, for forward compatibility
     assert CLIENT.is_valid({"type": "cancel", "id": "c-1", "future_field": True})
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"type": "answer", "question_id": "q-1", "option_id": "trimestre"},
+        {"type": "answer", "question_id": "q-1", "option_id": None, "text": "Les deux"},
+        {"type": "share"},
+    ],
+)
+def test_client_schema_accepts_the_v1_1_messages(message: dict[str, Any]) -> None:
+    assert CLIENT.is_valid(message)
+
+
+def schedule_run_finished(**fields: Any) -> dict[str, Any]:
+    message = {
+        "type": "schedule_run_finished",
+        "session_id": "s-1",
+        "ts": 1760433760.0,
+        "schedule_id": "point-lundi",
+        "run_id": "r-12",
+        "status": "ok",
+        "badge": None,
+        "report_path": "reports/planifie/point-lundi-2026-10-26.md",
+        "error": None,
+    }
+    return {**message, **fields}
+
+
+def test_a_failed_scheduled_run_has_an_error_and_no_report() -> None:
+    failure = {"code": "OLLAMA_UNAVAILABLE", "message": "Ollama ne répond pas."}
+    assert SERVER.is_valid(schedule_run_finished(status="error", report_path=None, error=failure))
+    assert not SERVER.is_valid(schedule_run_finished(status="error", report_path=None))
+    assert not SERVER.is_valid(schedule_run_finished(status="error", error=failure))
+    assert not SERVER.is_valid(schedule_run_finished(error=failure))

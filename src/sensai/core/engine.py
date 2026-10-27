@@ -9,8 +9,10 @@ may ask for tools instead of answering; the Engine runs them through the registr
 the results back, and calls the model again until it answers in text. A query that fails
 comes back with the order to fix it, at most [agent] max_sql_retries times (CORE-09,
 _SqlRetries). Each call goes through the HITL policy first, and waits for a human
-confirmation when it asks for one (HITL-01/02). The Engine is assembled with all of this
-in core/app_factory.py (CORE-10).
+confirmation when it asks for one (HITL-01/02). An ask_user call is not run by the
+registry: the Engine asks the user its QuestionBroker, and sends the answer back to the
+model (core/ask.py). The Engine is assembled with all of this in core/app_factory.py
+(CORE-10).
 
 With a MemoryContext (MEM-04), each turn starts by selecting the memory entries of the
 question: they go into the system prompt and the context_injected event. With an
@@ -34,6 +36,17 @@ from collections.abc import AsyncGenerator, Callable
 from typing import Any, Protocol
 
 from sensai.core import events
+from sensai.core.ask import (
+    ASK_USER,
+    LIMIT_MESSAGE,
+    Answer,
+    NoHumanQuestionBroker,
+    PendingQuestion,
+    QuestionBroker,
+    answer_result,
+    checked,
+    pending_question,
+)
 from sensai.core.config import Config
 from sensai.core.confirm import (
     AutoRejectBroker,
@@ -56,7 +69,7 @@ from sensai.llm.ollama_client import (
 from sensai.llm.structured import RepairStats
 from sensai.memory.context import EMPTY, MemoryContext
 from sensai.tools.base import TOOL_NAME, ToolInfo, ToolRegistry, ToolResult
-from sensai.tools.policy import DatabaseClassifier, SqlClassifier, evaluate
+from sensai.tools.policy import DatabaseClassifier, PolicyDecision, SqlClassifier, evaluate
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +124,7 @@ class Engine:
         memory: MemoryContext | None = None,
         judge: OnlineJudge | None = None,
         sql_classifier: SqlClassifier | None = None,
+        questions: QuestionBroker | None = None,
     ) -> None:
         self.config = config
         # Sent first in every model call, never stored in the history (CORE-08)
@@ -129,6 +143,10 @@ class Engine:
         # Without a registry the model gets no tools: a plain chat, as in CORE-04/05
         self.registry = registry
         self.broker: ConfirmationBroker = broker if broker is not None else AutoRejectBroker()
+        # Who answers ask_user; nobody by default: the model then makes an assumption
+        self.questions: QuestionBroker = (
+            questions if questions is not None else NoHumanQuestionBroker()
+        )
         # The policy classifies SQL on the business database itself (HITL-01, SEC-01)
         self.sql_classifier: SqlClassifier = (
             sql_classifier
@@ -142,6 +160,7 @@ class Engine:
         self.argument_stats = RepairStats()
         self._running = False
         self._cancel_requested = False
+        self._questions_asked = 0  # in the running turn, against max_questions_per_turn
         # Bumped by reset(): a turn that was running during a reset is not recorded
         self._epoch = 0
 
@@ -212,6 +231,7 @@ class Engine:
             return
         self._running = True
         self._cancel_requested = False
+        self._questions_asked = 0
         turn_id = new_id()
         model, epoch = self.model, self._epoch
         started = time.monotonic()
@@ -376,6 +396,40 @@ class Engine:
             arguments=call.arguments,
         )
         result = self._check_call(call, info is not None, previous, repairs)
+        if result is None and call.name == ASK_USER:
+            # A pause for the user, not a tool run: [hitl] deny applies, never a confirmation
+            assert info is not None  # _check_call refuses unknown tools
+            decision = evaluate(info, call.arguments, self.config.hitl, self.sql_classifier)
+            if decision.action == "deny":
+                result = _policy_refusal(decision)
+            elif self._questions_asked >= self.config.agent.max_questions_per_turn:
+                result = ToolResult.failure("QUESTION_LIMIT", LIMIT_MESSAGE)
+            else:
+                self._questions_asked += 1
+                question = pending_question(
+                    new_id(), call_id, call.arguments, self.config.agent.question_timeout_s
+                )
+                yield events.QuestionAsked(
+                    session_id=self.session_id,
+                    turn_id=turn_id,
+                    question_id=question.question_id,
+                    call_id=call_id,
+                    question=question.question,
+                    reason=question.reason,
+                    options=question.options,
+                    allow_free_text=question.allow_free_text,
+                    expires_in_s=question.expires_in_s,
+                )
+                answer = await self._ask(question)
+                yield events.QuestionAnswered(
+                    session_id=self.session_id,
+                    turn_id=turn_id,
+                    question_id=question.question_id,
+                    status=answer.status,
+                    option_id=answer.option_id,
+                    text=answer.text,
+                )
+                result = answer_result(answer, question)
         if result is None:
             sql = call.arguments.get("sql")
             if isinstance(sql, str) and sql.strip():
@@ -390,10 +444,7 @@ class Engine:
             assert info is not None  # _check_call refuses unknown tools
             decision = evaluate(info, call.arguments, self.config.hitl, self.sql_classifier)
             if decision.action == "deny":
-                result = ToolResult.failure(
-                    decision.code or "TOOL_DENIED",
-                    f"Action refusée par la politique de sécurité : {' ; '.join(decision.reasons)}.",
-                )
+                result = _policy_refusal(decision)
             elif decision.action == "confirm":
                 action = PendingAction(
                     action_id=new_id(),
@@ -502,6 +553,8 @@ class Engine:
         """Content of the tool message: data marked as data (SEC-02), cut to fit the context."""
         if not result.ok:
             return f"Erreur de l'outil {name} : {result.text}"
+        if name == ASK_USER:
+            return f"Réponse de l'utilisateur à ta question :\n{result.text}"
         body = result.text
         rows = result.data.get("rows") if result.data else None
         if result.data is not None and isinstance(rows, list):
@@ -549,6 +602,18 @@ class Engine:
             return await asyncio.wait_for(self.broker.request(action), action.expires_in_s)
         except asyncio.TimeoutError:  # distinct from the builtin TimeoutError in 3.10
             return Decision("timeout", "timeout")
+
+    async def _ask(self, question: PendingQuestion) -> Answer:
+        """Question pause: wait for the broker's answer, at most question.expires_in_s.
+
+        The caller emits question_asked before and question_answered after. No answer in
+        time is Answer("timeout"): the turn goes on, the model makes an assumption.
+        """
+        try:
+            answer = await asyncio.wait_for(self.questions.ask(question), question.expires_in_s)
+        except asyncio.TimeoutError:  # distinct from the builtin TimeoutError in 3.10
+            return Answer("timeout")
+        return checked(answer, question)
 
     def _context_usage(self, usage: Usage | None) -> events.ContextUsage | None:
         if usage is None:
@@ -679,6 +744,13 @@ _OPERATIONS: dict[str, events.Operation] = {
     "UPDATE": "UPDATE",
     "DELETE": "DELETE",
 }
+
+
+def _policy_refusal(decision: PolicyDecision) -> ToolResult:
+    return ToolResult.failure(
+        decision.code or "TOOL_DENIED",
+        f"Action refusée par la politique de sécurité : {' ; '.join(decision.reasons)}.",
+    )
 
 
 def _rejection_message(decision: Decision) -> str:

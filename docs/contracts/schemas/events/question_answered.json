@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "events/question_answered.v1",
   "title": "Événement question_answered",
-  "description": "Réponse à une question ask_user, délai dépassé ou pause interrompue (X4). Fait foi : docs/contracts/events.md §3.16. Propriétaire : P1.",
+  "description": "Fin de la pause d'une question : réponse reçue, délai dépassé ou pause interrompue. Fait foi : docs/contracts/events.md §3.16. Propriétaire : P2.",
   "type": "object",
   "required": [
     "type",
@@ -54,46 +54,43 @@
         "string",
         "null"
       ],
-      "minLength": 1
+      "minLength": 1,
+      "maxLength": 500
     }
   },
-  "allOf": [
-    {
-      "if": {
+  "if": {
+    "properties": {
+      "status": {
+        "const": "answered"
+      }
+    }
+  },
+  "then": {
+    "anyOf": [
+      {
         "properties": {
-          "status": {
-            "const": "answered"
+          "option_id": {
+            "type": "string"
           }
         }
       },
-      "then": {
-        "anyOf": [
-          {
-            "properties": {
-              "option_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "properties": {
-              "text": {
-                "type": "string"
-              }
-            }
-          }
-        ]
-      },
-      "else": {
+      {
         "properties": {
-          "option_id": {
-            "type": "null"
-          },
           "text": {
-            "type": "null"
+            "type": "string"
           }
         }
       }
+    ]
+  },
+  "else": {
+    "properties": {
+      "option_id": {
+        "type": "null"
+      },
+      "text": {
+        "type": "null"
+      }
     }
-  ]
+  }
 }

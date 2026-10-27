@@ -27,6 +27,8 @@ max_result_rows = 50           # rows of a tool result sent to the model
 max_result_chars = 8000        # characters of a tool result sent to the model
 max_sql_retries = 2
 language = "fr"
+max_questions_per_turn = 1     # clarifying questions (ask_user) per turn; 0 = never ask
+question_timeout_s = 120       # without an answer, the agent makes an explicit assumption
 
 [database]
 business_path = "data/business.db"
@@ -58,6 +60,19 @@ args = ["mcp-server-time", "--local-timezone=Europe/Paris"]
 # [mcp.servers.filesystem]
 # command = "npx"
 # args = ["-y", "@modelcontextprotocol/server-filesystem", "./reports"]
+
+[files]                         # file tools: nothing is reachable outside the roots below
+max_read_bytes = 200000
+write_extensions = [".md", ".csv", ".json", ".txt"]
+deny = [".env", "config.toml", "*.db", "*.sqlite", "*.key", "*.pem"]   # always refused, even under a root
+
+[[files.roots]]
+path = "reports"                # relative to the launch directory
+mode = "rw"
+
+[[files.roots]]
+path = "data/imports"
+mode = "r"
 
 [web]
 host = "127.0.0.1"
