@@ -72,7 +72,8 @@
   color: var(--bad);
 }
 
-.step-confirmation {
+.step-confirmation,
+.step-question {
   background: var(--warn-bg);
   color: var(--warn);
 }

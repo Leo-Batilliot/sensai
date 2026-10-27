@@ -20,6 +20,7 @@ export interface Session {
   confirm: (actionId: string, decision: 'approve' | 'reject', comment?: string) => void
   setModel: (model: string) => void
   setPersona: (persona: string) => void
+  answer: (questionId: string, reply: { optionId: string } | { text: string }) => void
   uiAction: (tool: 'memory_update' | 'memory_delete', args: Record<string, unknown>) => void
   dismissNotice: (id: number) => void
 }
@@ -111,6 +112,12 @@ export function useSession(): Session {
         send({ type: 'confirm', action_id: actionId, decision, comment }),
       setModel: (model) => send({ type: 'set_model', model }),
       setPersona: (persona) => send({ type: 'set_persona', persona }),
+      answer: (questionId, reply) =>
+        send(
+          'optionId' in reply
+            ? { type: 'answer', question_id: questionId, option_id: reply.optionId }
+            : { type: 'answer', question_id: questionId, text: reply.text },
+        ),
       uiAction: (tool, args) => send({ type: 'ui_action', tool, arguments: args }),
       dismissNotice: (id) => dispatch({ type: 'dismiss_notice', id }),
     }),
