@@ -29,6 +29,8 @@ max_sql_retries = 2
 language = "fr"
 max_questions_per_turn = 1     # clarifying questions (ask_user) per turn; 0 = never ask
 question_timeout_s = 120       # without an answer, the agent makes an explicit assumption
+persona = "analyste"           # agent profile of a new session: personas/<id>.toml (A5)
+personas_dir = "personas"      # one TOML file per profile, relative to the launch directory
 
 [database]
 business_path = "data/business.db"

@@ -1,10 +1,11 @@
 """Confirmation policy (A3): allow, confirm or deny each tool call, before it runs.
 
 Deterministic and never asked to the model: the decision only uses the configuration,
-the annotations declared by the tool's server (believed only for trusted servers) and,
-for SQL, a classification computed by SQLite itself (sql_toolbox.guard). Every matching
-rule gives its reason; the strictest action wins: deny, then confirm, then allow.
-Annotations are hints: what nothing marks as safe needs a confirmation.
+the active profile (A5), the annotations declared by the tool's server (believed only for
+trusted servers) and, for SQL, a classification computed by SQLite itself
+(sql_toolbox.guard). Every matching rule gives its reason; the strictest action wins:
+deny, then confirm, then allow. Annotations are hints: what nothing marks as safe needs a
+confirmation. A profile can only add a deny: it never removes a confirmation.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from sensai.core.config import HitlConfig
+from sensai.core.personas import Persona
 from sensai.mcp_servers.sql_toolbox.guard import FORBIDDEN, READ, WRITE, Classification, SqlGuard
 from sensai.tools.base import ToolInfo
 
@@ -42,10 +44,16 @@ def evaluate(
     arguments: dict[str, Any],
     config: HitlConfig,
     classify: SqlClassifier | None = None,
+    *,
+    persona: Persona | None = None,
 ) -> PolicyDecision:
     """Decide for one call. `arguments` only matter through the SQL classification."""
     rules: list[tuple[Action, str, str | None]] = []
     hints = tool.annotations
+
+    # 0. The active profile: its tools only, even when the model makes up a call (A5)
+    if persona is not None and not persona.allows(tool.name):
+        rules.append(("deny", f"outil hors du profil « {persona.name} »", "TOOL_DENIED"))
 
     # 1. The administrator's lists
     if tool.name in config.deny:

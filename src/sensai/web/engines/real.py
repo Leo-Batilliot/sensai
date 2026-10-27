@@ -7,7 +7,8 @@ its socket.
 
 The Engine does not cover the whole web protocol: RealEngine adds the servers and tools
 of session_ready, the session settings of set_config, and run_ui_action until the
-Engine has its own (point P-6, P1). Profiles (A5) wait for PERS-01: none for now.
+Engine has its own (point P-6, P1). Profiles (A5) are the Engine's: RealEngine only
+shows them in the shape of the protocol, with the tools of the active one.
 """
 
 from __future__ import annotations
@@ -20,7 +21,8 @@ from sensai.core import events
 from sensai.core.app_factory import ClientFactory, Services, ollama_client
 from sensai.core.config import Config
 from sensai.core.engine import ChatClient, Engine
-from sensai.core.errors import SensaiError
+from sensai.core.errors import PersonaNotFound, SensaiError
+from sensai.core.personas import Persona as Profile
 from sensai.eval.online import OnlineJudge
 from sensai.mcp.manager import McpManager
 from sensai.tools.policy import SqlClassifier, evaluate
@@ -43,11 +45,15 @@ class RealEngine:
         self.registry = registry
         self._client = client
         self.session_config = session_settings(engine.config)
-        self.persona: Persona | None = None  # no profiles before PERS-01 (P1)
 
     @property
     def model(self) -> str:
         return self.engine.model
+
+    @property
+    def persona(self) -> Persona | None:
+        profile = self.engine.persona
+        return _persona(profile) if profile is not None else None
 
     def describe(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         servers = [
@@ -55,6 +61,8 @@ class RealEngine:
             for server in self.registry.servers()
         ]
         hitl = self.engine.config.hitl
+        profile = self.engine.persona
+        # The tools the model gets with the active profile; their padlocks never change
         tools = [
             {
                 "name": info.name,
@@ -66,11 +74,16 @@ class RealEngine:
                 "requires_confirmation": evaluate(info, {}, hitl).action == "confirm",
             }
             for info in self.registry.tools()
+            if profile is None or profile.allows(info.name)
         ]
         return servers, tools
 
     def set_persona(self, persona_id: str) -> bool:
-        return False  # PERS-01: every profile is unknown until the Engine loads them
+        try:
+            self.engine.set_persona(persona_id)
+        except PersonaNotFound:
+            return False
+        return True
 
     def run_turn(self, user_message: str) -> AsyncIterator[Any]:
         return self.engine.run_turn(user_message)
@@ -169,7 +182,14 @@ class RealBackend:
         return self._services.store.dump()
 
     def personas(self) -> tuple[str | None, list[PersonaTools]]:
-        return None, []  # PERS-01
+        names = [info.name for info in self._services.registry().tools()]
+        profiles = [
+            PersonaTools(
+                **_persona(profile), tools=[name for name in names if profile.allows(name)]
+            )
+            for profile in self._services.personas.values()
+        ]
+        return self._services.config.agent.persona, profiles
 
     async def ollama_available(self) -> bool:
         try:
@@ -187,3 +207,8 @@ class RealBackend:
         engine = self._services.new_engine(broker, session_id, questions)
         assert isinstance(engine.registry, Registry)  # Services always gives one
         return RealEngine(engine, engine.registry, engine.client)
+
+
+def _persona(profile: Profile) -> Persona:
+    """A profile of personas/ as the selector shows it (websocket.md §5.2)."""
+    return Persona(id=profile.id, name=profile.name, role=profile.role)

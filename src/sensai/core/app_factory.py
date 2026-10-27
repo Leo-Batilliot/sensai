@@ -1,11 +1,13 @@
 """Assembly of the application (CORE-10): one way to build the engine, for every adapter.
 
 Services start once per application and are shared by every session (PROJECT.md §5.2):
-the MCP servers (one McpManager, never one per session), the memory store and the system
-prompt (the schema is read once). Each session then gets its own Engine from
-new_engine(): its Ollama client, its history, its registry (the memory tools audit the
-session id), its broker, the memory context, the judge and the SQL classifier of the HITL
-policy (a read-only connection, closed with the Engine).
+the MCP servers (one McpManager, never one per session), the memory store, the system
+prompt (the schema is read once) and the agent profiles (personas/, read when Services
+are built, so that an invalid file stops the application). Each session then gets its
+own Engine from new_engine(): its Ollama client, its history, its registry (the memory
+tools audit the session id), its broker, the memory context, the judge, the SQL
+classifier of the HITL policy (a read-only connection, closed with the Engine) and its
+own current profile.
 
 The CLI (`sensai chat`) and the web (`sensai web`, WEB-08) both build their engines here,
 so that a question behaves the same way in the terminal and in the browser.
@@ -19,7 +21,8 @@ from sensai.core.ask import AskUserTool, QuestionBroker
 from sensai.core.config import Config
 from sensai.core.confirm import ConfirmationBroker
 from sensai.core.engine import ChatClient, Engine
-from sensai.core.prompts import system_prompt_template
+from sensai.core.personas import PersonaError, load_personas
+from sensai.core.prompts import PromptTemplate, system_prompt_template
 from sensai.eval.online import OnlineJudge
 from sensai.llm.ollama_client import OllamaClient
 from sensai.mcp.manager import McpManager
@@ -45,7 +48,11 @@ def ollama_client(config: Config) -> OllamaClient:
 
 
 class Services:
-    """What the application starts once: MCP servers, memory store and system prompt."""
+    """What the application starts once: MCP servers, memory store, system prompt, profiles.
+
+    Raises PersonaError (a ConfigError) for an invalid profile, or a starting profile
+    ([agent] persona) that is not in personas/.
+    """
 
     def __init__(
         self,
@@ -61,8 +68,15 @@ class Services:
         self._sql_classifier = sql_classifier  # tests only: None = the business database
         # Roots resolved once, relative to the launch directory
         self.files = FilePermissions.from_config(config.files)
+        self.personas = load_personas(config.agent.personas_dir)
+        if config.agent.persona not in self.personas:
+            raise PersonaError(
+                f"Profil de démarrage « {config.agent.persona} » absent de "
+                f"{config.agent.personas_dir} ([agent] persona). "
+                f"Profils disponibles : {', '.join(self.personas)}."
+            )
         self._store: MemoryStore | None = None
-        self._prompt: Callable[[str], str] | None = None
+        self._prompt: PromptTemplate | None = None
 
     @property
     def store(self) -> MemoryStore:
@@ -121,4 +135,5 @@ class Services:
             judge=OnlineJudge.from_config(self.config, client),
             sql_classifier=self._sql_classifier,
             questions=questions,
+            personas=self.personas,
         )

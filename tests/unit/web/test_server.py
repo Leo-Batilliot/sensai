@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 import pytest
@@ -5,6 +6,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from fakes import PERSONAS_DIR
 from sensai import __version__
 from sensai.__main__ import main
 from sensai.core.config import Config
@@ -102,19 +104,37 @@ def test_web_command_without_database_asks_for_the_seed(capsys: pytest.CaptureFi
     assert "--mock" in error  # the way to run without a database
 
 
+def launch_directory(directory: Path) -> None:
+    """What `sensai web` reads in its launch directory: the database and the profiles."""
+    (directory / "data").mkdir()
+    conn = connect(directory / "data" / "business.db")  # [database] business_path default
+    create_schema(conn)
+    conn.close()
+    shutil.copytree(PERSONAS_DIR, directory / "personas")  # [agent] personas_dir default
+
+
 @pytest.mark.usefixtures("isolated_env")
 def test_web_command_starts_the_real_engine(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    (tmp_path / "data").mkdir()
-    conn = connect(tmp_path / "data" / "business.db")  # [database] business_path default
-    create_schema(conn)
-    conn.close()
+    launch_directory(tmp_path)
     apps: list[FastAPI] = []
     monkeypatch.setattr(uvicorn, "run", lambda app, *, host, port: apps.append(app))
     assert main(["web"]) == 0
     (app,) = apps
     assert isinstance(app.state.sessions.backend, RealBackend)
+
+
+@pytest.mark.usefixtures("isolated_env")
+def test_web_command_reports_an_invalid_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    launch_directory(tmp_path)
+    (tmp_path / "personas" / "adv.toml").write_text('id = "adv"\n', encoding="utf-8")
+    monkeypatch.setattr(uvicorn, "run", lambda app, *, host, port: pytest.fail("started"))
+    assert main(["web"]) == 1
+    error = capsys.readouterr().err
+    assert "adv.toml" in error and "name" in error  # the file and the missing field
 
 
 @pytest.mark.usefixtures("isolated_env")

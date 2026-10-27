@@ -3,6 +3,9 @@
 An exchange is recorded only once its answer is complete: an interrupted answer (Ctrl+C,
 stream cut) never enters the history, so the model never sees a half-written reply
 (PROJECT.md §6.1). Truncation to the context window comes with CORE-13.
+
+Between exchanges, a system note may mark a change of the session, at the place where it
+happened: "Profil actif : ADV (…)" when the agent profile changes (A5, point V-5).
 """
 
 from __future__ import annotations
@@ -31,6 +34,10 @@ class History:
         """Record a completed exchange. Only the answer text is kept, never the thinking."""
         self._messages.append({"role": "user", "content": question})
         self._messages.append({"role": "assistant", "content": answer})
+
+    def note(self, text: str) -> None:
+        """Record a system note after the last exchange."""
+        self._messages.append({"role": "system", "content": text})
 
     def clear(self) -> None:
         self._messages.clear()

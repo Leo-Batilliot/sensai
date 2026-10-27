@@ -35,7 +35,7 @@ from sensai.core.config import Config, McpServerConfig
 from sensai.core.confirm import ConfirmationBroker
 from sensai.core.engine import ChatClient, Engine, new_id
 from sensai.core.errors import ModelNotFound, SensaiError
-from sensai.core.prompts import DATE_TOOL_SUFFIX, SYSTEM_SQL, system_prompt_template
+from sensai.core.prompts import DATE_TOOL_SUFFIX, SYSTEM_SQL, PromptTemplate, system_prompt_template
 from sensai.eval.golden import GoldenEntry
 from sensai.eval.harness import RunSetup, TurnEngine
 from sensai.eval.online import OnlineJudge
@@ -237,7 +237,7 @@ class EvalRuntime:
         self.manager_factory = manager_factory
         self.config: Config | None = None
         self.manager: McpManager | None = None
-        self._prompt: Callable[[str], str] | None = None
+        self._prompt: PromptTemplate | None = None
 
     async def __aenter__(self) -> EvalRuntime:
         return self

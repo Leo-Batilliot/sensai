@@ -20,6 +20,8 @@ from sensai.tools.base import ServerStatus, ToolAnnotations, ToolInfo, ToolResul
 MODEL = "qwen3:8b"
 OTHER_MODEL = "llama3.1:8b"
 FIXED_NOW = "2026-10-14T09:30:00+02:00"
+# The agent profiles shipped with the repository (A5): analyste, adv, admin
+PERSONAS_DIR = Path(__file__).resolve().parents[1] / "personas"
 
 
 # --- Fake Ollama -----------------------------------------------------------------------
@@ -230,7 +232,7 @@ class FakeToolRegistry:
         self._tools = {tool.info.name: tool for tool in chosen}
         self.calls: list[tuple[str, dict[str, Any]]] = []
 
-    def ollama_tools(self) -> list[dict[str, Any]]:
+    def ollama_tools(self, allowed: Callable[[str], bool] | None = None) -> list[dict[str, Any]]:
         return [
             {
                 "type": "function",
@@ -245,6 +247,7 @@ class FakeToolRegistry:
                 },
             }
             for tool in self._tools.values()
+            if allowed is None or allowed(tool.info.name)
         ]
 
     def get(self, name: str) -> ToolInfo | None:

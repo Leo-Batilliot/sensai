@@ -40,6 +40,17 @@ class ModelNotFound(SensaiError):
         self.model = model
 
 
+class PersonaNotFound(SensaiError):
+    """The requested agent profile is not one of personas/*.toml (A5)."""
+
+    code = "PERSONA_NOT_FOUND"
+
+    def __init__(self, persona: str, known: list[str]) -> None:
+        listed = ", ".join(known) or "aucun"
+        super().__init__(f"Le profil « {persona} » n'existe pas. Profils disponibles : {listed}.")
+        self.persona = persona
+
+
 class OllamaTimeout(SensaiError):
     """Ollama did not answer within the configured delay."""
 

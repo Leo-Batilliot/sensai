@@ -3,7 +3,9 @@ from typing import Any
 
 import pytest
 
+from fakes import PERSONAS_DIR
 from sensai.core.config import HitlConfig
+from sensai.core.personas import load_personas
 from sensai.data.schema import connect, create_schema
 from sensai.mcp.client import ToolAnnotations
 from sensai.mcp_servers.sql_toolbox.guard import FORBIDDEN, READ, WRITE, Classification
@@ -195,3 +197,30 @@ def test_a_trusted_preview_needs_no_confirmation() -> None:
     # And the real write still asks
     execute = tool("sql_toolbox__execute_write", annotations=DESTRUCTIVE)
     assert evaluate(execute, {"sql": "DELETE FROM clients"}, CONFIG, write).action == "confirm"
+
+
+# --- agent profiles (A5) ----------------------------------------------------------------
+
+PERSONAS = load_personas(PERSONAS_DIR)
+EXECUTE = tool("sql_toolbox__execute_write", annotations=DESTRUCTIVE)
+DELETE = {"sql": "DELETE FROM clients WHERE id = 7"}
+
+
+def test_tool_outside_the_persona_is_denied() -> None:
+    decision = evaluate(
+        EXECUTE, DELETE, CONFIG, classifier(WRITE, ("DELETE",)), persona=PERSONAS["analyste"]
+    )
+    assert (decision.action, decision.code) == ("deny", "TOOL_DENIED")
+    assert "outil hors du profil « Contrôle de gestion »" in decision.reasons
+    # A tool of the profile is judged by the usual rules
+    assert evaluate(tool(), SELECT, CONFIG, persona=PERSONAS["analyste"]).action == "allow"
+
+
+def test_a_persona_never_removes_a_confirmation() -> None:
+    write = classifier(WRITE, ("DELETE",))
+    adv = PERSONAS["adv"]
+    assert adv.allows(EXECUTE.name)
+    assert evaluate(EXECUTE, DELETE, CONFIG, write, persona=adv).action == "confirm"
+    # Nor allows a tool that [hitl] denies
+    denied = HitlConfig(deny=(EXECUTE.name,))
+    assert evaluate(EXECUTE, DELETE, denied, write, persona=adv).action == "deny"

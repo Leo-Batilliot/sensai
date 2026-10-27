@@ -21,6 +21,10 @@ message_done (judge_started, judge_report), once the session is free again.
 
 With [demo] alter_answer (CORE-20, core/demo.py), the answer to the question of act 3
 gets one wrong figure while it streams, before the judge: the demo of a caught mistake.
+
+With agent profiles (A5, core/personas.py), each turn uses the profile it started with:
+the model only gets its tools, the policy refuses the others, and its block ends the
+system prompt. A change keeps the history and is noted in it at the next turn.
 """
 
 from __future__ import annotations
@@ -32,7 +36,7 @@ import logging
 import re
 import time
 import uuid
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Callable, Mapping
 from typing import Any, Protocol
 
 from sensai.core import events
@@ -55,8 +59,10 @@ from sensai.core.confirm import (
     PendingAction,
 )
 from sensai.core.demo import AnswerAlteration
-from sensai.core.errors import SensaiError
+from sensai.core.errors import PersonaNotFound, SensaiError
 from sensai.core.history import History
+from sensai.core.personas import Persona
+from sensai.core.prompts import PromptTemplate
 from sensai.eval.online import OnlineJudge, SelectResult, select_result
 from sensai.llm.ollama_client import (
     Chunk,
@@ -117,14 +123,16 @@ class Engine:
         client: ChatClient | None = None,
         *,
         registry: ToolRegistry | None = None,
-        # Text, or a template that takes the memory block of the turn (MEM-04)
-        system_prompt: str | Callable[[str], str] | None = None,
+        # Text, or a template of the memory block of the turn (MEM-04); with profiles, a
+        # PromptTemplate, which also takes the names of the tools of the profile (A5)
+        system_prompt: str | PromptTemplate | Callable[[str], str] | None = None,
         broker: ConfirmationBroker | None = None,
         session_id: str | None = None,
         memory: MemoryContext | None = None,
         judge: OnlineJudge | None = None,
         sql_classifier: SqlClassifier | None = None,
         questions: QuestionBroker | None = None,
+        personas: Mapping[str, Persona] | None = None,
     ) -> None:
         self.config = config
         # Sent first in every model call, never stored in the history (CORE-08)
@@ -163,6 +171,11 @@ class Engine:
         self._questions_asked = 0  # in the running turn, against max_questions_per_turn
         # Bumped by reset(): a turn that was running during a reset is not recorded
         self._epoch = 0
+        # Agent profiles (A5); without them (tests, harness) every tool is offered
+        self.personas = dict(personas or {})
+        self.persona = self._find_persona(config.agent.persona) if self.personas else None
+        # The profile the history last told the model about: a change is noted once
+        self._noted_persona = self.persona
 
     async def aclose(self) -> None:
         await self.client.aclose()
@@ -174,16 +187,30 @@ class Engine:
     def busy(self) -> bool:
         return self._running
 
-    def _system_messages(self, memory: str = "") -> list[Message]:
-        """The system prompt of a turn, with the memory block of its question (MEM-04)."""
+    def _system_messages(self, memory: str = "", persona: Persona | None = None) -> list[Message]:
+        """The system prompt of a turn, with the memory block of its question (MEM-04) and
+        the block of its profile (A5)."""
         if callable(self.system_prompt):
-            prompt = self.system_prompt(memory)
+            names = self._tool_names(persona)
+            # Without a profile, a template of the memory block alone still works
+            prompt = (
+                self.system_prompt(memory) if names is None else self.system_prompt(memory, names)
+            )
         else:
             block = f"{MEMORY_HEADING}\n{memory}" if memory else ""
             prompt = "\n\n".join(part for part in (self.system_prompt, block) if part)
+        if persona is not None:
+            # Prompt v1 has no $persona: the block comes last until prompt v2 (CORE-14)
+            prompt = "\n\n".join(part for part in (prompt, persona.prompt_block()) if part)
         if not prompt:
             return []
         return [{"role": "system", "content": prompt}]
+
+    def _tool_names(self, persona: Persona | None) -> list[str] | None:
+        """Tools the prompt names for this profile; None: those of the template."""
+        if persona is None or self.registry is None:
+            return None
+        return [info.name for info in self.registry.tools() if persona.allows(info.name)]
 
     def chat_options(self) -> dict[str, Any]:
         """Ollama options of every chat request, from the configuration."""
@@ -203,10 +230,26 @@ class Engine:
         """Model of the next turns; a running turn keeps its own. Check it with model_details()."""
         self.model = model
 
+    def set_persona(self, persona_id: str) -> Persona:
+        """Profile of the next turns (A5); a running turn keeps its own. The history is
+        kept, and the next turn notes the change in it: "Profil actif : …" (point V-5).
+
+        Raises PersonaNotFound for an unknown profile, which changes nothing.
+        """
+        self.persona = self._find_persona(persona_id)
+        return self.persona
+
+    def _find_persona(self, persona_id: str) -> Persona:
+        persona = self.personas.get(persona_id)
+        if persona is None:
+            raise PersonaNotFound(persona_id, list(self.personas))
+        return persona
+
     def reset(self) -> None:
         """Empty the history. A running turn will not be recorded (cancel it first)."""
         self.history.clear()
         self._epoch += 1
+        self._noted_persona = self.persona  # the system prompt already names the profile
 
     def cancel(self) -> bool:
         """Stop the running turn at its next chunk; it ends with message_done(interrupted).
@@ -233,7 +276,8 @@ class Engine:
         self._cancel_requested = False
         self._questions_asked = 0
         turn_id = new_id()
-        model, epoch = self.model, self._epoch
+        # A model or profile chosen during the turn applies from the next one
+        model, epoch, persona = self.model, self._epoch, self.persona
         started = time.monotonic()
         released = False  # the session is freed at message_done, before the judge
         repairs = _ArgumentRepairs(self.argument_stats)
@@ -250,9 +294,13 @@ class Engine:
                 yield events.ContextInjected(
                     session_id=self.session_id, turn_id=turn_id, refs=list(context.refs)
                 )
+            self._note_persona(persona)
             # Only this turn sees the tool messages: the history keeps the final answer
-            messages = self._system_messages(context.text) + self.history.messages_for(user_message)
-            tools = self.registry.ollama_tools() if self.registry else None
+            messages = self._system_messages(context.text, persona) + self.history.messages_for(
+                user_message
+            )
+            allowed = persona.allows if persona else None
+            tools = self.registry.ollama_tools(allowed) if self.registry else None
             parts: list[str] = []  # every token of the turn: message_done.content
             usage: Usage | None = None
             interrupted = answered = False
@@ -303,7 +351,14 @@ class Engine:
                     for call in calls:
                         async with contextlib.aclosing(
                             self._run_tool(
-                                turn_id, call, previous, messages, selects, repairs, retries
+                                turn_id,
+                                call,
+                                previous,
+                                messages,
+                                selects,
+                                repairs,
+                                retries,
+                                persona,
                             )
                         ) as steps:
                             async for event in steps:
@@ -360,6 +415,15 @@ class Engine:
         self._running = False
         self._cancel_requested = False
 
+    def _note_persona(self, persona: Persona | None) -> None:
+        """Tell the model, in the history, that the profile changed since the last turn
+        (point V-5). Several changes between two turns give one note, the last profile."""
+        if persona is None or persona == self._noted_persona:
+            return
+        if len(self.history):  # an empty history: the system prompt already says it
+            self.history.note(f"Profil actif : {persona.label}")
+        self._noted_persona = persona
+
     async def _judge(
         self, turn_id: str, question: str, select: SelectResult, answer: str
     ) -> AsyncGenerator[events.Event, None]:
@@ -380,10 +444,11 @@ class Engine:
         selects: list[SelectResult],
         repairs: _ArgumentRepairs,
         retries: _SqlRetries,
+        persona: Persona | None,
     ) -> AsyncGenerator[events.Event, None]:
         """One tool call asked by the model (tools.md §4): its events, then the tool
         message appended to `messages` for the next model call. A successful run_select
-        is appended to `selects`, for the judge."""
+        is appended to `selects`, for the judge. `persona` is the profile of the turn."""
         call_id = new_id()
         info = self.registry.get(call.name) if self.registry else None
         yield events.ToolCall(
@@ -395,11 +460,13 @@ class Engine:
             tool=call.name if TOOL_NAME.match(call.name) else "unknown_tool",
             arguments=call.arguments,
         )
-        result = self._check_call(call, info is not None, previous, repairs)
+        result = self._check_call(call, info is not None, previous, repairs, persona)
         if result is None and call.name == ASK_USER:
             # A pause for the user, not a tool run: [hitl] deny applies, never a confirmation
             assert info is not None  # _check_call refuses unknown tools
-            decision = evaluate(info, call.arguments, self.config.hitl, self.sql_classifier)
+            decision = evaluate(
+                info, call.arguments, self.config.hitl, self.sql_classifier, persona=persona
+            )
             if decision.action == "deny":
                 result = _policy_refusal(decision)
             elif self._questions_asked >= self.config.agent.max_questions_per_turn:
@@ -442,7 +509,9 @@ class Engine:
                 )
             # Policy, then confirmation (tools.md §4, steps 5-6)
             assert info is not None  # _check_call refuses unknown tools
-            decision = evaluate(info, call.arguments, self.config.hitl, self.sql_classifier)
+            decision = evaluate(
+                info, call.arguments, self.config.hitl, self.sql_classifier, persona=persona
+            )
             if decision.action == "deny":
                 result = _policy_refusal(decision)
             elif decision.action == "confirm":
@@ -504,12 +573,24 @@ class Engine:
         messages.append({"role": "tool", "tool_name": call.name, "content": content})
 
     def _check_call(
-        self, call: ToolCall, known: bool, previous: str | None, repairs: _ArgumentRepairs
+        self,
+        call: ToolCall,
+        known: bool,
+        previous: str | None,
+        repairs: _ArgumentRepairs,
+        persona: Persona | None,
     ) -> ToolResult | None:
         """Checks before running a call (tools.md §4, steps 1-3); None when it may run."""
         if not known or self.registry is None:
+            # The tools of the profile only: the others must not be suggested to the model
             available = (
-                ", ".join(info.name for info in self.registry.tools()) if self.registry else ""
+                ", ".join(
+                    info.name
+                    for info in self.registry.tools()
+                    if persona is None or persona.allows(info.name)
+                )
+                if self.registry
+                else ""
             )
             return ToolResult.failure(
                 "UNKNOWN_TOOL",

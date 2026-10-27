@@ -74,7 +74,11 @@ def _run_web(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
-        backend = RealBackend(config)
+        try:
+            backend = RealBackend(config)
+        except ConfigError as exc:  # an invalid profile of personas/ (A5)
+            print(exc, file=sys.stderr)
+            return 1
         notice = demo_notice(config)  # the mock backend replays fixtures: never altered
         if notice is not None:
             print(notice, file=sys.stderr)

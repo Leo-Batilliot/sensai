@@ -89,6 +89,9 @@ class AgentConfig(_Section):
     # in time the model makes an explicit assumption
     max_questions_per_turn: int = Field(default=1, ge=0)
     question_timeout_s: float = Field(default=120, gt=0)
+    # Agent profile of a new session (A5): personas/<id>.toml, relative to the launch directory
+    persona: str = Field(default="analyste", min_length=1)
+    personas_dir: Path = Path("personas")
 
 
 class DatabaseConfig(_Section):

@@ -12,10 +12,11 @@ __init__.py: it is not a package, so this module is what `sensai.core.prompts` i
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from importlib import resources
 from pathlib import Path
 from string import Template
+from typing import Protocol
 
 from sensai.core.schema_summary import compact_schema
 
@@ -31,6 +32,13 @@ NO_DATE_TOOL = (
 
 # $name or ${name}; "$$" is a literal dollar sign and is removed before searching
 _PLACEHOLDER = re.compile(r"\$(?:(\w+)|\{(\w+)\})")
+
+
+class PromptTemplate(Protocol):
+    """The system prompt of a turn, from its memory block (MEM-04) and, with a profile
+    (A5), the names of the tools the model may use; None keeps the names of the template."""
+
+    def __call__(self, memory: str = "", tool_names: Iterable[str] | None = None) -> str: ...
 
 
 def load(name: str) -> str:
@@ -57,17 +65,21 @@ def system_prompt(db_path: str | Path, tool_names: Iterable[str], memory: str = 
     return system_prompt_template(db_path, tool_names)(memory)
 
 
-def system_prompt_template(db_path: str | Path, tool_names: Iterable[str]) -> Callable[[str], str]:
+def system_prompt_template(db_path: str | Path, tool_names: Iterable[str]) -> PromptTemplate:
     """The system prompt as a function of the memory block of a turn (MEM-04), for
     Engine(system_prompt=...). The schema is read once, not at every turn."""
     schema = compact_schema(db_path)
-    names = list(tool_names)
-    tools_hint = ", ".join(names) or EMPTY
-    rule = date_rule(names)
+    default_names = list(tool_names)
 
-    def build(memory: str = "") -> str:
+    def build(memory: str = "", tool_names: Iterable[str] | None = None) -> str:
+        # A profile narrows the tools (A5): the prompt names only those the model gets
+        names = default_names if tool_names is None else list(tool_names)
         return render(
-            SYSTEM_SQL, schema=schema, tools_hint=tools_hint, date_rule=rule, memory=memory or EMPTY
+            SYSTEM_SQL,
+            schema=schema,
+            tools_hint=", ".join(names) or EMPTY,
+            date_rule=date_rule(names),
+            memory=memory or EMPTY,
         )
 
     return build
