@@ -50,12 +50,21 @@ export interface SqlGenerated extends Common {
   operation: 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'OTHER'
 }
 
+// What file_write would write (FILE-01, T4): computed before anything is written
+export interface FileImpact {
+  path: string
+  bytes: number
+  exists: boolean // true: the file would be replaced
+  excerpt: string // start of the content, "…" when cut
+}
+
 export interface Impact {
   operation: string
   rows_affected: number
   per_table: Record<string, number>
   sample: Record<string, unknown>[]
   blocked: { reason: string; count: number | null }[]
+  file?: FileImpact | null // absent or null for SQL and memory
 }
 
 export interface ConfirmationRequired extends Common {
