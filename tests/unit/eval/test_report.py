@@ -122,8 +122,3 @@ def test_eval_compare_needs_two_reports(capsys: pytest.CaptureFixture[str]) -> N
 def test_eval_compare_with_an_unknown_tag(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["eval", "compare", "inconnu-1", "inconnu-2"]) == 1
     assert "aucun rapport" in capsys.readouterr().err
-
-
-def test_eval_run_says_what_it_waits_for(capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(["eval", "--suite", "eval/golden.jsonl", "--tag", "v0.5"]) == 1
-    assert "MCP-04, CORE-10" in capsys.readouterr().err

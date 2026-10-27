@@ -6,14 +6,18 @@ import argparse
 import sys
 from collections.abc import Callable
 from datetime import date
+from typing import TYPE_CHECKING
 
 from sensai import __version__
+
+if TYPE_CHECKING:
+    from sensai.core.config import Config
 
 # Subcommand -> planning task that implements it
 COMMANDS: dict[str, tuple[str, str]] = {
     "chat": ("Chatbot en ligne de commande", "CORE-04"),
     "web": ("Serveur web et interface", "WEB-04"),
-    "eval": ("Harness d'évaluation hors ligne", "EVAL-06a"),
+    "eval": ("Harness d'évaluation hors ligne", "EVAL-06"),
     "seed": ("Génère la base de démonstration", "DATA-02"),
 }
 
@@ -124,12 +128,16 @@ def _add_eval_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--today", type=_iso_date, help="date de référence AAAA-MM-JJ (défaut : 2026-10-20)"
     )
-    parser.add_argument("--seed", type=int, default=42, help="graine des données (défaut : 42)")
+    parser.add_argument(
+        "--seed", type=int, default=42, help="graine des données et d'Ollama (défaut : 42)"
+    )
+    parser.add_argument("--model", help="modèle Ollama mesuré (défaut : [ollama] model)")
+    parser.add_argument("--host", help="URL du serveur Ollama (défaut : [ollama] host)")
     parser.add_argument("--config", help="fichier de configuration (défaut : ./config.toml)")
 
 
 def _run_eval(args: argparse.Namespace) -> int:
-    from sensai.eval.report import ReportError, compare, find_report, load_report
+    from sensai.eval.report import ReportError, check_tag, compare, find_report, load_report
 
     if args.compare:
         if len(args.compare) != 3 or args.compare[0] != "compare":
@@ -142,15 +150,60 @@ def _run_eval(args: argparse.Namespace) -> int:
             return 1
         print(compare(before, after), end="")
         return 0
-    # The harness (sensai.eval.harness) needs an engine on the real tools: the MCP
-    # registry (MCP-04) and the engine assembly (CORE-10) provide its EngineFactory
-    print(
-        "sensai eval : le moteur branché sur les outils MCP n'est pas encore assemblé "
-        "(MCP-04, CORE-10). Le harness est prêt (sensai.eval.harness) ; "
-        "`sensai eval compare AVANT APRÈS` fonctionne déjà sur des rapports existants.",
-        file=sys.stderr,
-    )
-    return 1
+    if not args.tag:
+        print("usage : sensai eval --tag TAG [--suite …] (ex. --tag v0.5)", file=sys.stderr)
+        return 2
+    try:
+        check_tag(args.tag)
+    except ReportError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    import asyncio
+
+    from sensai.core.config import ConfigError, load_config
+
+    try:
+        config = load_config(
+            args.config, overrides={"ollama.model": args.model, "ollama.host": args.host}
+        )
+    except ConfigError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    return asyncio.run(_eval_run(args, config))
+
+
+async def _eval_run(args: argparse.Namespace, config: Config) -> int:
+    """`sensai eval --suite … --tag …`: the golden set on the real engine (EVAL-06)."""
+    from sensai.eval.golden import REFERENCE_DATE
+    from sensai.eval.harness import QuestionResult, run_and_report
+    from sensai.eval.report import load_report
+    from sensai.eval.runtime import EvalRuntime, check_models
+
+    problem = await check_models(config)
+    if problem is not None:
+        print(f"sensai eval : {problem}", file=sys.stderr)
+        return 1
+    today = args.today or REFERENCE_DATE
+
+    def progress(result: QuestionResult) -> None:
+        ex = {None: "    ", True: "EX 1", False: "EX 0"}[result.ex]
+        print(f"{result.id}  {ex}  {result.duration_ms / 1000:5.1f} s  {result.error or ''}")
+
+    async with EvalRuntime(config, seed=args.seed) as runtime:
+        path = await run_and_report(
+            args.suite,
+            runtime.factory,
+            tag=args.tag,
+            today=today,
+            seed=args.seed,
+            info=runtime.info(),
+            on_result=progress,
+            teardown=runtime.aclose,
+        )
+    ex = load_report(path)["metrics"]["ex"]
+    value = "—" if ex["value"] is None else f"{ex['value']:.2f}"
+    print(f"EX {value} sur {ex['n']} questions. Rapports : {path} et {path.with_suffix('.md')}")
+    return 0
 
 
 # Subcommands already implemented; the others print "pas encore implémenté"

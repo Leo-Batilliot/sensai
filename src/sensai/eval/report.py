@@ -2,7 +2,8 @@
 
 The JSON report is the reference (build_report in harness.py); the Markdown one is its
 readable view, for docs/EVALUATION.md and the slides. `compare` puts two reports side
-by side: metric deltas, then the questions whose EX changed.
+by side: what differs in the run (model, prompt...), metric deltas, then the questions
+whose EX changed.
 """
 
 from __future__ import annotations
@@ -24,12 +25,29 @@ METRIC_LABELS = {
     "faithfulness": "Fidélité (juge)",
     "relevance": "Pertinence (juge, 1 à 5)",
     "turn_errors": "Tours terminés en erreur",
+    "judge_json_first_try": "JSON du juge valide au 1er essai",
+    "judge_json_valid": "JSON du juge valide après réparation",
+    "tool_args_first_try": "Arguments d'outils valides au 1er essai",
+    "tool_args_valid": "Arguments d'outils valides après réparation",
 }
 LATENCY_LABELS = {
     "turn_p50_ms": "Durée du tour p50",
     "turn_p95_ms": "Durée du tour p95",
     "first_token_p50_ms": "Premier token p50",
+    "first_token_p95_ms": "Premier token p95",
     "judge_p50_ms": "Juge p50",
+    "judge_p95_ms": "Juge p95",
+}
+# Run information compared by `compare`: a delta means little if one of them changed
+RUN_LABELS = {
+    "model": "Modèle",
+    "judge_model": "Modèle du juge",
+    "prompt": "Prompt",
+    "persona": "Profil",
+    "fewshot": "Exemples dynamiques",
+    "suite": "Jeu",
+    "today": "Date de référence",
+    "seed": "Graine",
 }
 
 
@@ -89,6 +107,19 @@ def _flag(value: bool | None) -> str:
     return "—" if value is None else ("✅" if value else "❌")
 
 
+def run_value(report: dict[str, Any], key: str) -> str:
+    """Run information as one short text: "system_sql v1 (3f2a9c1b)", "désactivés"..."""
+    value = report.get(key)
+    if key == "prompt" and isinstance(value, dict):
+        version = value.get("version") or value.get("file") or "?"
+        return f"{value.get('name', '?')} {version} ({str(value.get('sha256', ''))[:8]})"
+    if key == "fewshot" and isinstance(value, dict):
+        return "activés" if value.get("enabled") else "désactivés"
+    if key == "persona" and value is None and "persona" in report:
+        return "aucun"
+    return "?" if value is None else str(value)
+
+
 def to_markdown(report: dict[str, Any]) -> str:
     lines = [
         f"# Rapport d'évaluation — {report['tag']}",
@@ -96,6 +127,8 @@ def to_markdown(report: dict[str, Any]) -> str:
         f"- Jeu : `{report.get('suite', '?')}` ({report['questions']} questions)",
         f"- Date de référence : {report.get('today', '?')}, graine {report.get('seed', '?')}",
         f"- Modèle : {report.get('model', '?')}, juge : {report.get('judge_model', '?')}",
+        f"- Prompt : {run_value(report, 'prompt')} ; profil : {run_value(report, 'persona')} ; "
+        f"exemples dynamiques : {run_value(report, 'fewshot')}",
         "",
         "## Métriques",
         "",
@@ -129,10 +162,19 @@ def to_markdown(report: dict[str, Any]) -> str:
 
 
 def compare(before: dict[str, Any], after: dict[str, Any]) -> str:
-    """Markdown table of the metric deltas, then the questions whose EX changed."""
-    lines = [
-        f"# Comparaison {before['tag']} → {after['tag']}",
-        "",
+    """Markdown tables of what differs in the run and of the metric deltas, then the
+    questions whose EX changed."""
+    lines = [f"# Comparaison {before['tag']} → {after['tag']}", ""]
+    changed_run = [
+        (label, run_value(before, key), run_value(after, key))
+        for key, label in RUN_LABELS.items()
+        if run_value(before, key) != run_value(after, key)
+    ]
+    if changed_run:
+        lines += [f"| Exécution | {before['tag']} | {after['tag']} |", "|---|---|---|"]
+        lines += [f"| {label} | {old} | {new} |" for label, old, new in changed_run]
+        lines.append("")
+    lines += [
         f"| Métrique | {before['tag']} | {after['tag']} | Écart |",
         "|---|---:|---:|---:|",
     ]
@@ -162,6 +204,7 @@ __all__ = [
     "find_report",
     "load_report",
     "report_paths",
+    "run_value",
     "to_markdown",
     "write_report",
 ]
