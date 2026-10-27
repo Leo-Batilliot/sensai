@@ -12,6 +12,7 @@ Une ligne = un événement complet, tel que le serveur l'envoie sur le WebSocket
 | `hitl_approve.jsonl` | Acte 4 : purge confirmée | `confirmation_required` (27 clients, 41 contacts), `approve`, suppression effectuée |
 | `hitl_reject.jsonl` | Acte 4 : purge refusée | Même début, `reject` avec commentaire, `tool_result` en échec `ACTION_REJECTED`, base intacte |
 | `file_write_approve.jsonl` | Acte 5 : export de la note dans `reports/` | `file_write` sous confirmation, `impact.file` (chemin, taille, nouveau fichier, début du contenu), `approve`, « Fichier créé » |
+| `question.jsonl` | Acte 1 avec la question de précision (X4) | `ask_user` → `question_asked` (« Ce trimestre » / « Tout l'historique », champ libre) → `question_answered` → réponse `Réponse : Tout l'historique`, puis le tour de `nominal.jsonl` |
 | `file_write_reject.jsonl` | Acte 5 : export refusé | Même début, `reject` avec commentaire, `ACTION_REJECTED`, aucun fichier écrit |
 | `errors.jsonl` | Trois pannes, un tour chacune | `OLLAMA_UNAVAILABLE` (fin de tour) ; serveur de date indisponible (`MCP_SERVER_UNAVAILABLE`, l'agent demande la période) ; requêtes en échec (`SQL_ERROR`), un appel répété ignoré (`DUPLICATE_CALL`, le tour continue), puis la limite de 6 appels atteinte (`MAX_ITERATIONS`, fin de tour) |
 
@@ -25,6 +26,7 @@ Implémentation : [`src/sensai/web/engines/mock.py`](../../../src/sensai/web/eng
   |---|---|
   | « supprime » | Acte 4 (`hitl_*`) : attend la décision, puis la branche correspondante |
   | « exporte » | Acte 5 (`file_write_*`) : même pause que l'acte 4, pour une écriture de fichier |
+  | « délai moyen » | Acte 1 avec sa question (`question.jsonl`) : attend la réponse (`answer`), puis rejoue `question_answered` et le résultat d'`ask_user` avec le choix fait |
   | « retiens », « mémorise » | Acte 2, tour 1 (`memory.jsonl`) |
   | « clients rentables » | Acte 2, tour 2 (`memory.jsonl`) |
   | « piège », « brasserie lemaire » | Acte 3 (`judge_contradiction.jsonl`) |

@@ -3,11 +3,19 @@
 import type { SqlGenerated } from '../protocol'
 import type { ToolStep, Turn } from './reducer'
 
-export type StepStatus = 'running' | 'confirmation' | 'ok' | 'error' | 'rejected' | 'stopped'
+export type StepStatus =
+  | 'running'
+  | 'confirmation'
+  | 'question'
+  | 'ok'
+  | 'error'
+  | 'rejected'
+  | 'stopped'
 
 export const STEP_STATUS_LABEL: Record<StepStatus, string> = {
   running: 'en cours',
   confirmation: 'en attente de confirmation',
+  question: 'en attente de votre réponse',
   ok: 'OK',
   error: 'erreur',
   rejected: 'refusée',
@@ -23,7 +31,9 @@ export function stepStatus(turn: Turn, step: ToolStep): StepStatus {
   if (turn.status === 'awaiting_confirmation' && turn.confirmation?.call_id === step.callId) {
     return 'confirmation'
   }
-  return turn.status === 'running' || turn.status === 'awaiting_confirmation' ? 'running' : 'stopped'
+  if (turn.status === 'awaiting_answer' && turn.question?.call_id === step.callId) return 'question'
+  const working = ['running', 'awaiting_confirmation', 'awaiting_answer'].includes(turn.status)
+  return working ? 'running' : 'stopped'
 }
 
 // "sql_toolbox__run_select" → "run_select": the server is already shown next to it

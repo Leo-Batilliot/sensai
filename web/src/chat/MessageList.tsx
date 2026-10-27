@@ -1,5 +1,6 @@
 import { Fragment, useLayoutEffect, useRef } from 'react'
 import type { Persona } from '../protocol'
+import type { Reply } from '../question/QuestionCard'
 import type { PersonaMark, Turn } from '../session/reducer'
 import { AssistantMessage } from './AssistantMessage'
 
@@ -9,6 +10,9 @@ const STICK_THRESHOLD_PX = 48
 interface Props {
   turns: Turn[]
   personaMarks: PersonaMark[]
+  connected: boolean
+  refusalKey: number
+  onAnswer: (questionId: string, reply: Reply) => void
   canAsk: boolean
   onAsk: (question: string) => void
   onShowSteps: (turnId: string) => void
@@ -18,6 +22,9 @@ interface Props {
 export function MessageList({
   turns,
   personaMarks,
+  connected,
+  refusalKey,
+  onAnswer,
   canAsk,
   onAsk,
   onShowSteps,
@@ -61,6 +68,9 @@ export function MessageList({
               {turn.origin === 'user' && (
                 <AssistantMessage
                   turn={turn}
+                  connected={connected}
+                  refusalKey={refusalKey}
+                  onAnswer={onAnswer}
                   canAsk={canAsk}
                   onAsk={onAsk}
                   onShowSteps={onShowSteps}

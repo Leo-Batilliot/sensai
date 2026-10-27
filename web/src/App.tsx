@@ -4,6 +4,7 @@ import './chat/chat.css'
 import './hitl/hitl.css'
 import './judge/judge.css'
 import './memory/memory.css'
+import './question/question.css'
 import './results/results.css'
 import './sql/sql.css'
 import './statusbar/statusbar.css'
@@ -92,6 +93,9 @@ export default function App() {
           <MessageList
             turns={state.turns}
             personaMarks={state.personaMarks}
+            connected={session.connected}
+            refusalKey={state.nextNoticeId}
+            onAnswer={session.answer}
             canAsk={session.connected && !session.busy}
             onAsk={ask}
             onShowSteps={showSteps}
