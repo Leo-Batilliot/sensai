@@ -8,7 +8,9 @@ from importlib import resources
 from pathlib import Path
 
 SCHEMA_FILE = "schema.sql"
-SCHEMA_VERSION = 1  # PRAGMA user_version set by schema.sql
+SCHEMA_VERSION = 2  # PRAGMA user_version set by schema.sql
+# Version -> script that brings a database of that version to the next one
+MIGRATIONS = {1: "migration_v2.sql"}
 
 # Kinds of memory entries, shared with the tools, the events and the WebSocket contract
 KINDS = ("glossary", "entity", "relation", "fact")
@@ -24,9 +26,9 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).strftime(TIMESTAMP_FORMAT)
 
 
-def schema_sql() -> str:
-    """Return the DDL of memory.db, read from the installed package."""
-    return resources.files("sensai.memory").joinpath(SCHEMA_FILE).read_text(encoding="utf-8")
+def schema_sql(name: str = SCHEMA_FILE) -> str:
+    """Return the DDL of memory.db (or a migration script), read from the installed package."""
+    return resources.files("sensai.memory").joinpath(name).read_text(encoding="utf-8")
 
 
 def connect(path: str | Path) -> sqlite3.Connection:
@@ -54,3 +56,25 @@ def create_schema(conn: sqlite3.Connection) -> None:
             "Utilisez un Python dont le module sqlite3 est compilé avec FTS5."
         )
     conn.executescript(schema_sql())
+
+
+def open_database(path: str | Path) -> sqlite3.Connection:
+    """Open memory.db, creating its schema on a new file and migrating an older one.
+
+    A database newer than this code, or of an unknown version, raises RuntimeError: it is
+    never changed.
+    """
+    if str(path) != ":memory:":
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+    conn = connect(path)
+    (version,) = conn.execute("PRAGMA user_version").fetchone()
+    if version == 0:
+        create_schema(conn)
+        return conn
+    while version in MIGRATIONS:
+        conn.executescript(schema_sql(MIGRATIONS[version]))
+        (version,) = conn.execute("PRAGMA user_version").fetchone()
+    if version != SCHEMA_VERSION:
+        conn.close()
+        raise RuntimeError(f"{path} : schéma mémoire v{version}, v{SCHEMA_VERSION} attendu.")
+    return conn

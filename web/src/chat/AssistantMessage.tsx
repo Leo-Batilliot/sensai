@@ -5,6 +5,7 @@ import { confirmationOutcome } from '../hitl/confirmation'
 import { MARK_PREFIX, highlight } from '../judge/judge'
 import { JudgeBadge } from '../judge/JudgeBadge'
 import { KeyFigures } from '../judge/KeyFigures'
+import { QuestionCard, type Reply } from '../question/QuestionCard'
 import { ResultTable } from '../results/ResultTable'
 import { asRowSet } from '../results/table'
 import type { Turn } from '../session/reducer'
@@ -14,6 +15,7 @@ import { SqlBlock } from '../sql/SqlBlock'
 // What the agent is doing, shown above the answer while it works
 function activity(turn: Turn): string | null {
   if (turn.status === 'awaiting_confirmation') return 'En attente de votre confirmation…'
+  // awaiting_answer: the question card says it
   if (turn.status !== 'running') return null
   if (turn.currentTool !== null) return `Appelle ${turn.currentTool}…`
   if (turn.content === '') return 'Réfléchit…'
@@ -56,13 +58,25 @@ function Answer({ turn, streaming }: { turn: Turn; streaming: boolean }) {
 
 interface Props {
   turn: Turn
+  connected: boolean
+  refusalKey: number
+  onAnswer: (questionId: string, reply: Reply) => void
   canAsk: boolean
   onAsk: (question: string) => void
-  onShowSteps: (turnId: string) => void
-  onShowMemory: () => void
+  onShowSteps?: (turnId: string) => void
+  onShowMemory?: () => void
 }
 
-export function AssistantMessage({ turn, canAsk, onAsk, onShowSteps, onShowMemory }: Props) {
+export function AssistantMessage({
+  turn,
+  connected,
+  refusalKey,
+  onAnswer,
+  canAsk,
+  onAsk,
+  onShowSteps,
+  onShowMemory,
+}: Props) {
   const streaming = turn.status === 'running'
   const label = activity(turn)
   const outcome = confirmationOutcome(turn)
@@ -77,28 +91,37 @@ export function AssistantMessage({ turn, canAsk, onAsk, onShowSteps, onShowMemor
         {(turn.judge !== null || turn.steps.length > 0) && (
           <div className="message-meta">
             {turn.judge !== null && <JudgeBadge judge={turn.judge} />}
-            {turn.steps.length > 0 && (
-              <button type="button" className="steps-link" onClick={() => onShowSteps(turn.id)}>
-                <span aria-hidden="true">▶</span> {stepsSummary(turn)}
-              </button>
-            )}
+            {turn.steps.length > 0 &&
+              (onShowSteps !== undefined ? (
+                <button type="button" className="steps-link" onClick={() => onShowSteps(turn.id)}>
+                  <span aria-hidden="true">▶</span> {stepsSummary(turn)}
+                </button>
+              ) : (
+                <span className="steps-link">{stepsSummary(turn)}</span>
+              ))}
           </div>
         )}
         {turn.context.length > 0 && (
           // What was given to the model, not what it applied (memory.md §4)
           <p className="context-chips">
             <span className="muted">Contexte mémoire fourni :</span>
-            {turn.context.map((entry) => (
-              <button
-                key={`${entry.kind}:${entry.ref}`}
-                type="button"
-                className="chip chip-small"
-                title="Voir la mémoire de l'agent"
-                onClick={onShowMemory}
-              >
-                {entry.label}
-              </button>
-            ))}
+            {turn.context.map((entry) =>
+              onShowMemory !== undefined ? (
+                <button
+                  key={`${entry.kind}:${entry.ref}`}
+                  type="button"
+                  className="chip chip-small"
+                  title="Voir la mémoire de l'agent"
+                  onClick={onShowMemory}
+                >
+                  {entry.label}
+                </button>
+              ) : (
+                <span key={`${entry.kind}:${entry.ref}`} className="chip chip-small">
+                  {entry.label}
+                </span>
+              ),
+            )}
           </p>
         )}
         {label !== null && (
@@ -111,6 +134,16 @@ export function AssistantMessage({ turn, canAsk, onAsk, onShowSteps, onShowMemor
             <summary>Raisonnement</summary>
             <p>{turn.thinking}</p>
           </details>
+        )}
+        {/* After the reasoning that led to it, before the answer it changes */}
+        {turn.question !== null && (
+          <QuestionCard
+            question={turn.question}
+            answer={turn.answer}
+            connected={connected}
+            refusalKey={refusalKey}
+            onAnswer={onAnswer}
+          />
         )}
         {turn.content !== '' && <Answer turn={turn} streaming={streaming} />}
         {outcome !== null && (

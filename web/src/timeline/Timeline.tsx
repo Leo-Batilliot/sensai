@@ -13,6 +13,7 @@ import { CopyButton } from '../shared/CopyButton'
 const STATUS_ICON: Record<StepStatus, string> = {
   running: '◌',
   confirmation: '!',
+  question: '?',
   ok: '✓',
   error: '✗',
   rejected: '⊘',

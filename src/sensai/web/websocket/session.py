@@ -114,6 +114,13 @@ class Session:
         """A web message replayed with the history, in place: only persona_changed (§5.2)."""
         self.history.append({key: value for key, value in message.items() if key != "reply_to"})
 
+    def completed_history(self) -> list[dict[str, Any]]:
+        """The history without the turn running now: what a share or an export shows."""
+        running = self._current_turn if self.turn_active else None
+        return [
+            event for event in self.history if running is None or event.get("turn_id") != running
+        ]
+
     def clear_history(self) -> None:
         self.history.clear()
         self._live_turns.clear()
@@ -186,6 +193,9 @@ class SessionManager:
             except Exception:
                 logger.debug("Ancienne connexion déjà fermée (session %s)", session_id)
         return session, True
+
+    def get(self, session_id: str) -> Session | None:
+        return self._sessions.get(session_id)
 
     async def close_all(self) -> None:
         """Application shutdown: release every engine."""

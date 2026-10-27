@@ -1,5 +1,6 @@
 import type { Persona, ServerInfo, Usage } from '../protocol'
 import type { ChatState, ConnectionStatus } from '../session/reducer'
+import { useMenu } from '../shared/useMenu'
 import { GAUGE_HINT, gauge, modelChoices, modelLabel, serversUp } from './status'
 import { useModels } from './useModels'
 
@@ -130,10 +131,11 @@ function ModelSelect({ current, supportsTools, connected, onSetModel }: ModelSel
 
 // Which MCP servers answer, and why one does not (e.g. a missing uvx command)
 function ServersMenu({ servers }: { servers: ServerInfo[] }) {
+  const menu = useMenu()
   const up = serversUp(servers)
   const tone = servers.length > 0 && up < servers.length ? ' chip-warn' : ''
   return (
-    <details className="servers-menu">
+    <details className="servers-menu" {...menu.props}>
       <summary className={`chip${tone}`}>
         Serveurs MCP : {up}/{servers.length}
       </summary>

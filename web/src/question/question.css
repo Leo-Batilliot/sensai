@@ -1,0 +1,118 @@
+/* Clarifying question of the agent (X4): a card in the message, not a modal */
+.question-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--fill-1);
+}
+
+.question-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.question-header h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+}
+
+.question-mark {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+
+.question-timer {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.question-timer.urgent {
+  color: var(--warn);
+  font-weight: 700;
+}
+
+.question-text {
+  margin: 0;
+  font-weight: 600;
+}
+
+.question-reason {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+
+.question-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.question-options button {
+  padding: 6px 14px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.question-options button:hover:not(:disabled) {
+  background: var(--fill-2);
+}
+
+.question-free {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.question-free input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: inherit;
+  font: inherit;
+}
+
+.question-free button {
+  padding: 6px 14px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--paper);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.question-card button:disabled,
+.question-card input:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.question-footer {
+  margin: 0;
+  font-size: 12px;
+}
+
+.question-closed {
+  margin: 0;
+  font-size: 13px;
+}

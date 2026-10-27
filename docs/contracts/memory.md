@@ -80,6 +80,8 @@ Les champs optionnels des outils sont **omis**, jamais `null` : les `inputSchema
 
 `memory_upsert_entity` considère qu'une entité existe déjà si, **pour le même `type`**, son nom ou l'un de ses alias est égal au `name` ou à l'un des `aliases` fournis. Elle est alors complétée (alias ajoutés, attributs fusionnés clé par clé) au lieu d'être dupliquée : « Lemaire » et « Brasserie Lemaire » restent une seule entité (US-M3-02).
 
+Pour les entités (MEM-05), « égal » s'entend après normalisation : casse, accents, ponctuation et forme juridique (SA, SAS, SARL, EURL…) ne comptent pas, aux règles 2 et 3 comme pour `memory_upsert_entity`. « Lemaire SARL » désigne donc « Lemaire ». Le nom donné à un upsert qui complète une entité existante devient un alias s'il est nouveau ; plusieurs entités trouvées par leurs seuls alias → `ambiguous_entity`.
+
 ### 3.2 Résultats
 
 Les résultats sont renvoyés au modèle en texte JSON, et dans `ToolResult.data` pour le moteur.

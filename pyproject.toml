@@ -21,8 +21,9 @@ dependencies = { file = ["requirements.txt"] }
 where = ["src"]
 
 [tool.setuptools.package-data]
-# versioned prompts (core/prompts/*.md) and DDL (*.sql) shipped with the package
-"*" = ["*.sql", "prompts/*.md"]
+# versioned prompts and their registry (core/prompts/), DDL (*.sql), example bank (*.jsonl)
+# and document templates shipped with the package
+"*" = ["*.sql", "*.jsonl", "prompts/*.md", "prompts/*.toml", "templates/*.toml"]
 
 [tool.ruff]
 target-version = "py310"

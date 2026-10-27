@@ -1,0 +1,12 @@
+# Published versions of the prompts (A4, docs/contracts/prompts.md §1).
+# A published version never changes: sha256 is checked against its file by the tests and
+# at startup. Fixing a typo means publishing a new version.
+
+[[prompt]]
+name = "system_sql"
+version = "v1"
+file = "system_sql_v1.md"
+created = "2026-10-13"
+parent = ""
+sha256 = "0279c84af1d787bb26f90420d1e1c120cc2bf4e3b437d1f2edcbdf88138c77c9"
+notes = "Mid-term : schéma compact, règles de dates SQLite, outil de date nommé dans le prompt."

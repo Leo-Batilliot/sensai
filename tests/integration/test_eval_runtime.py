@@ -135,8 +135,12 @@ async def test_the_report_records_how_the_run_was_made(tmp_path: Path) -> None:
     assert (report["prompt"]["name"], report["prompt"]["version"]) == ("system_sql", "v1")
     assert len(report["prompt"]["sha256"]) == 64
     assert report["persona"] is None
-    assert report["fewshot"] == {"enabled": False, "bank": None}
+    assert report["fewshot"] == {"enabled": False, "bank": None}  # the v1 has no $examples
     assert report["date_tool"] == "frozen"
+    assert report["memory"].endswith("memory_rules.json")
+    # EVAL-08: EX per category and the tokens of the scripted model
+    assert report["ex_by_category"] == {"aggregate": {"value": 1.0, "n": 1}}
+    assert report["tokens"] == {"prompt_mean": 12, "completion_mean": 3, "n": 1}
 
 
 async def test_an_eval_engine_closes_its_memory(tmp_path: Path) -> None:
@@ -168,4 +172,13 @@ def test_eval_run_refuses_an_invalid_tag(capsys: pytest.CaptureFixture[str]) -> 
 
 def test_eval_run_stops_at_once_when_ollama_is_down(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["eval", "--tag", "v0.8", "--host", "http://127.0.0.1:9"]) == 1
+    assert "Ollama injoignable" in capsys.readouterr().err
+
+
+def test_eval_run_accepts_the_witnesses_of_the_comparisons(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # EVAL-08: prompt v1 / v2, with / without examples, with / without memory
+    argv = ["eval", "--tag", "v0.8", "--prompt-version", "v1", "--no-fewshot", "--no-memory"]
+    assert main([*argv, "--host", "http://127.0.0.1:9"]) == 1
     assert "Ollama injoignable" in capsys.readouterr().err

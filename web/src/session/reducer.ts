@@ -11,6 +11,8 @@ import {
   type JudgeReport,
   type MemoryUpdated,
   type Persona,
+  type QuestionAnswered,
+  type QuestionAsked,
   type ServerInfo,
   type ServerMessage,
   type SessionConfig,
@@ -22,7 +24,13 @@ import {
 
 export type ConnectionStatus = 'connecting' | 'open' | 'reconnecting' | 'replaced'
 
-export type TurnStatus = 'running' | 'awaiting_confirmation' | 'done' | 'interrupted' | 'failed'
+export type TurnStatus =
+  | 'running'
+  | 'awaiting_confirmation'
+  | 'awaiting_answer' // ask_user (X4): paused until question_answered
+  | 'done'
+  | 'interrupted'
+  | 'failed'
 
 export interface ToolStep {
   callId: string
@@ -45,6 +53,8 @@ export interface Turn {
   context: ContextInjected['refs']
   confirmation: ConfirmationRequired | null
   resolution: ConfirmationResolved | null
+  question: QuestionAsked | null // the last question of the turn, kept once answered
+  answer: QuestionAnswered | null
   memoryUpdates: MemoryUpdated[]
   error: EngineError | null
   usage: Usage | null
@@ -53,6 +63,7 @@ export interface Turn {
 }
 
 export interface SessionInfo {
+  id: string // for the export URL
   model: string
   supportsTools: boolean
   ctxMax: number
@@ -80,6 +91,7 @@ export interface ChatState {
   session: SessionInfo | null
   turns: Turn[]
   personaMarks: PersonaMark[]
+  sharesVersion: number // changes on share_created / share_revoked: the list is read again
   lastUsage: Usage | null // context gauge: keeps its last value when usage is null
   notices: Notice[] // errors outside any turn (BUSY, INVALID_MESSAGE…)
   incompatible: boolean // server speaks another protocol version
@@ -96,6 +108,7 @@ export const initialState: ChatState = {
   session: null,
   turns: [],
   personaMarks: [],
+  sharesVersion: 0,
   lastUsage: null,
   notices: [],
   incompatible: false,
@@ -115,9 +128,12 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   }
 }
 
+// A turn in progress, possibly paused for the user: the server answers BUSY meanwhile
+const WORKING: ReadonlySet<TurnStatus> = new Set(['running', 'awaiting_confirmation', 'awaiting_answer'])
+
 export function isBusy(state: ChatState): boolean {
   const last = state.turns[state.turns.length - 1]
-  return last !== undefined && (last.status === 'running' || last.status === 'awaiting_confirmation')
+  return last !== undefined && WORKING.has(last.status)
 }
 
 function applyMessage(state: ChatState, message: ServerMessage): ChatState {
@@ -131,6 +147,7 @@ function applyMessage(state: ChatState, message: ServerMessage): ChatState {
         connection: 'open',
         incompatible: message.protocol_version !== PROTOCOL_VERSION,
         session: {
+          id: message.session_id,
           model: message.model,
           supportsTools: message.supports_tools,
           ctxMax: message.ctx_max,
@@ -153,6 +170,9 @@ function applyMessage(state: ChatState, message: ServerMessage): ChatState {
       })
     case 'config_updated':
       return updateSession(state, { config: message.config, ctxMax: message.config.num_ctx })
+    case 'share_created':
+    case 'share_revoked':
+      return { ...state, sharesVersion: state.sharesVersion + 1 }
     case 'persona_changed': {
       // Effective from the next turn: the separator goes after the turn running now, if any
       const same = state.session?.persona?.id === message.persona.id
@@ -204,6 +224,8 @@ function newTurn(id: string, origin: Turn['origin'], userMessage: string | null)
     context: [],
     confirmation: null,
     resolution: null,
+    question: null,
+    answer: null,
     memoryUpdates: [],
     error: null,
     usage: null,
@@ -244,6 +266,10 @@ function applyToTurn(turn: Turn, event: EngineEvent): Turn {
       return { ...turn, confirmation: event, status: 'awaiting_confirmation' }
     case 'confirmation_resolved':
       return { ...turn, resolution: event, status: 'running' }
+    case 'question_asked':
+      return { ...turn, question: event, answer: null, status: 'awaiting_answer', currentTool: null }
+    case 'question_answered':
+      return { ...turn, answer: event, status: 'running' }
     case 'memory_updated':
       return { ...turn, memoryUpdates: [...turn.memoryUpdates, event] }
     case 'message_done':

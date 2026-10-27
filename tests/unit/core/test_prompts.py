@@ -1,11 +1,27 @@
-"""System prompt templates (CORE-08)."""
+"""System prompt templates (CORE-08) and their registry of versions (A4, PROMPT-01)."""
 
+import hashlib
 import re
 from pathlib import Path
 
 import pytest
 
-from sensai.core.prompts import SYSTEM_SQL, load, placeholders, render, system_prompt
+from sensai.core.config import Config
+from sensai.core.errors import PromptVersionNotFound
+from sensai.core.prompts import (
+    FIXED_HOLES,
+    SYSTEM_SQL,
+    TURN_HOLES,
+    PromptRegistry,
+    RegistryError,
+    SystemPrompt,
+    fingerprint,
+    load,
+    placeholders,
+    render,
+    system_prompt,
+    system_prompt_template,
+)
 from sensai.data.schema import connect, create_schema
 
 TEMPLATES = Path(__file__).resolve().parents[3] / "src/sensai/core/prompts"
@@ -87,3 +103,102 @@ def test_without_a_date_tool_the_agent_asks_for_the_period(empty_db: Path) -> No
 
     assert "aucun outil de date n'est disponible" in text
     assert "demande la période exacte à l'utilisateur" in text
+
+
+# --- registry of the published versions (A4, PROMPT-01) --------------------------------
+
+
+def registry_text(**changes: str) -> str:
+    row = {
+        "name": "system_sql",
+        "version": "v1",
+        "file": SYSTEM_SQL,
+        "created": "2026-10-13",
+        "parent": "",
+        "sha256": fingerprint((TEMPLATES / SYSTEM_SQL).read_bytes()),
+        "notes": "Mid-term.",
+        **changes,
+    }
+    return "[[prompt]]\n" + "".join(f'{key} = "{value}"\n' for key, value in row.items())
+
+
+def test_published_prompts_never_change() -> None:
+    # US-A4-02: a published file edited without a new version fails here
+    registry = PromptRegistry.load()
+
+    assert registry.problems() == []
+    for entry in registry.entries:
+        assert entry.sha256 == hashlib.sha256((TEMPLATES / entry.file).read_bytes()).hexdigest()
+
+
+def test_every_version_only_has_holes_the_engine_fills() -> None:
+    for entry in PromptRegistry.load().entries:
+        assert placeholders(load(entry.file)) <= FIXED_HOLES | TURN_HOLES, entry.version
+
+
+def test_a_changed_file_is_refused() -> None:
+    with pytest.raises(RegistryError, match="a changé depuis sa publication"):
+        PromptRegistry.load(registry_text(sha256="0" * 64))
+
+
+@pytest.mark.parametrize(
+    ("changes", "problem"),
+    [
+        ({"version": "2"}, "de la forme v1"),
+        ({"version": "v2"}, "doit s'appeler system_sql_v2.md"),
+        ({"parent": "v0"}, "parent v0 inconnu"),
+        ({"file": "absent_v1.md", "name": "absent"}, "absent"),
+    ],
+)
+def test_a_malformed_entry_is_refused(changes: dict[str, str], problem: str) -> None:
+    with pytest.raises(RegistryError, match=problem):
+        PromptRegistry.load(registry_text(**changes))
+
+
+def test_a_version_is_published_once() -> None:
+    with pytest.raises(RegistryError, match="publiée deux fois"):
+        PromptRegistry.load(registry_text() + "\n" + registry_text())
+
+
+def test_crlf_keeps_the_fingerprint() -> None:
+    # A file edited outside git may get CRLF line endings (PROMPT-01 pitfall)
+    assert fingerprint(b"a\r\nb\r\n") == fingerprint(b"a\nb\n")
+
+
+def test_version_is_chosen_by_config(empty_db: Path) -> None:
+    # US-A4-02: [agent] prompt_version picks the file of the registry
+    template = system_prompt_template(empty_db, [], Config().agent.prompt_version)
+
+    assert template.version is not None
+    assert (template.version.version, template.version.file) == ("v1", SYSTEM_SQL)
+
+
+def test_unknown_version_is_refused(empty_db: Path) -> None:
+    with pytest.raises(PromptVersionNotFound, match="v9") as exc:
+        system_prompt_template(empty_db, [], "v9")
+
+    assert exc.value.code == "PROMPT_VERSION_NOT_FOUND"
+    assert "v1" in exc.value.message  # the published versions are listed
+
+
+def test_the_v1_shows_the_memory_but_no_examples_nor_note(empty_db: Path) -> None:
+    template = system_prompt_template(empty_db, [])
+
+    assert template.holes == {"memory"}
+    assert template("<MEM>").rstrip().endswith("# Contexte mémorisé\n<MEM>")
+
+
+def test_turn_blocks_fill_the_holes_of_a_version() -> None:
+    template = SystemPrompt(
+        "$schema\n$memory\n$examples\n$document_outline", {"schema": "S", "date_rule": "unused"}
+    )
+
+    assert template.holes == {"memory", "examples", "document_outline"}
+    assert template("M", examples="E") == "S\nM\nE\naucun"
+    with pytest.raises(ValueError, match="blocs inconnus"):
+        template("M", persona="P")
+
+
+def test_a_hole_the_engine_cannot_fill_is_refused() -> None:
+    with pytest.raises(ValueError, match="trous inconnus"):
+        SystemPrompt("$schema $mood", {"schema": "S"})

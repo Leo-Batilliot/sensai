@@ -57,6 +57,8 @@ python -m sensai eval --tag v0.8-mistral --model mistral-nemo   # autre modèle 
 python -m sensai eval compare v0.5 v0.8
 ```
 
+Témoins des comparaisons d'EVAL-08 : `--prompt-version v1` (A4, version du registre), `--no-fewshot` (A7, sans exemples dynamiques), `--no-memory` (M3, mémoire vide pour chaque question, sans `memory_rules.json`).
+
 Il faut Ollama lancé et le modèle installé (le juge compris) : sinon la commande s'arrête tout de suite, avant la première question. Chaque question affiche sa ligne (`q005  EX 1   18.4 s`).
 
 ### Déroulé d'un run
@@ -101,10 +103,32 @@ async with EvalRuntime(config, seed=42) as runtime:
 | `model`, `judge_model`, `judge_enabled`, `temperature`, `ollama_seed`, `num_ctx` | Le modèle mesuré et ses réglages |
 | `prompt` | `{name, version, file, sha256}` du prompt système (A4) |
 | `persona` | Profil actif (A5) ; `null` tant que les profils n'existent pas |
-| `fewshot` | `{enabled, bank}` : exemples dynamiques (A7) ; désactivés tant que FEWSHOT-01 n'est pas mergée |
+| `fewshot` | `{enabled, bank}` : exemples dynamiques (A7) ; `enabled` n'est vrai que si `[fewshot] enabled` et si la version du prompt a le trou `$examples` (la v1 ne l'a pas) |
+| `memory` | Fichier des règles mises en mémoire avant chaque question, `null` pour l'ablation (`--no-memory`) |
 | `date_tool` | `"frozen"` : l'outil de date renvoie la date de référence |
 | `metrics` | `ex`, `sql_valid`, `destructive_recall`, `hitl_false_positives`, `faithfulness`, `relevance`, `turn_errors`, `judge_json_first_try`, `judge_json_valid`, `tool_args_first_try`, `tool_args_valid`, chacune `{value, n}` (`value` vaut `null` si `n` = 0) |
+| `ex_by_category` | EX par catégorie du jeu, `{value, n}` |
 | `latency` | `turn_p50_ms`, `turn_p95_ms`, `first_token_p50_ms`, `first_token_p95_ms`, `judge_p50_ms`, `judge_p95_ms` : seuls chiffres qui changent entre deux runs identiques |
+| `tokens` | `prompt_mean`, `completion_mean`, `n` : tokens du dernier appel au modèle de chaque tour (`message_done.usage`), en moyenne |
 | `results` | Une entrée par question (SQL retenu, EX, badge, erreur, durées, compteurs T5…) |
 
-`sensai eval compare AVANT APRÈS` (tags ou chemins `.json`) affiche ce qui diffère dans l'exécution (modèle, prompt, profil, exemples…), les écarts par métrique et les questions dont l'EX a changé.
+`sensai eval compare AVANT APRÈS` (tags ou chemins `.json`) affiche ce qui diffère dans l'exécution (modèle, prompt, profil, exemples, mémoire…), les écarts par métrique, par catégorie, en tokens et en latence, et les questions dont l'EX a changé.
+
+## Calibration du juge, `eval/judge_calibration.jsonl` (EVAL-07)
+
+20 réponses étiquetées à la main, affirmation par affirmation (`supported`, `contradicted`, `unverifiable`) : 7 justes, 8 chiffres faux, 3 entités interverties, 2 affirmations sans source. Les lignes viennent de la base de démo (graine 42, date de référence 2026-10-20). Une réponse est fausse (classe positive) si l'une de ses affirmations est contredite.
+
+| Champ | Contenu |
+|---|---|
+| `id`, `category` | `c` + 2 chiffres ; `correct`, `wrong_number`, `wrong_entity`, `unsourced` |
+| `question`, `sql`, `columns`, `rows`, `truncated` | Ce que le juge reçoit |
+| `answer` | La réponse à vérifier |
+| `claims` | `[{text, label}]` : chaque affirmation, recopiée de `answer`, et son étiquette humaine |
+| `error` | Ce qui est faux (ou sans source), `null` pour une réponse juste |
+
+```bash
+python -m sensai eval calibrate                  # juge + contrôle numérique (Ollama requis)
+python -m sensai eval calibrate --numeric-only   # contrôle numérique seul, sans modèle
+```
+
+Trois détecteurs sont mesurés sur les mêmes cas : contrôle numérique seul, juge seul, juge + contrôle numérique (le badge du produit). Pour chacun : précision, rappel, matrice de confusion et cas manqués ; puis badge attendu / badge donné. Rapports : `eval/reports/<jour>_<tag>.{json,md}` (tag `calibration` par défaut). Code : `src/sensai/eval/calibration.py` ; tests : `tests/unit/eval/test_calibration.py`.

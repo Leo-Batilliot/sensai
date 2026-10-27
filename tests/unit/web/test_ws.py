@@ -136,6 +136,79 @@ def test_destructive_action_waits_for_the_decision(
     assert result["ok"] is (decision == "approve")
 
 
+ACT_1_QUESTION = (
+    "Quels sont nos 5 clients les plus rentables ce trimestre et quel est leur délai moyen"
+    " de paiement ?"
+)
+
+
+def ask_act_1(ws: WebSocketTestSession) -> Message:
+    ws.receive_json()
+    ws.send_json({"type": "user_message", "content": ACT_1_QUESTION})
+    return until(ws, of_type("question_asked"))[-1]
+
+
+@pytest.mark.parametrize(
+    ("answer", "summary"),
+    [
+        ({"option_id": "historique"}, "Réponse : Tout l'historique"),
+        ({"text": "Les 12 derniers mois"}, "Réponse : Les 12 derniers mois"),
+    ],
+    ids=["option", "free-text"],
+)
+def test_the_clarifying_question_waits_for_the_answer(
+    client: TestClient, answer: Message, summary: str
+) -> None:
+    with client.websocket_connect(f"/ws/{SESSION}") as ws:
+        asked = ask_act_1(ws)
+        ws.send_json({"type": "answer", "question_id": asked["question_id"], **answer})
+        rest = until(ws, of_type("message_done"))
+    answered = next(m for m in rest if m["type"] == "question_answered")
+    assert (answered["question_id"], answered["status"]) == (asked["question_id"], "answered")
+    assert answered["option_id"] == answer.get("option_id")
+    assert answered["text"] == answer.get("text")
+    result = next(
+        m for m in rest if m["type"] == "tool_result" and m["call_id"] == asked["call_id"]
+    )
+    assert result["summary"] == summary
+    for message in [asked, *rest]:
+        check_event(message)
+
+
+def test_a_wrong_answer_leaves_the_question_open(client: TestClient) -> None:
+    with client.websocket_connect(f"/ws/{SESSION}") as ws:
+        asked = ask_act_1(ws)
+        ws.send_json(
+            {"type": "answer", "id": "c-1", "question_id": asked["question_id"], "option_id": "x"}
+        )
+        error = ws.receive_json()
+        ws.send_json(
+            {"type": "answer", "question_id": asked["question_id"], "option_id": "trimestre"}
+        )
+        rest = until(ws, of_type("message_done"))
+    assert (error["code"], error["reply_to"]) == ("INVALID_MESSAGE", "c-1")
+    assert next(m for m in rest if m["type"] == "question_answered")["option_id"] == "trimestre"
+
+
+def test_an_unanswered_question_times_out_and_the_turn_goes_on() -> None:
+    config = Config.model_validate({"agent": {"question_timeout_s": 0.05}})
+    with make_client(config=config) as client, client.websocket_connect(f"/ws/{SESSION}") as ws:
+        asked = ask_act_1(ws)
+        rest = until(ws, of_type("message_done"))
+    assert asked["expires_in_s"] == 0.05
+    assert next(m for m in rest if m["type"] == "question_answered")["status"] == "timeout"
+    assert rest[-1]["interrupted"] is False  # the model makes an explicit assumption
+
+
+def test_cancel_during_a_question_cancels_it(client: TestClient) -> None:
+    with client.websocket_connect(f"/ws/{SESSION}") as ws:
+        ask_act_1(ws)
+        ws.send_json({"type": "cancel"})
+        rest = until(ws, of_type("message_done"))
+    assert next(m for m in rest if m["type"] == "question_answered")["status"] == "cancelled"
+    assert rest[-1]["interrupted"] is True
+
+
 def test_confirmation_without_answer_times_out() -> None:
     config = Config.model_validate({"hitl": {"confirmation_timeout_s": 0.05}})
     with make_client(config=config) as client, client.websocket_connect(f"/ws/{SESSION}") as ws:

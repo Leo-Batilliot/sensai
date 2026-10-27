@@ -4,7 +4,9 @@ import './chat/chat.css'
 import './hitl/hitl.css'
 import './judge/judge.css'
 import './memory/memory.css'
+import './question/question.css'
 import './results/results.css'
+import './share/share.css'
 import './sql/sql.css'
 import './statusbar/statusbar.css'
 import './timeline/timeline.css'
@@ -15,6 +17,7 @@ import { ConfirmationModal } from './hitl/ConfirmationModal'
 import { pendingConfirmation } from './hitl/confirmation'
 import { useOutcomeToast } from './hitl/useOutcomeToast'
 import { MemoryPanel } from './memory/MemoryPanel'
+import { ConversationActions } from './share/ConversationActions'
 import { memoryVersion, recentChanges } from './memory/memory'
 import { useMemory } from './memory/useMemory'
 import { useSession } from './session/useSession'
@@ -57,6 +60,14 @@ export default function App() {
       />
 
       <main className="conversation" aria-label="Conversation">
+        <ConversationActions
+          sessionId={state.session?.id ?? null}
+          hasTurns={state.turns.length > (session.busy ? 1 : 0)} // a finished turn to show
+          connected={session.connected}
+          sharesVersion={state.sharesVersion}
+          onShare={session.share}
+          onUnshare={session.unshare}
+        />
         <div className="banners">
           {state.incompatible && (
             <div className="banner bad" role="alert">
@@ -92,6 +103,9 @@ export default function App() {
           <MessageList
             turns={state.turns}
             personaMarks={state.personaMarks}
+            connected={session.connected}
+            refusalKey={state.nextNoticeId}
+            onAnswer={session.answer}
             canAsk={session.connected && !session.busy}
             onAsk={ask}
             onShowSteps={showSteps}

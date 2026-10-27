@@ -89,6 +89,8 @@ class AgentConfig(_Section):
     # in time the model makes an explicit assumption
     max_questions_per_turn: int = Field(default=1, ge=0)
     question_timeout_s: float = Field(default=120, gt=0)
+    # Version of the system prompt in core/prompts/registry.toml (A4); "v1" is the way back
+    prompt_version: str = Field(default="v1", pattern=r"^v[0-9]+$")
     # Agent profile of a new session (A5): personas/<id>.toml, relative to the launch directory
     persona: str = Field(default="analyste", min_length=1)
     personas_dir: Path = Path("personas")
@@ -119,6 +121,18 @@ class HitlConfig(_Section):
 class EvalConfig(_Section):
     judge_enabled: bool = True
     numeric_tolerance: float = Field(default=0.01, ge=0, lt=1)
+
+
+class FewshotConfig(_Section):
+    # Dynamic examples (A7): the k closest examples of the bank go into the prompt
+    enabled: bool = True
+    k: int = Field(default=3, ge=0)
+    min_score: float = Field(default=0.0, ge=0)  # bm25 score; 0 = always the k best
+
+
+class DocumentsConfig(_Section):
+    # Committee note (M4): sections of a new note, from documents/templates/<template>.toml
+    template: str = Field(default="note_comite", pattern=r"^[a-z0-9_]+$")
 
 
 class McpServerConfig(_Section):
@@ -184,6 +198,7 @@ class FilesConfig(_Section):
 class WebConfig(_Section):
     host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65535)
+    share_dir: Path = Path("data/shares")  # X3: frozen snapshots of the shared links
 
 
 class DemoConfig(_Section):
@@ -200,6 +215,8 @@ class Config(_Section):
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     hitl: HitlConfig = Field(default_factory=HitlConfig)
     eval: EvalConfig = Field(default_factory=EvalConfig)
+    fewshot: FewshotConfig = Field(default_factory=FewshotConfig)
+    documents: DocumentsConfig = Field(default_factory=DocumentsConfig)
     mcp: McpConfig = Field(default_factory=McpConfig)
     files: FilesConfig = Field(default_factory=FilesConfig)
     web: WebConfig = Field(default_factory=WebConfig)

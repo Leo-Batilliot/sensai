@@ -9,6 +9,10 @@ term for the glossary and the integer id as text for the other kinds.
   does it silently, so the store snapshots them first and audits each one.
 - Case-insensitive comparisons use str.casefold() in Python: COLLATE NOCASE only folds
   ASCII ('ÉLAN' != 'élan' for SQLite).
+- Entity names and aliases are compared once normalized (MEM-05, normalize_name): case,
+  accents and legal forms do not count, so 'Lemaire SARL' and 'lemaire' are the same
+  designation, and an upsert that names an existing entity by one of its aliases
+  completes it instead of creating a duplicate.
 - Raw text never reaches MATCH: search() goes through fts.build_fts_query().
 - delete_impact() previews a deletion, cascades included, for the HITL confirmation of
   memory_delete (tools.md, point T-4).
@@ -20,7 +24,9 @@ memory tools of sensai.tools.memory_tools (MEM-03).
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
+import unicodedata
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -54,6 +60,12 @@ PATCHABLE: dict[str, frozenset[str]] = {
     "relation": frozenset({"type", "attributes"}),
     "fact": frozenset({"content", "category", "entity"}),
 }
+
+# Legal forms left out when comparing company names (MEM-05)
+LEGAL_FORMS = frozenset(
+    {"sa", "sas", "sasu", "sarl", "eurl", "sci", "snc", "scop", "sca", "selarl", "ei", "eirl"}
+)
+_NAME_WORD = re.compile(r"[^\W_]+")
 
 _TABLES = {"glossary": "glossary", "entity": "entities", "relation": "relations", "fact": "facts"}
 _JSON_COLUMNS = ("aliases", "attributes")
@@ -94,17 +106,37 @@ def _same(a: str, b: str) -> bool:
     return a.casefold() == b.casefold()
 
 
+def normalize_name(name: str) -> str:
+    """'Brasserie Lemaire S.A.R.L.' -> 'brasserie lemaire': casefolded, without accents,
+    punctuation nor legal form. A name made only of a legal form is kept as is."""
+    decomposed = unicodedata.normalize("NFD", name.casefold().replace(".", ""))
+    plain = "".join(char for char in decomposed if not unicodedata.combining(char))
+    words = _NAME_WORD.findall(plain)
+    kept = [word for word in words if word not in LEGAL_FORMS]
+    return " ".join(kept or words)
+
+
+def _same_name(a: str, b: str) -> bool:
+    return normalize_name(a) == normalize_name(b)
+
+
+def _designations(row: dict[str, Any]) -> set[str]:
+    """Normalized name and aliases of an entity row."""
+    return {normalize_name(name) for name in (row["name"], *row["aliases"])}
+
+
 def _truncate(text: str) -> str:
     return text if len(text) <= LABEL_MAX_CHARS else text[: LABEL_MAX_CHARS - 1] + "…"
 
 
 def _dedupe(names: Sequence[str], exclude: Sequence[str] = ()) -> list[str]:
-    """Keep the first spelling of each name, ignoring case and the excluded names."""
-    seen = {name.casefold() for name in exclude}
+    """Keep the first spelling of each name, ignoring the excluded names; names are
+    compared normalized (normalize_name)."""
+    seen = {normalize_name(name) for name in exclude}
     kept: list[str] = []
     for name in names:
-        if name.casefold() not in seen:
-            seen.add(name.casefold())
+        if normalize_name(name) not in seen:
+            seen.add(normalize_name(name))
             kept.append(name)
     return kept
 
@@ -117,19 +149,9 @@ class MemoryStore:
 
     @classmethod
     def open(cls, path: str | Path) -> MemoryStore:
-        """Open memory.db, creating the file and its schema when they do not exist."""
-        if str(path) != ":memory:":
-            Path(path).parent.mkdir(parents=True, exist_ok=True)
-        conn = schema.connect(path)
-        (version,) = conn.execute("PRAGMA user_version").fetchone()
-        if version == 0:
-            schema.create_schema(conn)
-        elif version != schema.SCHEMA_VERSION:
-            conn.close()
-            raise RuntimeError(
-                f"{path} : schéma mémoire v{version}, v{schema.SCHEMA_VERSION} attendu."
-            )
-        return cls(conn)
+        """Open memory.db, creating the file and its schema when they do not exist and
+        migrating an older schema (schema.open_database)."""
+        return cls(schema.open_database(path))
 
     def close(self) -> None:
         self._conn.close()
@@ -211,7 +233,7 @@ class MemoryStore:
     # --- entity designation (memory.md §3.1) --------------------------------------------
 
     def resolve_entity(self, designation: str) -> int:
-        """Id of the entity designated by its ref, exact name or exact alias.
+        """Id of the entity designated by its ref, name or alias (normalized, MEM-05).
 
         Tried in that order; the first rule with matches wins. Several matches raise
         AmbiguousEntity, none raises EntityNotFound.
@@ -222,8 +244,8 @@ class MemoryStore:
                 return int(designation)
             raise EntityNotFound(designation)
         for matches in (
-            [row for row in entities if _same(row["name"], designation)],
-            [row for row in entities if any(_same(a, designation) for a in row["aliases"])],
+            [row for row in entities if _same_name(row["name"], designation)],
+            [row for row in entities if any(_same_name(a, designation) for a in row["aliases"])],
         ):
             if len(matches) == 1:
                 return int(matches[0]["id"])
@@ -262,20 +284,28 @@ class MemoryStore:
         external_ref: str | None = None,
         ctx: AuditContext = AGENT,
     ) -> WriteResult:
-        """Create an entity, or complete the one with the same type and name.
+        """Create an entity, or complete the existing one (memory.md §3.1, MEM-05).
 
-        Completing adds the new aliases and merges attributes key by key. Matching on
-        aliases ('Lemaire' = 'Brasserie Lemaire') is MEM-05.
+        An entity of the same type exists when its name or one of its aliases is the name
+        or one of the aliases given, normalized: 'Lemaire' and 'Brasserie Lemaire' (alias
+        'Lemaire') stay one entity. Completing adds the new spellings as aliases (the
+        given name included) and merges attributes key by key. Same name first; several
+        entities matched only by aliases raise AmbiguousEntity.
         """
-        existing = [
-            row
-            for row in self._entities()
-            if row["type"] == entity_type and _same(row["name"], name)
+        same_type = [row for row in self._entities() if row["type"] == entity_type]
+        wanted = {normalize_name(alias) for alias in (name, *aliases)}
+        existing = [row for row in same_type if _same_name(row["name"], name)] or [
+            row for row in same_type if _designations(row) & wanted
         ]
+        if len(existing) > 1:
+            raise AmbiguousEntity(
+                name, [(row["type"], row["name"], str(row["id"])) for row in existing]
+            )
         if existing:
             row = existing[0]
+            known = [row["name"], *row["aliases"]]
             patch: dict[str, Any] = {
-                "aliases": row["aliases"] + _dedupe(aliases, [row["name"], *row["aliases"]]),
+                "aliases": row["aliases"] + _dedupe([name, *aliases], known),
                 "attributes": {**row["attributes"], **(attributes or {})},
             }
             if external_ref is not None:
@@ -418,7 +448,7 @@ class MemoryStore:
                 if (
                     row["id"] != before["id"]
                     and row["type"] == entity_type
-                    and _same(row["name"], name)
+                    and _same_name(row["name"], name)
                 ):
                     raise Conflict(
                         f"L'entité {entity_type} « {row['name']} » existe déjà (ref {row['id']})."
@@ -619,4 +649,11 @@ class MemoryStore:
         }
 
 
-__all__ = ["AGENT", "AuditContext", "MemoryStore", "MemoryStoreError", "WriteResult"]
+__all__ = [
+    "AGENT",
+    "AuditContext",
+    "MemoryStore",
+    "MemoryStoreError",
+    "WriteResult",
+    "normalize_name",
+]

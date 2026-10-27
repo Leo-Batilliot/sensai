@@ -19,6 +19,11 @@ question: they go into the system prompt and the context_injected event. With an
 OnlineJudge (EVAL-05), an answer built on a successful run_select is checked after
 message_done (judge_started, judge_report), once the session is free again.
 
+With an ExampleIndex (A7, core/fewshot.py) and a prompt that has an $examples hole, the
+closest validated examples of the question go into the system prompt (examples_injected);
+with a DocumentStore (M4), the plan of the committee note fills $document_outline and an
+effective write of a document tool gives document_updated.
+
 With [demo] alter_answer (CORE-20, core/demo.py), the answer to the question of act 3
 gets one wrong figure while it streams, before the judge: the demo of a caught mistake.
 
@@ -65,9 +70,11 @@ from sensai.core.confirm import (
 from sensai.core.context import Compactor, ContextBudget
 from sensai.core.demo import AnswerAlteration
 from sensai.core.errors import PersonaNotFound, SensaiError
+from sensai.core.fewshot import ExampleIndex, Selected, examples_block
 from sensai.core.history import History
 from sensai.core.personas import Persona
-from sensai.core.prompts import PromptTemplate
+from sensai.core.prompts import SystemPrompt
+from sensai.documents.store import DocumentStore
 from sensai.eval.online import OnlineJudge, SelectResult, select_result
 from sensai.llm.ollama_client import (
     Chunk,
@@ -139,15 +146,17 @@ class Engine:
         client: ChatClient | None = None,
         *,
         registry: ToolRegistry | None = None,
-        # Text, or a template of the memory block of the turn (MEM-04); with profiles, a
-        # PromptTemplate, which also takes the names of the tools of the profile (A5)
-        system_prompt: str | PromptTemplate | Callable[[str], str] | None = None,
+        # Text, or a template of the blocks of the turn (MEM-04); with profiles, a
+        # SystemPrompt, which also takes the names of the tools of the profile (A5)
+        system_prompt: str | SystemPrompt | Callable[..., str] | None = None,
         broker: ConfirmationBroker | None = None,
         session_id: str | None = None,
         memory: MemoryContext | None = None,
         judge: OnlineJudge | None = None,
         sql_classifier: SqlClassifier | None = None,
         questions: QuestionBroker | None = None,
+        examples: ExampleIndex | None = None,
+        documents: DocumentStore | None = None,
         personas: Mapping[str, Persona] | None = None,
     ) -> None:
         self.config = config
@@ -155,6 +164,8 @@ class Engine:
         self.system_prompt = system_prompt
         self.memory = memory  # memory context of each turn (MEM-04)
         self.judge = judge  # online judge of numeric answers (EVAL-05)
+        self.examples = examples  # bank of validated examples (A7)
+        self.documents = documents  # committee note (M4)
         self.client: ChatClient = (
             client
             if client is not None
@@ -206,14 +217,19 @@ class Engine:
     def busy(self) -> bool:
         return self._running
 
-    def _system_messages(self, memory: str = "", persona: Persona | None = None) -> list[Message]:
-        """The system prompt of a turn, with the memory block of its question (MEM-04) and
-        the block of its profile (A5)."""
+    def _system_messages(
+        self, memory: str = "", persona: Persona | None = None, **blocks: str
+    ) -> list[Message]:
+        """The system prompt of a turn, with the memory block of its question (MEM-04), the
+        other blocks its version shows (examples, plan of the note) and the block of its
+        profile (A5)."""
         if callable(self.system_prompt):
             names = self._tool_names(persona)
             # Without a profile, a template of the memory block alone still works
             prompt = (
-                self.system_prompt(memory) if names is None else self.system_prompt(memory, names)
+                self.system_prompt(memory, **blocks)
+                if names is None
+                else self.system_prompt(memory, tool_names=names, **blocks)
             )
         else:
             block = f"{MEMORY_HEADING}\n{memory}" if memory else ""
@@ -315,10 +331,20 @@ class Engine:
                     session_id=self.session_id, turn_id=turn_id, refs=list(context.refs)
                 )
             self._note_persona(persona)
-            head = self._system_messages(context.text, persona)
+            blocks: dict[str, str] = {}
+            chosen: list[Selected] = []
+            holes = getattr(self.system_prompt, "holes", frozenset())
+            if "examples" in holes:
+                chosen = self._examples_for(user_message)
+                if chosen:
+                    blocks["examples"] = examples_block(chosen)
+            if "document_outline" in holes and self.documents is not None:
+                blocks["document_outline"] = self.documents.outline_text()
+            head = self._system_messages(context.text, persona, **blocks)
             allowed = persona.allows if persona else None
             tools = self.registry.ollama_tools(allowed) if self.registry else None
-            # Room for this turn (M2): the oldest exchanges may give way to a summary
+            # Room for this turn (M2): the oldest exchanges may give way to a summary. The
+            # examples are in `head`, so they count; their event comes after (events.md §4.1)
             compaction = await self.compactor.fit(
                 self.history, head, user_message, tools, model=model, config=self.config
             )
@@ -330,6 +356,12 @@ class Engine:
                     tokens_before=compaction.tokens_before,
                     tokens_after=compaction.tokens_after,
                     summary=compaction.summary,
+                )
+            if chosen:
+                yield events.ExamplesInjected(
+                    session_id=self.session_id,
+                    turn_id=turn_id,
+                    examples=[item.ref() for item in chosen],
                 )
             # Only this turn sees the tool messages: the history keeps the final answer
             messages = head + self.history.messages_for(user_message)
@@ -459,6 +491,18 @@ class Engine:
         if len(self.history):  # an empty history: the system prompt already says it
             self.history.note(f"Profil actif : {persona.label}")
         self._noted_persona = persona
+
+    def _examples_for(self, question: str) -> list[Selected]:
+        """The closest examples of the question (A7), [] when disabled or on a failure:
+        an example problem never stops a turn. [fewshot] is read at each turn."""
+        fewshot = self.config.fewshot
+        if self.examples is None or not fewshot.enabled:
+            return []
+        try:
+            return self.examples.select(question, fewshot.k, fewshot.min_score)
+        except Exception:
+            logger.exception("examples unavailable")
+            return []
 
     async def _judge(
         self, turn_id: str, question: str, select: SelectResult, answer: str
@@ -606,6 +650,17 @@ class Engine:
                 kind=change.kind,
                 ref=change.ref,
                 summary=change.summary,
+            )
+        if result.document_change is not None:
+            written = result.document_change
+            yield events.DocumentUpdated(
+                session_id=self.session_id,
+                turn_id=turn_id,
+                doc_id=written.doc_id,
+                revision=written.revision,
+                section_id=written.section_id,
+                op=written.op,
+                summary=written.summary,
             )
         content = retries.advice(result) or self._for_model(call.name, result)
         messages.append({"role": "tool", "tool_name": call.name, "content": content})

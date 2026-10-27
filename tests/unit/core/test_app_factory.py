@@ -120,3 +120,21 @@ def test_an_unknown_starting_profile_stops_the_application(config: Config) -> No
     agent = config.agent.model_copy(update={"persona": "compta"})
     with pytest.raises(PersonaError, match="compta"):
         Services(config.model_copy(update={"agent": agent}))
+
+
+async def test_an_engine_gets_the_note_and_the_examples(config: Config) -> None:
+    # M4 and A7: one note and one example index for the whole application
+    services, _ = services_for(config)
+    await services.start()
+    try:
+        engine = services.new_engine(session_id="s-1")
+        names = [info.name for info in engine.registry.tools()]
+        impact = await engine.registry.preview("document_delete_section", {"section_id": "actions"})
+        shared = engine.documents is services.documents and engine.examples is services.examples
+    finally:
+        await services.stop()
+
+    assert {"document_read", "document_patch", "document_delete_section"} <= set(names)
+    assert "document_restore" not in names  # interface only (memory.md §7.3)
+    assert shared and engine.examples is not None
+    assert impact is not None and impact["per_table"] == {"document_sections": -1}

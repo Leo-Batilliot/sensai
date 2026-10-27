@@ -29,6 +29,7 @@ max_sql_retries = 2
 language = "fr"
 max_questions_per_turn = 1     # clarifying questions (ask_user) per turn; 0 = never ask
 question_timeout_s = 120       # without an answer, the agent makes an explicit assumption
+prompt_version = "v1"          # system prompt version (src/sensai/core/prompts/registry.toml)
 persona = "analyste"           # agent profile of a new session: personas/<id>.toml (A5)
 personas_dir = "personas"      # one TOML file per profile, relative to the launch directory
 
@@ -52,6 +53,14 @@ deny = []                      # tool names that are always refused
 [eval]
 judge_enabled = true
 numeric_tolerance = 0.01       # 1 %
+
+[fewshot]                       # dynamic examples: closest question -> SQL pairs in the prompt
+enabled = true
+k = 3                           # examples injected at most
+min_score = 0.0                 # minimal bm25 score (0 = always the k best)
+
+[documents]                     # committee note written section by section by the agent
+template = "note_comite"
 
 # MCP servers started at launch. Adding a [mcp.servers.<name>] table is enough to
 # plug in a new server. <name> always prefixes its tools (time__get_current_time);
@@ -85,6 +94,7 @@ mode = "r"
 [web]
 host = "127.0.0.1"
 port = 8000
+share_dir = "data/shares"       # X3: one frozen snapshot per shared link, deleted when revoked
 
 # Act 3 of the demo (CORE-20): with alter_answer = true, for a question that contains
 # alter_trigger, a figure of the answer is raised by 15 % before the judge, which is

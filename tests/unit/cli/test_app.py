@@ -387,6 +387,19 @@ def test_model_argument_wins_over_the_config_file(
     assert client.closed
 
 
+def test_unknown_prompt_version_stops_with_exit_code_1(
+    config_file: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # US-A4-02: an unknown version is refused at startup, before any model call
+    client = FakeClient(answer("Oui."), models=("modele-du-fichier",))
+    use_fake(monkeypatch, client)
+
+    assert run_chat(str(config_file), prompt_version="v9", read_line=scripted("Salut")) == 1
+
+    assert "Version de prompt inconnue : system_sql v9" in capsys.readouterr().err
+    assert not client.calls
+
+
 def test_config_file_model_is_used_without_argument(
     config_file: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

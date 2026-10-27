@@ -149,3 +149,18 @@ class McpProtocolError(SensaiError):
         super().__init__(f"Serveur MCP « {server} » : {detail}.")
         self.server = server
         self.detail = detail
+
+
+class PromptVersionNotFound(SensaiError):
+    """[agent] prompt_version is not a version of core/prompts/registry.toml (A4)."""
+
+    code = "PROMPT_VERSION_NOT_FOUND"
+
+    def __init__(self, name: str, version: str, known: list[str]) -> None:
+        listed = ", ".join(known) or "aucune"
+        super().__init__(
+            f"Version de prompt inconnue : {name} {version}. Versions publiées : {listed}. "
+            "Corrigez [agent] prompt_version dans config.toml."
+        )
+        self.name = name
+        self.version = version

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from sensai.memory.errors import AmbiguousEntity, Conflict, EntityNotFound, InvalidPatch, NotFound
-from sensai.memory.store import AuditContext, Kind, MemoryStore
+from sensai.memory.store import AuditContext, Kind, MemoryStore, normalize_name
 
 RULE = "Marge brute > 25 % du CA HT sur la période"
 
@@ -138,9 +138,72 @@ def test_upsert_entity_completes_the_existing_one(store: MemoryStore, lemaire: s
     assert (result.op, result.ref) == ("update", lemaire)
     entity = store.get("entity", lemaire)
     assert entity["name"] == "Brasserie Lemaire"
-    assert entity["aliases"] == ["Lemaire", "BL", "Lemaire SAS"]
+    # "Lemaire SAS" is "Lemaire" once its legal form is left out (MEM-05)
+    assert entity["aliases"] == ["Lemaire", "BL"]
     assert entity["attributes"] == {"vip": True}
     assert store.upsert_entity("client", "Brasserie Lemaire", aliases=["bl"]).op == "unchanged"
+
+
+# --- aliases (MEM-05) ----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("name", "normalized"),
+    [
+        ("Brasserie Lemaire", "brasserie lemaire"),
+        ("BRASSERIE LEMAIRE S.A.R.L.", "brasserie lemaire"),
+        ("Élan Bureautique SAS", "elan bureautique"),
+        ("  Café-Restaurant  du Port ", "cafe restaurant du port"),
+        ("SA", "sa"),  # nothing but a legal form: kept
+    ],
+)
+def test_normalize_name(name: str, normalized: str) -> None:
+    assert normalize_name(name) == normalized
+
+
+def test_no_duplicate_between_an_alias_and_the_name(store: MemoryStore, lemaire: str) -> None:
+    # US-M3-02: "Lemaire" is an alias of "Brasserie Lemaire": the upsert completes it
+    result = store.upsert_entity("client", "Lemaire", attributes={"segment": "PME"})
+
+    assert (result.op, result.ref) == ("update", lemaire)
+    assert len(store.dump()["entities"]) == 1
+    entity = store.get("entity", lemaire)
+    assert (entity["name"], entity["aliases"]) == ("Brasserie Lemaire", ["Lemaire", "BL"])
+    assert entity["attributes"] == {"segment": "PME"}
+
+
+def test_the_full_name_given_later_becomes_an_alias(store: MemoryStore) -> None:
+    first = store.upsert_entity("client", "Lemaire").ref
+
+    result = store.upsert_entity("client", "Brasserie Lemaire SARL", aliases=["Lemaire"])
+
+    assert (result.op, result.ref) == ("update", first)
+    assert store.get("entity", first)["aliases"] == ["Brasserie Lemaire SARL"]
+    assert len(store.dump()["entities"]) == 1
+
+
+def test_legal_forms_and_accents_name_the_same_entity(store: MemoryStore) -> None:
+    elan = store.upsert_entity("client", "Élan Bureautique").ref
+
+    assert store.upsert_entity("client", "ELAN BUREAUTIQUE SAS").op == "unchanged"
+    assert store.resolve_entity("elan bureautique sarl") == int(elan)
+
+
+def test_an_update_keeps_the_old_value_in_the_audit(store: MemoryStore, lemaire: str) -> None:
+    store.upsert_entity("client", "Lemaire", external_ref="clients:43")
+    store.upsert_entity("client", "BL", external_ref="clients:81")
+
+    assert store.get("entity", lemaire)["external_ref"] == "clients:81"
+    updates = [row for row in store.audit_log("entity", lemaire) if row["op"] == "update"]
+    assert updates[-1]["before"]["external_ref"] == "clients:43"
+
+
+def test_aliases_shared_by_two_entities_are_ambiguous(store: MemoryStore) -> None:
+    store.upsert_entity("client", "Brasserie Lemaire", aliases=["Lemaire"])
+    store.upsert_entity("client", "Lemaire Frères", aliases=["Frères Lemaire"])
+
+    with pytest.raises(AmbiguousEntity):
+        store.upsert_entity("client", "Maison Lemaire", aliases=["Lemaire", "Frères Lemaire"])
 
 
 def test_same_name_with_another_type_is_another_entity(store: MemoryStore, lemaire: str) -> None:
