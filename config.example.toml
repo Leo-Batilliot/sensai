@@ -86,6 +86,7 @@ mode = "r"
 [web]
 host = "127.0.0.1"
 port = 8000
+share_dir = "data/shares"       # X3: one frozen snapshot per shared link, deleted when revoked
 
 # Act 3 of the demo (CORE-20): with alter_answer = true, for a question that contains
 # alter_trigger, a figure of the answer is raised by 15 % before the judge, which is

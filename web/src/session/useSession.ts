@@ -21,6 +21,8 @@ export interface Session {
   setModel: (model: string) => void
   setPersona: (persona: string) => void
   answer: (questionId: string, reply: { optionId: string } | { text: string }) => void
+  share: () => void
+  unshare: (token: string) => void
   uiAction: (tool: 'memory_update' | 'memory_delete', args: Record<string, unknown>) => void
   dismissNotice: (id: number) => void
 }
@@ -119,6 +121,8 @@ export function useSession(): Session {
             : { type: 'answer', question_id: questionId, text: reply.text },
         ),
       uiAction: (tool, args) => send({ type: 'ui_action', tool, arguments: args }),
+      share: () => send({ type: 'share' }),
+      unshare: (token) => send({ type: 'unshare', token }),
       dismissNotice: (id) => dispatch({ type: 'dismiss_notice', id }),
     }),
     [state, busy, connected, send],

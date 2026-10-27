@@ -279,6 +279,30 @@ export interface PersonaChanged extends WebCommon {
   tools: ToolInfo[]
 }
 
+// A read-only link to a frozen snapshot of the conversation (X3, websocket.md §4.10)
+export interface ShareInfo {
+  token: string
+  url: string
+  created_at: number
+}
+
+export interface ShareCreated extends WebCommon, ShareInfo {
+  type: 'share_created'
+}
+
+export interface ShareRevoked extends WebCommon {
+  type: 'share_revoked'
+  token: string
+}
+
+// GET /api/shares/{token}: the finished turns at the time of the share (websocket.md §9)
+export interface SharedSnapshot extends ShareInfo {
+  model: string
+  persona: Persona | null
+  events: SessionReady['history']
+  document: unknown // the committee note with M4, null before
+}
+
 export type ServerMessage =
   | EngineEvent
   | SessionReady
@@ -286,6 +310,8 @@ export type ServerMessage =
   | ModelChanged
   | ConfigUpdated
   | PersonaChanged
+  | ShareCreated
+  | ShareRevoked
 
 export const PROTOCOL_VERSION = 1
 
@@ -301,3 +327,5 @@ export type ClientMessage =
   | { type: 'set_config'; id?: string; patch: Partial<SessionConfig> }
   | { type: 'set_persona'; id?: string; persona: string }
   | { type: 'answer'; id?: string; question_id: string; option_id?: string; text?: string }
+  | { type: 'share'; id?: string }
+  | { type: 'unshare'; id?: string; token: string }

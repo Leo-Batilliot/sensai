@@ -50,7 +50,8 @@
         "PERSONA_NOT_FOUND",
         "PROMPT_VERSION_NOT_FOUND",
         "UNKNOWN_QUESTION",
-        "SCHEDULE_NOT_FOUND"
+        "SCHEDULE_NOT_FOUND",
+        "SHARE_NOT_FOUND"
       ]
     },
     "message": {

@@ -1,0 +1,130 @@
+/* Export and share (X3): two small menus over the conversation */
+.conversation-toolbar {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-4);
+  z-index: 1; /* over the messages, under the modal */
+  display: flex;
+  gap: var(--space-2);
+}
+
+.toolbar-menu {
+  position: relative;
+}
+
+.toolbar-menu summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.toolbar-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.toolbar-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: max-content;
+  max-width: min(460px, calc(100vw - 32px));
+  padding: var(--space-3);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  font-size: 13px;
+}
+
+.toolbar-popover p {
+  margin: 0;
+}
+
+.share-popover {
+  width: min(460px, calc(100vw - 32px));
+}
+
+.share-warning {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.share-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.share-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.share-list code {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.share-actions {
+  display: flex;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.share-revoke {
+  color: var(--bad);
+}
+
+/* Page of a shared link: the conversation alone, no side panel */
+.shared-page {
+  display: grid;
+  grid-template-rows: var(--statusbar-h) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'statusbar'
+    'conversation';
+  height: 100%;
+}
+
+.shared-info {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--line);
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 13px;
+  text-align: center;
+}
+
+.shared-status {
+  margin: var(--space-6) auto;
+}
+
+/* Printing a shared page gives a clean PDF (US-X3-01): the whole thread, no scroll area */
+@media print {
+  .shared-page {
+    display: block;
+    height: auto;
+  }
+
+  .shared-page .messages {
+    overflow: visible;
+  }
+
+  .shared-page .statusbar {
+    border-bottom: 1px solid #000;
+  }
+}

@@ -12,6 +12,7 @@ from jsonschema import Draft202012Validator
 
 from sensai import __version__
 from sensai.web.engines.backend import ModelInfo, WebBackend
+from sensai.web.shares import ShareStore
 from sensai.web.websocket.session import Session
 from sensai.web.websocket.settings import invalid_session_patch
 
@@ -42,11 +43,16 @@ def protocol_error(
 
 class MessageHandler:
     def __init__(
-        self, session: Session, backend: WebBackend, validator: Draft202012Validator
+        self,
+        session: Session,
+        backend: WebBackend,
+        validator: Draft202012Validator,
+        shares: ShareStore,
     ) -> None:
         self.session = session
         self.backend = backend
         self.validator = validator
+        self.shares = shares
 
     async def session_ready(self, resumed: bool) -> dict[str, Any]:
         engine = self.session.engine
@@ -208,6 +214,23 @@ class MessageHandler:
             self.session.remember(changed)  # the separator survives a reload (§5.2, V-7)
         await self.session.send(changed)
 
+    async def _on_share(self, message: dict[str, Any], reply_to: str | None) -> None:
+        websocket = self.session.websocket
+        host = websocket.headers.get("host") if websocket is not None else None
+        share = self.shares.create(snapshot(self.session), host)
+        await self.session.send(self._ack("share_created", reply_to, **share))
+
+    async def _on_unshare(self, message: dict[str, Any], reply_to: str | None) -> None:
+        token = message["token"]
+        if not self.shares.revoke(token):
+            await self._error(
+                "SHARE_NOT_FOUND",
+                "Ce lien de partage n'existe pas ou a déjà été révoqué.",
+                reply_to,
+            )
+            return
+        await self.session.send(self._ack("share_revoked", reply_to, token=token))
+
     # --- helpers --------------------------------------------------------------------------
 
     async def _busy(self, reply_to: str | None) -> bool:
@@ -241,3 +264,14 @@ class MessageHandler:
             payload["reply_to"] = reply_to
         payload.update(fields)
         return payload
+
+
+def snapshot(session: Session) -> dict[str, Any]:
+    """What a share freezes and an export writes: the finished turns (websocket.md §4.10)."""
+    engine = session.engine
+    return {
+        "model": engine.model,
+        "persona": engine.persona,
+        "events": session.completed_history(),
+        "document": None,  # the committee note joins with M4
+    }
