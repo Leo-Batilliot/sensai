@@ -1,4 +1,4 @@
-"""Entry point: python -m sensai {chat,web,eval,seed}."""
+"""Entry point: python -m sensai {chat,web,eval,seed,prompts}."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ COMMANDS: dict[str, tuple[str, str]] = {
     "web": ("Serveur web et interface", "WEB-04"),
     "eval": ("Harness d'évaluation hors ligne", "EVAL-06"),
     "seed": ("Génère la base de démonstration", "DATA-02"),
+    "prompts": ("Versions publiées des prompts", "PROMPT-01"),
 }
 
 
@@ -26,13 +27,20 @@ def _add_chat_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--model", help="modèle Ollama (défaut : [ollama] model)")
     parser.add_argument("--config", help="fichier de configuration (défaut : ./config.toml)")
     parser.add_argument("--host", help="URL du serveur Ollama (défaut : [ollama] host)")
+    _add_prompt_version_argument(parser)
+
+
+def _add_prompt_version_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--prompt-version", help="version du prompt système (défaut : [agent] prompt_version)"
+    )
 
 
 def _run_chat(args: argparse.Namespace) -> int:
     # Imported here so that `sensai --version` and the other commands stay fast
     from sensai.cli.app import run_chat
 
-    return run_chat(args.config, args.model, args.host)
+    return run_chat(args.config, args.model, args.host, prompt_version=args.prompt_version)
 
 
 def _add_web_arguments(parser: argparse.ArgumentParser) -> None:
@@ -58,6 +66,10 @@ def _run_web(args: argparse.Namespace) -> int:
         config = load_config(args.config, overrides={"web.host": args.host, "web.port": args.port})
     except ConfigError as exc:
         print(exc, file=sys.stderr)
+        return 1
+    problem = prompt_problem(config)
+    if problem is not None:
+        print(problem, file=sys.stderr)
         return 1
     if args.mock:
         from sensai.web.engines.mock import MockBackend
@@ -124,8 +136,9 @@ def _add_eval_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "compare",
         nargs="*",
-        metavar="compare AVANT APRÈS",
-        help="compare deux rapports (tags ou chemins .json) au lieu de lancer le jeu",
+        metavar="compare AVANT APRÈS | calibrate",
+        help="compare deux rapports (tags ou chemins .json), ou calibre le juge sur "
+        "eval/judge_calibration.jsonl, au lieu de lancer le jeu",
     )
     parser.add_argument("--suite", default="eval/golden.jsonl", help="jeu de questions")
     parser.add_argument("--tag", help="nom de la version mesurée, ex. v0.5")
@@ -138,11 +151,29 @@ def _add_eval_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--model", help="modèle Ollama mesuré (défaut : [ollama] model)")
     parser.add_argument("--host", help="URL du serveur Ollama (défaut : [ollama] host)")
     parser.add_argument("--config", help="fichier de configuration (défaut : ./config.toml)")
+    _add_prompt_version_argument(parser)
+    parser.add_argument(
+        "--no-fewshot",
+        action="store_true",
+        help="sans exemples dynamiques ([fewshot] enabled = false), témoin d'A7",
+    )
+    parser.add_argument(
+        "--no-memory",
+        action="store_true",
+        help="mémoire vide pour chaque question (sans eval/memory_rules.json), témoin de M3",
+    )
+    parser.add_argument(
+        "--numeric-only",
+        action="store_true",
+        help="calibrate : contrôle numérique seul, sans appeler le modèle du juge",
+    )
 
 
 def _run_eval(args: argparse.Namespace) -> int:
     from sensai.eval.report import ReportError, check_tag, compare, find_report, load_report
 
+    if args.compare == ["calibrate"]:
+        return _run_calibration(args)
     if args.compare:
         if len(args.compare) != 3 or args.compare[0] != "compare":
             print("usage : sensai eval compare AVANT APRÈS", file=sys.stderr)
@@ -168,10 +199,20 @@ def _run_eval(args: argparse.Namespace) -> int:
 
     try:
         config = load_config(
-            args.config, overrides={"ollama.model": args.model, "ollama.host": args.host}
+            args.config,
+            overrides={
+                "ollama.model": args.model,
+                "ollama.host": args.host,
+                "agent.prompt_version": args.prompt_version,
+                "fewshot.enabled": False if args.no_fewshot else None,
+            },
         )
     except ConfigError as exc:
         print(exc, file=sys.stderr)
+        return 1
+    problem = prompt_problem(config)
+    if problem is not None:
+        print(f"sensai eval : {problem}", file=sys.stderr)
         return 1
     return asyncio.run(_eval_run(args, config))
 
@@ -179,7 +220,7 @@ def _run_eval(args: argparse.Namespace) -> int:
 async def _eval_run(args: argparse.Namespace, config: Config) -> int:
     """`sensai eval --suite … --tag …`: the golden set on the real engine (EVAL-06)."""
     from sensai.eval.golden import REFERENCE_DATE
-    from sensai.eval.harness import QuestionResult, run_and_report
+    from sensai.eval.harness import MEMORY_RULES_PATH, QuestionResult, run_and_report
     from sensai.eval.report import load_report
     from sensai.eval.runtime import EvalRuntime, check_models
 
@@ -201,6 +242,7 @@ async def _eval_run(args: argparse.Namespace, config: Config) -> int:
             today=today,
             seed=args.seed,
             info=runtime.info(),
+            memory_rules_path=None if args.no_memory else MEMORY_RULES_PATH,
             on_result=progress,
             teardown=runtime.aclose,
         )
@@ -210,12 +252,147 @@ async def _eval_run(args: argparse.Namespace, config: Config) -> int:
     return 0
 
 
+def prompt_problem(config: Config) -> str | None:
+    """Why the configured prompt cannot be used (unknown version, published file changed),
+    in French; None if it can. Checked before starting, like the model."""
+    from sensai.core.errors import PromptVersionNotFound
+    from sensai.core.prompts import RegistryError, check_version
+
+    try:
+        check_version(config.agent.prompt_version)
+    except PromptVersionNotFound as exc:
+        return exc.message
+    except RegistryError as exc:
+        return str(exc)
+    return None
+
+
+def _add_prompts_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "action",
+        nargs="?",
+        default="list",
+        choices=("list", "show", "diff"),
+        help="list (défaut), show VERSION ou diff AVANT APRÈS",
+    )
+    parser.add_argument("versions", nargs="*", metavar="VERSION")
+    parser.add_argument("--config", help="fichier de configuration (défaut : ./config.toml)")
+
+
+def _run_prompts(args: argparse.Namespace) -> int:
+    """`sensai prompts list | show VERSION | diff AVANT APRÈS` (A4)."""
+    import difflib
+
+    from sensai.core.config import ConfigError, load_config
+    from sensai.core.errors import PromptVersionNotFound
+    from sensai.core.prompts import PromptRegistry, RegistryError, load
+
+    expected = {"list": 0, "show": 1, "diff": 2}[args.action]
+    if len(args.versions) != expected:
+        print("usage : sensai prompts [list | show VERSION | diff AVANT APRÈS]", file=sys.stderr)
+        return 2
+    try:
+        current = load_config(args.config).agent.prompt_version
+        registry = PromptRegistry.load()
+        entries = [registry.get(version) for version in args.versions]
+    except (ConfigError, RegistryError) as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    except PromptVersionNotFound as exc:
+        print(exc.message, file=sys.stderr)
+        return 1
+    if args.action == "list":
+        for entry in registry.entries:
+            mark = "*" if entry.version == current else " "
+            parent = f", parent {entry.parent}" if entry.parent else ""
+            print(
+                f"{mark} {entry.name} {entry.version}  {entry.created}  {entry.sha256[:12]}"
+                f"{parent}\n    {entry.notes}"
+            )
+    elif args.action == "show":
+        print(load(entries[0].file), end="")
+    else:
+        before, after = entries
+        diff = difflib.unified_diff(
+            load(before.file).splitlines(keepends=True),
+            load(after.file).splitlines(keepends=True),
+            fromfile=before.file,
+            tofile=after.file,
+        )
+        print("".join(diff), end="")
+    return 0
+
+
+def _run_calibration(args: argparse.Namespace) -> int:
+    """`sensai eval calibrate`: precision and recall of the judge (EVAL-07)."""
+    import asyncio
+
+    from sensai.core.config import ConfigError, load_config
+    from sensai.eval.report import ReportError, check_tag
+
+    tag = args.tag or "calibration"
+    try:
+        check_tag(tag)
+        config = load_config(
+            args.config, overrides={"ollama.model": args.model, "ollama.host": args.host}
+        )
+    except ReportError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    except ConfigError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    return asyncio.run(_calibrate(args, config, tag))
+
+
+async def _calibrate(args: argparse.Namespace, config: Config, tag: str) -> int:
+    from sensai.eval.calibration import (
+        CALIBRATION_PATH,
+        build_calibration_report,
+        load_cases,
+        run_calibration,
+        write_calibration_report,
+    )
+    from sensai.eval.judge import Judge
+    from sensai.eval.report import report_paths
+    from sensai.eval.runtime import SeededOllamaClient, check_models
+
+    model = None if args.numeric_only else config.ollama.effective_judge_model
+    tolerance = config.eval.numeric_tolerance
+    if model is None:
+        outcomes = await run_calibration(load_cases(CALIBRATION_PATH), None, tolerance)
+    else:
+        problem = await check_models(config)
+        if problem is not None:
+            print(f"sensai eval calibrate : {problem}", file=sys.stderr)
+            return 1
+        async with SeededOllamaClient(
+            config.ollama.host, seed=args.seed, timeout_s=config.ollama.timeout_s
+        ) as client:
+            judge = Judge(client, model, tolerance=tolerance, num_ctx=config.ollama.num_ctx)
+            outcomes = await run_calibration(load_cases(CALIBRATION_PATH), judge, tolerance)
+    info = {
+        "suite": CALIBRATION_PATH.as_posix(),
+        "judge_model": model,
+        "ollama_seed": None if model is None else args.seed,
+        "numeric_tolerance": tolerance,
+    }
+    report = build_calibration_report(outcomes, tag=tag, info=info)
+    json_path, md_path = report_paths(tag, date.today())
+    write_calibration_report(report, json_path, md_path)
+    for name, matrix in report["detectors"].items():
+        print(f"{name} : précision {matrix['precision']}, rappel {matrix['recall']}")
+    print(f"Rapports : {json_path} et {md_path}")
+    return 0
+
+
 # Subcommands already implemented; the others print "pas encore implémenté"
 HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "chat": _run_chat,
     "web": _run_web,
     "eval": _run_eval,
     "seed": _run_seed,
+    "prompts": _run_prompts,
 }
 
 
@@ -233,6 +410,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_eval_arguments(command)
         elif name == "seed":
             _add_seed_arguments(command)
+        elif name == "prompts":
+            _add_prompts_arguments(command)
     return parser
 
 

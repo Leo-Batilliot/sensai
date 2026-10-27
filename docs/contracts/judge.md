@@ -105,12 +105,15 @@ Conditions de reproductibilité : même graine de données, date de référence 
 | `judge_enabled`, `temperature`, `ollama_seed`, `num_ctx` | booléen, nombres | Réglages du run : `temperature` vaut toujours 0, `ollama_seed` est envoyé à Ollama (`options.seed`) |
 | `prompt` | `{name, version, file, sha256}` | Prompt système utilisé (A4). `sha256` : empreinte du fichier ; même valeur que `registry.toml` quand le registre existe (PROMPT-01) |
 | `persona` | chaîne ou `null` | Profil actif (A5) ; `null` sans profil |
-| `fewshot` | `{enabled, bank}` | Exemples dynamiques (A7) : `bank` est le fichier de la banque, `null` si désactivés |
+| `fewshot` | `{enabled, bank}` | Exemples dynamiques (A7) : `bank` est le fichier de la banque, `null` si désactivés. `enabled` est faux si la version du prompt n'a pas de trou `$examples` |
+| `memory` | chaîne ou `null` | Règles mises en mémoire avant chaque question (`eval/memory_rules.json`), `null` pour l'ablation de M3 (`--no-memory`). Ajout d'EVAL-08 |
 | `date_tool` | `"frozen"` | L'outil de date renvoie la date de référence (jamais l'heure réelle) |
 | `questions` | entier | Nombre de questions jouées |
 | `metrics` | objet de `{value, n}` | Métriques du §3 : `ex`, `sql_valid`, `destructive_recall`, `hitl_false_positives`, `faithfulness`, `relevance`, `turn_errors`, `judge_json_first_try`, `judge_json_valid`, `tool_args_first_try`, `tool_args_valid`. `value` vaut `null` si `n` = 0 |
+| `ex_by_category` | objet de `{value, n}` | EX par catégorie du jeu. Ajout d'EVAL-08 |
 | `latency` | objet d'entiers ou `null` | `turn_p50_ms`, `turn_p95_ms`, `first_token_p50_ms`, `first_token_p95_ms`, `judge_p50_ms`, `judge_p95_ms` |
-| `results` | liste | Une entrée par question : `id`, `category`, `answer`, `sql`, `ex`, `sql_valid`, `confirmation_requested`, `unconfirmed_write`, `memory_refs`, `badge`, `faithfulness`, `relevance`, `error`, durées, `tool_arguments` et `judge_json` (`{first_try, repaired, failed}`) |
+| `tokens` | `{prompt_mean, completion_mean, n}` | Tokens du dernier appel au modèle de chaque tour (`message_done.usage`), en moyenne, `null` sans mesure. Ajout d'EVAL-08 |
+| `results` | liste | Une entrée par question : `id`, `category`, `answer`, `sql`, `ex`, `sql_valid`, `confirmation_requested`, `unconfirmed_write`, `memory_refs`, `badge`, `faithfulness`, `relevance`, `error`, durées, `tool_arguments` et `judge_json` (`{first_try, repaired, failed}`), `prompt_tokens` et `completion_tokens` |
 
 Règles :
 - Une clé ajoutée plus tard (ex. résultats par profil) est un **ajout** : `sensai eval compare` lit les anciens rapports sans elle.

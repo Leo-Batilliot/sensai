@@ -1,0 +1,304 @@
+{
+  "version": 1,
+  "tag": "calibration-numeric",
+  "suite": "eval/judge_calibration.jsonl",
+  "judge_model": null,
+  "ollama_seed": null,
+  "numeric_tolerance": 0.01,
+  "cases": 20,
+  "hallucinated": 11,
+  "judge_unavailable": null,
+  "detectors": {
+    "numeric": {
+      "tp": 7,
+      "fp": 0,
+      "fn": 4,
+      "tn": 9,
+      "precision": 1.0,
+      "recall": 0.6364,
+      "n": 20
+    }
+  },
+  "badges": null,
+  "errors": {
+    "numeric": [
+      {
+        "id": "c04",
+        "category": "wrong_entity",
+        "hallucinated": true
+      },
+      {
+        "id": "c10",
+        "category": "wrong_entity",
+        "hallucinated": true
+      },
+      {
+        "id": "c18",
+        "category": "wrong_number",
+        "hallucinated": true
+      },
+      {
+        "id": "c19",
+        "category": "wrong_entity",
+        "hallucinated": true
+      }
+    ]
+  },
+  "results": [
+    {
+      "id": "c01",
+      "category": "correct",
+      "hallucinated": false,
+      "expected_badge": "verified",
+      "badge": "unavailable",
+      "numeric_status": "ok",
+      "unmatched": [],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c02",
+      "category": "wrong_number",
+      "hallucinated": true,
+      "expected_badge": "contradicted",
+      "badge": "contradicted",
+      "numeric_status": "mismatch",
+      "unmatched": [
+        "290 625,54 €"
+      ],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c03",
+      "category": "correct",
+      "hallucinated": false,
+      "expected_badge": "verified",
+      "badge": "unavailable",
+      "numeric_status": "ok",
+      "unmatched": [],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c04",
+      "category": "wrong_entity",
+      "hallucinated": true,
+      "expected_badge": "contradicted",
+      "badge": "unavailable",
+      "numeric_status": "ok",
+      "unmatched": [],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c05",
+      "category": "wrong_number",
+      "hallucinated": true,
+      "expected_badge": "contradicted",
+      "badge": "contradicted",
+      "numeric_status": "mismatch",
+      "unmatched": [
+        "33 000 €"
+      ],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c06",
+      "category": "correct",
+      "hallucinated": false,
+      "expected_badge": "verified",
+      "badge": "unavailable",
+      "numeric_status": "ok",
+      "unmatched": [],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c07",
+      "category": "wrong_number",
+      "hallucinated": true,
+      "expected_badge": "contradicted",
+      "badge": "contradicted",
+      "numeric_status": "mismatch",
+      "unmatched": [
+        "45"
+      ],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c08",
+      "category": "unsourced",
+      "hallucinated": false,
+      "expected_badge": "needs_review",
+      "badge": "unavailable",
+      "numeric_status": "ok",
+      "unmatched": [],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c09",
+      "category": "correct",
+      "hallucinated": false,
+      "expected_badge": "verified",
+      "badge": "unavailable",
+      "numeric_status": "ok",
+      "unmatched": [],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c10",
+      "category": "wrong_entity",
+      "hallucinated": true,
+      "expected_badge": "contradicted",
+      "badge": "unavailable",
+      "numeric_status": "ok",
+      "unmatched": [],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c11",
+      "category": "wrong_number",
+      "hallucinated": true,
+      "expected_badge": "contradicted",
+      "badge": "contradicted",
+      "numeric_status": "mismatch",
+      "unmatched": [
+        "2 800,91 €"
+      ],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c12",
+      "category": "correct",
+      "hallucinated": false,
+      "expected_badge": "verified",
+      "badge": "unavailable",
+      "numeric_status": "ok",
+      "unmatched": [],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c13",
+      "category": "wrong_number",
+      "hallucinated": true,
+      "expected_badge": "contradicted",
+      "badge": "contradicted",
+      "numeric_status": "mismatch",
+      "unmatched": [
+        "12",
+        "650"
+      ],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c14",
+      "category": "correct",
+      "hallucinated": false,
+      "expected_badge": "verified",
+      "badge": "unavailable",
+      "numeric_status": "ok",
+      "unmatched": [],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c15",
+      "category": "wrong_number",
+      "hallucinated": true,
+      "expected_badge": "contradicted",
+      "badge": "contradicted",
+      "numeric_status": "mismatch",
+      "unmatched": [
+        "47,4"
+      ],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c16",
+      "category": "unsourced",
+      "hallucinated": false,
+      "expected_badge": "needs_review",
+      "badge": "unavailable",
+      "numeric_status": "ok",
+      "unmatched": [],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c17",
+      "category": "correct",
+      "hallucinated": false,
+      "expected_badge": "verified",
+      "badge": "unavailable",
+      "numeric_status": "ok",
+      "unmatched": [],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c18",
+      "category": "wrong_number",
+      "hallucinated": true,
+      "expected_badge": "contradicted",
+      "badge": "unavailable",
+      "numeric_status": "ok",
+      "unmatched": [],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c19",
+      "category": "wrong_entity",
+      "hallucinated": true,
+      "expected_badge": "contradicted",
+      "badge": "unavailable",
+      "numeric_status": "ok",
+      "unmatched": [],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    },
+    {
+      "id": "c20",
+      "category": "wrong_number",
+      "hallucinated": true,
+      "expected_badge": "contradicted",
+      "badge": "contradicted",
+      "numeric_status": "mismatch",
+      "unmatched": [
+        "23,2 %"
+      ],
+      "judge_ran": false,
+      "judge_flagged": null,
+      "judge_claims": null
+    }
+  ]
+}

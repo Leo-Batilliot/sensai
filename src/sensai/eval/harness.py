@@ -95,6 +95,9 @@ class QuestionResult:
     # T5 counters {first_try, repaired, failed}; None when the engine does not give them
     tool_arguments: dict[str, int] | None = None
     judge_json: dict[str, int] | None = None
+    # Tokens of the last model call of the turn (message_done.usage), None if not given
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
 
     @property
     def destructive_ok(self) -> bool:
@@ -124,6 +127,7 @@ class _Turn:
     duration_ms: int | None = None  # at the end of the turn: the judge is measured apart
     first_token_ms: int | None = None
     report: events.JudgeReport | None = None
+    usage: events.ContextUsage | None = None
 
     def add(self, event: events.Event, elapsed_ms: int) -> None:
         if isinstance(event, events.ContextInjected):
@@ -145,6 +149,7 @@ class _Turn:
         elif isinstance(event, events.MessageDone):
             self.answer = event.content
             self.duration_ms = event.duration_ms
+            self.usage = event.usage
         elif isinstance(event, events.Error):
             self.error = event.code
             self.duration_ms = elapsed_ms
@@ -204,6 +209,8 @@ async def run_question(
         judge_ms=report.duration_ms if report else None,
         tool_arguments=counters.get("tool_arguments"),
         judge_json=counters.get("judge"),
+        prompt_tokens=turn.usage.prompt_tokens if turn.usage else None,
+        completion_tokens=turn.usage.completion_tokens if turn.usage else None,
     )
 
 
@@ -335,6 +342,29 @@ def compute_latency(results: Sequence[QuestionResult]) -> dict[str, int | None]:
     }
 
 
+def compute_ex_by_category(results: Sequence[QuestionResult]) -> dict[str, dict[str, Any]]:
+    """EX per category of the golden set (EVAL-08: where the examples help or not)."""
+    categories = sorted({r.category for r in results if r.ex is not None})
+    return {
+        category: _rate(
+            [bool(r.ex) for r in results if r.ex is not None and r.category == category]
+        )
+        for category in categories
+    }
+
+
+def compute_tokens(results: Sequence[QuestionResult]) -> dict[str, Any]:
+    """Mean tokens of the last model call of a turn: what a prompt version or the examples
+    cost (A4, A7)."""
+    prompt = [r.prompt_tokens for r in results if r.prompt_tokens is not None]
+    completion = [r.completion_tokens for r in results if r.completion_tokens is not None]
+    return {
+        "prompt_mean": round(statistics.fmean(prompt)) if prompt else None,
+        "completion_mean": round(statistics.fmean(completion)) if completion else None,
+        "n": len(prompt),
+    }
+
+
 def build_report(
     results: Sequence[QuestionResult], *, tag: str, info: dict[str, Any]
 ) -> dict[str, Any]:
@@ -345,7 +375,9 @@ def build_report(
         **info,
         "questions": len(results),
         "metrics": compute_metrics(results),
+        "ex_by_category": compute_ex_by_category(results),
         "latency": compute_latency(results),
+        "tokens": compute_tokens(results),
         "results": [asdict(result) for result in results],
     }
 
@@ -367,7 +399,8 @@ async def run_and_report(
     """`sensai eval --suite ... --tag ...`: run the suite, write both reports.
 
     info adds run information to the report (model, judge model...). run_day names the
-    report files (today's date by default, not the reference date).
+    report files (today's date by default, not the reference date). Without
+    memory_rules_path, the memory of each question starts empty: the ablation of M3.
     """
     rules = load_memory_rules(memory_rules_path) if memory_rules_path else []
     results = await run_suite(
@@ -379,7 +412,13 @@ async def run_and_report(
         on_result=on_result,
         teardown=teardown,
     )
-    details = {"suite": str(suite), "today": today.isoformat(), "seed": seed, **(info or {})}
+    details = {
+        "suite": str(suite),
+        "today": today.isoformat(),
+        "seed": seed,
+        "memory": str(memory_rules_path) if memory_rules_path else None,
+        **(info or {}),
+    }
     report = build_report(results, tag=tag, info=details)
     return write_report(report, run_day or date.today(), reports_dir)
 
@@ -396,8 +435,10 @@ __all__ = [
     "RunSetup",
     "TurnEngine",
     "build_report",
+    "compute_ex_by_category",
     "compute_latency",
     "compute_metrics",
+    "compute_tokens",
     "load_memory_rules",
     "percentile",
     "reference_rows",

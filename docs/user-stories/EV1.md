@@ -22,7 +22,7 @@ En tant que **membre de l'équipe de développement**, je veux **comparer deux v
 
 **Critères d'acceptation**
 - Une commande exécute le golden set (25 questions) et produit un rapport horodaté (JSON + Markdown).
-  — vérifié par : `tests/unit/eval/test_harness.py::test_run_and_report_writes_both_reports`, `tests/unit/eval/test_harness.py::test_ex_and_sql_valid_per_question`, `tests/unit/eval/test_golden.py::test_gold_sql_gives_rows_on_the_demo_data`. La commande `sensai eval --tag …` attend le moteur branché sur MCP (MCP-04, CORE-10) : `tests/unit/eval/test_report.py::test_eval_run_says_what_it_waits_for`. *Premier chiffre d'EX réel à publier après CORE-10.*
+  — vérifié par : `tests/unit/eval/test_harness.py::test_run_and_report_writes_both_reports`, `tests/unit/eval/test_harness.py::test_ex_and_sql_valid_per_question`, `tests/unit/eval/test_golden.py::test_gold_sql_gives_rows_on_the_demo_data`. `sensai eval --tag …` tourne sur le moteur réel (EVAL-06) : `tests/integration/test_eval_runtime.py::test_the_golden_set_on_the_real_tools`, `test_eval_run_stops_at_once_when_ollama_is_down`. *Premier chiffre d'EX réel à publier depuis la machine de démo (EVAL-09).*
 - Une commande compare deux rapports et affiche les écarts par métrique.
   — vérifié par : `tests/unit/eval/test_report.py::test_compare_shows_deltas_and_changed_questions`, `tests/unit/eval/test_report.py::test_eval_compare_command` ; démo : `sensai eval compare v0.5 v1.0`.
 - Deux exécutions identiques donnent les mêmes résultats (graine, date figée, température 0) ; seule la latence change.
@@ -35,9 +35,9 @@ En tant que **responsable qualité**, je veux **mesurer la fiabilité du juge lu
 
 **Critères d'acceptation**
 - Un jeu de réponses annotées à la main contient des erreurs injectées.
-  — vérifié par : premiers cas dans `tests/fixtures/judge/cases.jsonl`, `tests/unit/eval/test_judge.py::test_judge_gives_the_expected_badge` ; jeu de 20 réponses annotées : EVAL-07. *À faire.*
+  — vérifié par : premiers cas dans `tests/fixtures/judge/cases.jsonl`, `tests/unit/eval/test_judge.py::test_judge_gives_the_expected_badge` ; jeu de 20 réponses annotées affirmation par affirmation : `eval/judge_calibration.jsonl`, `tests/unit/eval/test_calibration.py::test_the_set_has_the_planned_mix_of_errors`.
 - Le rapport indique la précision et le rappel du juge.
-  — vérifié par : EVAL-07 (définitions dans `judge.md` §3, ligne « Calibration du juge »). *À faire.*
+  — vérifié par : `sensai eval calibrate`, `tests/unit/eval/test_calibration.py::test_report_and_tables` ; contrôle numérique seul mesuré (`test_the_numeric_check_alone_on_the_set`) ; juge sur le vrai modèle : *à faire* sur la machine de démo.
 - Les cas où le juge se trompe sont listés et analysés dans `docs/EVALUATION.md`.
   — vérifié par : DOC-07. *À faire.*
 

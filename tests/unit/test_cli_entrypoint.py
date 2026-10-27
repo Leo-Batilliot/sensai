@@ -36,3 +36,35 @@ def test_runs_as_module() -> None:
     )
     assert result.returncode == 0
     assert __version__ in result.stdout
+
+
+def test_prompts_commands(capsys: pytest.CaptureFixture[str]) -> None:
+    # US-A4-02: the registry and the differences between two versions, from the terminal
+    assert main(["prompts"]) == 0
+    listed = capsys.readouterr().out
+    assert "* system_sql v1" in listed  # the configured version is marked
+    assert "0279c84af1d7" in listed  # start of its fingerprint
+
+    assert main(["prompts", "show", "v1"]) == 0
+    assert "$memory" in capsys.readouterr().out
+
+    assert main(["prompts", "diff", "v1", "v1"]) == 0
+    assert capsys.readouterr().out == ""  # a version has no difference with itself
+
+
+@pytest.mark.parametrize("argv", [["prompts", "show"], ["prompts", "diff", "v1"]])
+def test_prompts_commands_check_their_arguments(
+    argv: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(argv) == 2
+    assert "usage : sensai prompts" in capsys.readouterr().err
+
+
+def test_an_unknown_prompt_version_is_refused_before_starting(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["prompts", "show", "v9"]) == 1
+    assert "Version de prompt inconnue" in capsys.readouterr().err
+
+    assert main(["eval", "--tag", "essai", "--prompt-version", "v9"]) == 1
+    assert "Versions publiées : v1" in capsys.readouterr().err
