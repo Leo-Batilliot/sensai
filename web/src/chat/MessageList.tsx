@@ -15,8 +15,9 @@ interface Props {
   onAnswer: (questionId: string, reply: Reply) => void
   canAsk: boolean
   onAsk: (question: string) => void
-  onShowSteps: (turnId: string) => void
-  onShowMemory: () => void
+  // Absent on a shared page: no timeline, no memory panel
+  onShowSteps?: (turnId: string) => void
+  onShowMemory?: () => void
 }
 
 export function MessageList({

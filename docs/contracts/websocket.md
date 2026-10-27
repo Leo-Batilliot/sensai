@@ -402,7 +402,7 @@ Envoyé une fois, juste après l'ouverture.
  "token": "kq3Vb0wLr8nT2xYc5HdJ1A"}
 ```
 
-- `token` : 16 octets aléatoires en base64 URL (`secrets.token_urlsafe(16)`, 22 caractères). `url` est absolue, construite avec `[web] host` et `port`.
+- `token` : 16 octets aléatoires en base64 URL (`secrets.token_urlsafe(16)`, 22 caractères). `url` est absolue, construite avec l'adresse par laquelle le navigateur joint le serveur (en-tête `Host`) ; sur un serveur ouvert au réseau (`[web] host = "0.0.0.0"`), une adresse locale (`127.0.0.1`, `localhost`) est remplacée par l'adresse de la machine sur le réseau. L'instantané est écrit dans `[web] share_dir` (par défaut `data/shares`).
 - Le serveur écoute sur `127.0.0.1` par défaut : le lien n'est joignable que depuis la machine, sauf si `[web] host` est changé.
 
 #### `schedule_run_started` et `schedule_run_finished` (v1.1)
@@ -605,7 +605,7 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 | `GET /api/documents/current/revisions` (v1.1) | `{revisions: [{revision, op, section_id, actor, at}]}` | Panneau Note (M4) |
 | `GET /api/documents/current/export?format=md` (v1.1) | Le document en Markdown (`text/markdown`) | Export (M4, X3) |
 | `GET /api/sessions/{session_id}/export?format=md\|json` (v1.1) | La conversation : Markdown lisible, ou JSON | Export (X3) |
-| `GET /api/shares` (v1.1) | `{shares: [{token, url, created_at}]}` | Liste des liens (X3) |
+| `GET /api/shares` (v1.1) | `{shares: [{token, url, created_at}], local_only}` | Liste des liens (X3) |
 | `GET /api/shares/{token}` (v1.1) | L'instantané partagé (JSON) ; 404 si révoqué ou inconnu | Page partagée (X3) |
 | `GET /share/{token}` (v1.1) | **Page en lecture seule, sans authentification**, sans WebSocket ni action | Lien partagé (X3) |
 | `GET /api/schedules` (v1.1) | `{schedules: [{id, at, every_minutes, question, persona, output, enabled, next_run, last_runs}]}` | Tâches planifiées (X5) |
@@ -614,7 +614,8 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 - `GET /api/schema` est alimenté par `sql_toolbox` (`list_tables`, `describe_table`) via le registry. **La couche web n'ouvre jamais `business.db` elle-même** : `sql_toolbox` reste le seul accès à la base.
 - **v1.1** :
   - `GET /api/personas` : `current` est le profil de démarrage (`[agent] persona`) ; celui d'une session est dans `session_ready.persona`. `tools` : les noms d'outils autorisés par le profil, après application des motifs.
-  - `GET /api/sessions/{session_id}/export` : le JSON vaut `{session_id, exported_at, model, persona, events}`, où `events` a la forme de `session_ready.history`. Session inconnue ou expirée : 404 ; autre `format` : 400.
+  - `GET /api/sessions/{session_id}/export` : le JSON vaut `{session_id, exported_at, model, persona, events}`, où `events` a la forme de `session_ready.history`. Session inconnue ou expirée : 404 ; autre `format` : 400. Le fichier est servi en téléchargement (`Content-Disposition: attachment`) ; le Markdown reprend les questions, réponses, requêtes SQL, 20 premières lignes de chaque tableau, badge, chiffres clés et hypothèses.
+  - `GET /api/shares` : `local_only` vaut `true` quand le serveur n'accepte que cette machine (`[web] host` = `127.0.0.1`) ; le front prévient alors que le lien ne s'ouvre pas ailleurs.
   - `GET /api/shares/{token}` : `{token, created_at, model, persona, events, document}`, avec `events` comme `session_ready.history` et `document` comme `GET /api/documents/current` (ou `null`). L'instantané est **figé** dans `data/shares/<token>.json`.
   - `GET /share/{token}` est servie par le build du front (WEB-14) : la même application en mode lecture seule, qui lit `GET /api/shares/{token}`. Elle affiche « Toute personne qui a ce lien voit cette conversation ».
   - `GET /api/schedules` : une tâche a soit `at`, soit `every_minutes` (l'autre vaut `null`). `next_run` vaut `null` si elle est désactivée. `last_runs` : les 5 dernières exécutions, de la plus récente à la plus ancienne, `[{run_id, trigger, started_at, finished_at, status, badge, report_path, error}]`.

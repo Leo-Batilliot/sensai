@@ -172,6 +172,7 @@ class FilesConfig(_Section):
 class WebConfig(_Section):
     host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65535)
+    share_dir: Path = Path("data/shares")  # X3: frozen snapshots of the shared links
 
 
 class DemoConfig(_Section):

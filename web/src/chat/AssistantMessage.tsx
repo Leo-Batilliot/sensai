@@ -63,8 +63,8 @@ interface Props {
   onAnswer: (questionId: string, reply: Reply) => void
   canAsk: boolean
   onAsk: (question: string) => void
-  onShowSteps: (turnId: string) => void
-  onShowMemory: () => void
+  onShowSteps?: (turnId: string) => void
+  onShowMemory?: () => void
 }
 
 export function AssistantMessage({
@@ -91,28 +91,37 @@ export function AssistantMessage({
         {(turn.judge !== null || turn.steps.length > 0) && (
           <div className="message-meta">
             {turn.judge !== null && <JudgeBadge judge={turn.judge} />}
-            {turn.steps.length > 0 && (
-              <button type="button" className="steps-link" onClick={() => onShowSteps(turn.id)}>
-                <span aria-hidden="true">▶</span> {stepsSummary(turn)}
-              </button>
-            )}
+            {turn.steps.length > 0 &&
+              (onShowSteps !== undefined ? (
+                <button type="button" className="steps-link" onClick={() => onShowSteps(turn.id)}>
+                  <span aria-hidden="true">▶</span> {stepsSummary(turn)}
+                </button>
+              ) : (
+                <span className="steps-link">{stepsSummary(turn)}</span>
+              ))}
           </div>
         )}
         {turn.context.length > 0 && (
           // What was given to the model, not what it applied (memory.md §4)
           <p className="context-chips">
             <span className="muted">Contexte mémoire fourni :</span>
-            {turn.context.map((entry) => (
-              <button
-                key={`${entry.kind}:${entry.ref}`}
-                type="button"
-                className="chip chip-small"
-                title="Voir la mémoire de l'agent"
-                onClick={onShowMemory}
-              >
-                {entry.label}
-              </button>
-            ))}
+            {turn.context.map((entry) =>
+              onShowMemory !== undefined ? (
+                <button
+                  key={`${entry.kind}:${entry.ref}`}
+                  type="button"
+                  className="chip chip-small"
+                  title="Voir la mémoire de l'agent"
+                  onClick={onShowMemory}
+                >
+                  {entry.label}
+                </button>
+              ) : (
+                <span key={`${entry.kind}:${entry.ref}`} className="chip chip-small">
+                  {entry.label}
+                </span>
+              ),
+            )}
           </p>
         )}
         {label !== null && (
