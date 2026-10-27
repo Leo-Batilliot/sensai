@@ -197,6 +197,17 @@ class SessionManager:
     def get(self, session_id: str) -> Session | None:
         return self._sessions.get(session_id)
 
+    async def broadcast(
+        self, message: dict[str, Any], requester: str | None, reply_to: str | None
+    ) -> None:
+        """A message for every open session, out of their history (schedule_run_*, §5.2);
+        reply_to only in the copy of the session that asked for it."""
+        for session in list(self._sessions.values()):
+            payload = {"type": message["type"], "session_id": session.id, "ts": time.time()}
+            if reply_to is not None and session.id == requester:
+                payload["reply_to"] = reply_to
+            await session.send({**payload, **message})
+
     async def close_all(self) -> None:
         """Application shutdown: release every engine."""
         sessions, self._sessions = list(self._sessions.values()), {}

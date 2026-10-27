@@ -28,7 +28,7 @@ from typing import Any
 
 from sensai.core.ask import Answer, PendingQuestion, QuestionBroker, answer_result, pending_question
 from sensai.core.config import Config
-from sensai.core.confirm import ConfirmationBroker, Decision, PendingAction
+from sensai.core.confirm import AutoRejectBroker, ConfirmationBroker, Decision, PendingAction
 from sensai.memory.errors import MemoryStoreError
 from sensai.memory.store import AuditContext, MemoryStore
 from sensai.web.engines.backend import ModelInfo, Persona, PersonaTools
@@ -631,6 +631,12 @@ class MockBackend:
             self._pacing,
             memory=self._store(),
             questions=questions,
+        )
+
+    def scheduled_engine(self, session_id: str) -> MockEngine:
+        # The same fixtures: a confirmation is refused at once, a question gets no answer
+        return MockEngine(
+            session_id, self._config, AutoRejectBroker(), self._turns, self._pacing, self._store()
         )
 
 

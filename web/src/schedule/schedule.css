@@ -1,0 +1,113 @@
+/* Scheduled tasks panel (X5, act 5): same cards as the memory panel */
+.schedules-panel,
+.schedules-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.schedules-empty p,
+.schedules-panel p {
+  margin: 0;
+}
+
+.schedule-note {
+  font-size: 12px;
+}
+
+.schedule-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.schedule-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  font-size: 13px;
+}
+
+.schedule-disabled {
+  background: var(--surface);
+  color: var(--ink-muted);
+}
+
+.schedule-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.schedule-question {
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.schedule-run {
+  align-self: flex-start;
+}
+
+.schedule-run:disabled {
+  border-style: dashed;
+  color: var(--ink-muted);
+  cursor: not-allowed;
+}
+
+.schedule-runs h4 {
+  margin: var(--space-1) 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.schedule-runs ul {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.schedule-run-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+
+.schedule-run-result {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.schedule-run-result a {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.schedule-run-result .judge-badge {
+  height: 20px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.schedule-error {
+  flex-basis: 100%;
+  color: var(--bad);
+}

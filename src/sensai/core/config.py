@@ -30,7 +30,14 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal, get_args, get_origin
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -45,6 +52,10 @@ ENV_PREFIX = "SENSAI_"
 # function names only accept [A-Za-z0-9_-]. A double underscore would make the
 # prefix ambiguous.
 _SERVER_NAME = re.compile(r"^[A-Za-z0-9-]+(_[A-Za-z0-9-]+)*$")
+# A scheduled task: its id is in the WebSocket messages and the report file name
+_SCHEDULE_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+# "MON 07:00" ... "SUN 07:00", or "DAILY 07:00": local time of the machine
+SCHEDULE_AT = re.compile(r"^(MON|TUE|WED|THU|FRI|SAT|SUN|DAILY) ([01][0-9]|2[0-3]):([0-5][0-9])$")
 
 
 class ConfigError(Exception):
@@ -189,6 +200,31 @@ class WebConfig(_Section):
     share_dir: Path = Path("data/shares")  # X3: frozen snapshots of the shared links
 
 
+class ScheduleConfig(_Section):
+    """One task of [schedules.<id>] (X5): a question asked without a human, on a timetable."""
+
+    at: str | None = None  # "MON 07:00", "DAILY 07:00"
+    every_minutes: int | None = Field(default=None, ge=1)
+    question: str = Field(min_length=1, max_length=4000)
+    persona: str | None = None
+    # {date}: the day of the run, 2026-10-26; the scheduler only writes under reports/planifie/
+    output: str = Field(default="reports/planifie/{id}-{date}.md", min_length=1)
+    enabled: bool = True
+
+    @field_validator("at")
+    @classmethod
+    def _at_is_a_weekday_and_a_time(cls, value: str | None) -> str | None:
+        if value is not None and not SCHEDULE_AT.match(value):
+            raise ValueError('format attendu : "MON 07:00" … "SUN 07:00" ou "DAILY 07:00"')
+        return value
+
+    @model_validator(mode="after")
+    def _one_timetable(self) -> ScheduleConfig:
+        if (self.at is None) == (self.every_minutes is None):
+            raise ValueError("indiquer soit at, soit every_minutes")
+        return self
+
+
 class DemoConfig(_Section):
     # Act 3 of the demo (scenario S-1, CORE-20): a figure of the answer is made wrong
     # before the judge, only for the questions that contain alter_trigger. Announced.
@@ -208,6 +244,21 @@ class Config(_Section):
     files: FilesConfig = Field(default_factory=FilesConfig)
     web: WebConfig = Field(default_factory=WebConfig)
     demo: DemoConfig = Field(default_factory=DemoConfig)
+    # No task by default; the example of config.example.toml is disabled
+    schedules: dict[str, ScheduleConfig] = Field(default_factory=dict)
+
+    @field_validator("schedules")
+    @classmethod
+    def _schedule_ids_are_valid(
+        cls, schedules: dict[str, ScheduleConfig]
+    ) -> dict[str, ScheduleConfig]:
+        for schedule_id in schedules:
+            if not _SCHEDULE_ID.match(schedule_id):
+                raise ValueError(
+                    f"identifiant de tâche invalide {schedule_id!r} : minuscules, chiffres, "
+                    "'-' et '_' seulement"
+                )
+        return schedules
 
 
 def load_config(
@@ -259,10 +310,10 @@ def _env_keys() -> dict[str, tuple[str, str, bool]]:
     keys: dict[str, tuple[str, str, bool]] = {}
     for section, section_field in Config.model_fields.items():
         section_model = section_field.annotation
-        if section == "mcp" or not (
+        if section in ("mcp", "schedules") or not (
             isinstance(section_model, type) and issubclass(section_model, BaseModel)
         ):
-            continue  # nested tables (mcp.servers.*) are configured in the file only
+            continue  # nested tables (mcp.servers.*, schedules.*) are in the file only
         for key, field in section_model.model_fields.items():
             if _is_table_list(field.annotation):
                 continue  # arrays of tables ([[files.roots]]) are configured in the file only

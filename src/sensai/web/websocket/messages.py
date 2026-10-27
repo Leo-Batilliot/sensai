@@ -12,6 +12,7 @@ from jsonschema import Draft202012Validator
 
 from sensai import __version__
 from sensai.web.engines.backend import ModelInfo, WebBackend
+from sensai.web.scheduler import Scheduler, ScheduleRefused
 from sensai.web.shares import ShareStore
 from sensai.web.websocket.session import Session
 from sensai.web.websocket.settings import invalid_session_patch
@@ -48,11 +49,13 @@ class MessageHandler:
         backend: WebBackend,
         validator: Draft202012Validator,
         shares: ShareStore,
+        scheduler: Scheduler,
     ) -> None:
         self.session = session
         self.backend = backend
         self.validator = validator
         self.shares = shares
+        self.scheduler = scheduler
 
     async def session_ready(self, resumed: bool) -> dict[str, Any]:
         engine = self.session.engine
@@ -230,6 +233,13 @@ class MessageHandler:
             )
             return
         await self.session.send(self._ack("share_revoked", reply_to, token=token))
+
+    async def _on_run_schedule(self, message: dict[str, Any], reply_to: str | None) -> None:
+        # The run has its own engine: the session stays free for user_message (§4.11)
+        try:
+            await self.scheduler.run(message["schedule_id"], "manual", self.session.id, reply_to)
+        except ScheduleRefused as refused:
+            await self._error(refused.code, refused.message, reply_to)
 
     # --- helpers --------------------------------------------------------------------------
 
