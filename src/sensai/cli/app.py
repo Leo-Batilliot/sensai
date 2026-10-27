@@ -24,6 +24,7 @@ from sensai.cli.render import Renderer
 from sensai.core import events
 from sensai.core.app_factory import Services
 from sensai.core.config import Config, ConfigError, load_config
+from sensai.core.demo import demo_notice
 from sensai.core.engine import Engine
 from sensai.core.errors import ModelNotFound, SensaiError
 from sensai.llm.ollama_client import ModelDetails
@@ -357,6 +358,9 @@ def run_chat(
             f"SENSAI · {config.ollama.model} sur {config.ollama.host} · "
             "/help pour l'aide, /exit pour quitter"
         )
+        notice = demo_notice(config)
+        if notice is not None:
+            renderer.warning(notice)
         business_db = config.database.business_path
         if business_db.is_file():
             services = services_factory(config)

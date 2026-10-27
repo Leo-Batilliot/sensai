@@ -77,3 +77,10 @@ mode = "r"
 [web]
 host = "127.0.0.1"
 port = 8000
+
+# Act 3 of the demo (CORE-20): with alter_answer = true, for a question that contains
+# alter_trigger, a figure of the answer is raised by 15 % before the judge, which is
+# not told. The CLI and the web server say "Mode démo actif" at startup: tell the jury.
+[demo]
+alter_answer = false
+alter_trigger = "Brasserie Lemaire"

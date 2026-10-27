@@ -6,16 +6,21 @@ decision of their own (PROJECT.md §5.1).
 
 With a ToolRegistry, a turn is a loop (CORE-06, docs/contracts/tools.md §4): the model
 may ask for tools instead of answering; the Engine runs them through the registry, sends
-the results back, and calls the model again until it answers in text. Each call goes
-through the HITL policy first, and waits for a human confirmation when it asks for one
-(HITL-01/02). An ask_user call is not run by the registry: the Engine asks the user its
-QuestionBroker, and sends the answer back to the model (core/ask.py). The Engine is
-assembled with all of this in core/app_factory.py (CORE-10).
+the results back, and calls the model again until it answers in text. A query that fails
+comes back with the order to fix it, at most [agent] max_sql_retries times (CORE-09,
+_SqlRetries). Each call goes through the HITL policy first, and waits for a human
+confirmation when it asks for one (HITL-01/02). An ask_user call is not run by the
+registry: the Engine asks the user its QuestionBroker, and sends the answer back to the
+model (core/ask.py). The Engine is assembled with all of this in core/app_factory.py
+(CORE-10).
 
 With a MemoryContext (MEM-04), each turn starts by selecting the memory entries of the
 question: they go into the system prompt and the context_injected event. With an
 OnlineJudge (EVAL-05), an answer built on a successful run_select is checked after
 message_done (judge_started, judge_report), once the session is free again.
+
+With [demo] alter_answer (CORE-20, core/demo.py), the answer to the question of act 3
+gets one wrong figure while it streams, before the judge: the demo of a caught mistake.
 """
 
 from __future__ import annotations
@@ -49,6 +54,7 @@ from sensai.core.confirm import (
     Decision,
     PendingAction,
 )
+from sensai.core.demo import AnswerAlteration
 from sensai.core.errors import SensaiError
 from sensai.core.history import History
 from sensai.eval.online import OnlineJudge, SelectResult, select_result
@@ -231,6 +237,7 @@ class Engine:
         started = time.monotonic()
         released = False  # the session is freed at message_done, before the judge
         repairs = _ArgumentRepairs(self.argument_stats)
+        retries = _SqlRetries(self.config.agent.max_sql_retries)
         try:
             yield events.TurnStarted(
                 session_id=self.session_id,
@@ -251,6 +258,8 @@ class Engine:
             interrupted = answered = False
             previous: str | None = None  # last executed call, to detect loops
             selects: list[SelectResult] = []  # successful run_select calls, for the judge
+            # Act 3 of the demo (CORE-20): None unless [demo] alter_answer and its trigger
+            demo = AnswerAlteration.for_turn(self.config, user_message, selects)
             try:
                 for _ in range(self.config.agent.max_tool_iterations):
                     text: list[str] = []
@@ -270,17 +279,20 @@ class Engine:
                                     turn_id=turn_id,
                                     delta=chunk.thinking,
                                 )
-                            if chunk.content:
-                                parts.append(chunk.content)
-                                text.append(chunk.content)
+                            delta = demo.feed(chunk.content) if demo else chunk.content
+                            if delta:
+                                parts.append(delta)
+                                text.append(delta)
                                 yield events.Token(
-                                    session_id=self.session_id,
-                                    turn_id=turn_id,
-                                    delta=chunk.content,
+                                    session_id=self.session_id, turn_id=turn_id, delta=delta
                                 )
                             calls.extend(chunk.tool_calls)
                             if chunk.usage is not None:
                                 usage = chunk.usage
+                    if demo is not None and (rest := demo.flush()):
+                        parts.append(rest)
+                        text.append(rest)
+                        yield events.Token(session_id=self.session_id, turn_id=turn_id, delta=rest)
                     if interrupted:
                         break
                     if not calls:
@@ -290,7 +302,9 @@ class Engine:
                     messages.append(_assistant_message("".join(text), calls))
                     for call in calls:
                         async with contextlib.aclosing(
-                            self._run_tool(turn_id, call, previous, messages, selects, repairs)
+                            self._run_tool(
+                                turn_id, call, previous, messages, selects, repairs, retries
+                            )
                         ) as steps:
                             async for event in steps:
                                 yield event
@@ -300,6 +314,8 @@ class Engine:
                             break
                     if interrupted:
                         break
+                    if retries.exhausted:
+                        tools = None  # SQL still failing (CORE-09): the model has to explain
             except SensaiError as exc:
                 yield self._error(turn_id, exc.code, exc.message, recoverable=exc.recoverable)
                 return
@@ -363,6 +379,7 @@ class Engine:
         messages: list[Message],
         selects: list[SelectResult],
         repairs: _ArgumentRepairs,
+        retries: _SqlRetries,
     ) -> AsyncGenerator[events.Event, None]:
         """One tool call asked by the model (tools.md §4): its events, then the tool
         message appended to `messages` for the next model call. A successful run_select
@@ -483,9 +500,8 @@ class Engine:
                 ref=change.ref,
                 summary=change.summary,
             )
-        messages.append(
-            {"role": "tool", "tool_name": call.name, "content": self._for_model(call.name, result)}
-        )
+        content = retries.advice(result) or self._for_model(call.name, result)
+        messages.append({"role": "tool", "tool_name": call.name, "content": content})
 
     def _check_call(
         self, call: ToolCall, known: bool, previous: str | None, repairs: _ArgumentRepairs
@@ -658,6 +674,51 @@ class _ArgumentRepairs:
         """End of the turn: a repair the model never attempted is a failure."""
         self.stats.failed += len(self._pending)
         self._pending.clear()
+
+
+class _SqlRetries:
+    """SQL self-correction within one turn (CORE-09, PROJECT §6.3).
+
+    A SQLite error (SQL_ERROR) goes back to the model with the order to fix its query,
+    at most [agent] max_sql_retries times. One more error and the model gets no tools
+    for the rest of the turn: it has to explain the failure. A refusal of the SQL guard
+    (SQL_FORBIDDEN) is not an error to fix: the model is told not to retry it.
+    """
+
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        self.errors = 0
+
+    @property
+    def exhausted(self) -> bool:
+        return self.errors > self.limit
+
+    def advice(self, result: ToolResult) -> str | None:
+        """What the model reads after a refused or failed query; None for other results."""
+        code = result.error.code if result.error else None
+        reason = result.text.rstrip(" .")
+        if code == "SQL_FORBIDDEN":
+            return (
+                f"Requête refusée par la garde SQL : {reason}. Ce n'est pas une erreur à "
+                "corriger : ne retente pas cette requête. Pour modifier des données, passe par "
+                "preview_write puis execute_write (une confirmation sera demandée) ; sinon, "
+                "explique le refus à l'utilisateur."
+            )
+        if code != "SQL_ERROR":
+            return None
+        self.errors += 1
+        if self.exhausted:
+            logger.info("SQL still failing after %d corrections: the model explains", self.limit)
+            return (
+                f"La requête a échoué : {reason}. Limite de {self.limit} correction(s) atteinte : "
+                "ne relance plus de requête. Explique à l'utilisateur que tu n'as pas pu obtenir "
+                "le résultat, en citant cette erreur."
+            )
+        left = self.limit - self.errors + 1
+        return (
+            f"La requête a échoué : {reason}. Corrige-la et relance l'outil "
+            f"(encore {left} essai{'s' if left > 1 else ''})."
+        )
 
 
 def _assistant_message(text: str, calls: list[ToolCall]) -> Message:

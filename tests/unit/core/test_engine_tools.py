@@ -242,6 +242,89 @@ async def test_sql_error_is_sent_back_to_the_model() -> None:
     assert "no such table: inconnue" in fake(engine).calls[1][1][-1]["content"]
 
 
+# --- SQL self-correction (CORE-09) ---
+
+
+def tool_messages(engine: Engine) -> list[str]:
+    """What the model read after each tool call, in order."""
+    last_call = fake(engine).calls[-1][1]
+    return [message["content"] for message in last_call if message["role"] == "tool"]
+
+
+async def test_a_wrong_column_is_corrected_automatically() -> None:
+    engine = make_engine(
+        tool_request(SELECT, sql="SELECT name, marge FROM clients"),
+        tool_request(SELECT, sql=TOP_CLIENTS),
+        answer("Brasserie Lemaire arrive en tête avec 48 712,40 €."),
+    )
+
+    emitted = await run(engine)
+
+    check_turn(emitted)
+    assert [call[0] for call in registry(engine).calls] == [SELECT, SELECT]
+    assert [result.ok for result in tool_results(emitted)] == [False, True]
+    first = tool_messages(engine)[0]
+    assert first.startswith("La requête a échoué : ") and "no such column: marge" in first
+    assert "Corrige-la et relance l'outil (encore 2 essais)" in first
+    assert emitted[-1].type == "message_done"
+
+
+async def test_after_max_sql_retries_the_model_explains_without_tools() -> None:
+    engine = make_engine(
+        tool_request(SELECT, sql="SELECT a FROM clients"),
+        tool_request(SELECT, sql="SELECT b FROM clients"),
+        tool_request(SELECT, sql="SELECT c FROM clients"),
+        answer("Je n'ai pas pu calculer la marge : colonne inconnue."),
+    )
+
+    emitted = await run(engine)
+
+    check_turn(emitted)
+    assert len(registry(engine).calls) == 3  # the query and its 2 corrections
+    advice = tool_messages(engine)
+    assert "(encore 2 essais)" in advice[0] and "(encore 1 essai)" in advice[1]
+    assert "Limite de 2 correction(s) atteinte : ne relance plus de requête" in advice[2]
+    assert "no such column: c" in advice[2]  # the last error, to quote to the user
+    sent = fake(engine).tools_sent
+    assert all(tools for tools in sent[:3]) and sent[3] is None
+    assert emitted[-1].type == "message_done"
+
+
+async def test_max_sql_retries_comes_from_the_config() -> None:
+    engine = make_engine(
+        tool_request(SELECT, sql="SELECT a FROM clients"),
+        answer("Colonne inconnue."),
+        config=Config(agent=AgentConfig(max_sql_retries=0)),
+    )
+
+    await run(engine)
+
+    assert "Limite de 0 correction(s) atteinte" in tool_messages(engine)[0]
+    assert fake(engine).tools_sent[1] is None
+
+
+async def test_a_guard_refusal_is_not_an_error_to_correct() -> None:
+    async def refuse(arguments: dict[str, Any]) -> ToolResult:
+        return ToolResult.failure(
+            "SQL_FORBIDDEN", "run_select n'accepte que des lectures (SELECT ou WITH … SELECT)."
+        )
+
+    engine = make_engine(
+        tool_request(SELECT, sql="SELECT 1"),
+        answer("Je ne peux pas modifier les données ainsi."),
+        registry=FakeToolRegistry(fake_tool(SELECT, refuse, server="sql_toolbox")),
+        config=Config(agent=AgentConfig(max_sql_retries=0)),
+    )
+
+    await run(engine)
+
+    (advice,) = tool_messages(engine)
+    assert "Ce n'est pas une erreur à corriger : ne retente pas cette requête" in advice
+    assert "preview_write puis execute_write" in advice
+    assert "Corrige-la" not in advice
+    assert fake(engine).tools_sent[1] is not None  # not counted as a SQL error
+
+
 async def test_unknown_tool_is_refused() -> None:
     engine = make_engine(tool_request("weather__forecast", city="Lille"), answer("Désolé."))
 

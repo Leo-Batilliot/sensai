@@ -124,6 +124,13 @@ def _is_skipped(text: str, match: re.Match[str]) -> bool:
 
 def extract_numbers(text: str) -> list[NumberMention]:
     """Numbers of a French answer that must be found in the data, in order."""
+    return [mention for _, mention in locate_numbers(text)]
+
+
+def locate_numbers(text: str) -> list[tuple[re.Match[str], NumberMention]]:
+    """Like extract_numbers, with where each number is in the text: the `core` group of
+    the match is the number without its sign and unit (the demo mode of CORE-20 rewrites
+    it)."""
     mentions = []
     for match in _NUMBER.finditer(text):
         if _is_skipped(text, match):
@@ -138,7 +145,8 @@ def extract_numbers(text: str) -> list[NumberMention]:
             if percent:  # stored as a ratio: 45 % = 0.45
                 values.append(value / 100)
                 slack.append(half_unit / 100)
-        mentions.append(NumberMention(match.group(0).strip(_SPACES), tuple(values), tuple(slack)))
+        mention = NumberMention(match.group(0).strip(_SPACES), tuple(values), tuple(slack))
+        mentions.append((match, mention))
     return mentions
 
 
@@ -177,7 +185,8 @@ def _context_values(question: str, sql: str) -> list[float]:
     return values + [float(number) for number in _SQL_NUMBER.findall(sql)]
 
 
-def _matches(mention: NumberMention, known: Iterable[float], tolerance: float) -> bool:
+def matches(mention: NumberMention, known: Iterable[float], tolerance: float) -> bool:
+    """The mention quotes one of the known values, rounding and tolerance included."""
     for value, slack in zip(mention.values, mention.slack, strict=True):
         for candidate in known:
             gap = abs(abs(value) - abs(candidate))
@@ -199,7 +208,7 @@ def check_numbers(
     known = data_values(rows) + _context_values(question, sql)
     unmatched: list[str] = []
     for mention in extract_numbers(answer):
-        if not _matches(mention, known, tolerance) and mention.text not in unmatched:
+        if not matches(mention, known, tolerance) and mention.text not in unmatched:
             unmatched.append(mention.text)
     if not unmatched:
         return NumericCheck("ok")

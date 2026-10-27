@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "events/question_asked.v1",
   "title": "Événement question_asked",
-  "description": "Le modèle a appelé ask_user : le tour est en pause jusqu'à question_answered. Fait foi : docs/contracts/v1.1-extensions.md §2.1. Propriétaire : P2.",
+  "description": "Le modèle a appelé ask_user : le tour est en pause jusqu'à question_answered. Fait foi : docs/contracts/events.md §3.15. Propriétaire : P2.",
   "type": "object",
   "required": [
     "type",

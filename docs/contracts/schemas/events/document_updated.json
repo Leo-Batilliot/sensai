@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "events/document_updated.v1",
+  "title": "Événement document_updated",
+  "description": "Une section de la note du comité a été modifiée, par l'agent ou depuis l'interface (M4). Fait foi : docs/contracts/events.md §3.17. Propriétaire : P1.",
+  "type": "object",
+  "required": [
+    "type",
+    "session_id",
+    "turn_id",
+    "ts",
+    "doc_id",
+    "revision",
+    "section_id",
+    "op",
+    "summary"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "document_updated"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "turn_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ts": {
+      "type": "number",
+      "description": "Secondes depuis l'epoch (flottant)"
+    },
+    "doc_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "section_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "op": {
+      "enum": [
+        "replace",
+        "append",
+        "insert_after",
+        "delete",
+        "restore"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "op": {
+            "const": "restore"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "section_id": {
+            "type": "null"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "section_id": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ]
+}

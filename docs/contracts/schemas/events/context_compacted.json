@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "events/context_compacted.v1",
+  "title": "Événement context_compacted",
+  "description": "Les plus vieux tours viennent d'être remplacés par un résumé glissant (M2). Fait foi : docs/contracts/events.md §3.13. Propriétaire : P1.",
+  "type": "object",
+  "required": [
+    "type",
+    "session_id",
+    "turn_id",
+    "ts",
+    "turns",
+    "tokens_before",
+    "tokens_after",
+    "summary"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "context_compacted"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "turn_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ts": {
+      "type": "number",
+      "description": "Secondes depuis l'epoch (flottant)"
+    },
+    "turns": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "tokens_before": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "tokens_after": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 200
+    }
+  }
+}

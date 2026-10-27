@@ -23,6 +23,7 @@ MemoryOp = Literal["create", "update", "delete"]
 MemoryKind = Literal["glossary", "entity", "relation", "fact"]
 Badge = Literal["verified", "needs_review", "contradicted", "unavailable"]
 AnswerStatus = Literal["answered", "timeout", "cancelled"]
+DocumentOp = Literal["replace", "append", "insert_after", "delete", "restore"]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -65,6 +66,15 @@ class ContextUsage:
     ctx_max: int
 
 
+@dataclass(frozen=True)
+class ExampleRef:
+    """An example question -> SQL added to the prompt (events.md §3.14)."""
+
+    id: str
+    question: str
+    score: float
+
+
 # --- Events (events.md §3) ---
 
 
@@ -79,6 +89,21 @@ class TurnStarted(Event):
 class ContextInjected(Event):
     type: ClassVar[str] = "context_injected"
     refs: list[MemoryRef]
+
+
+@dataclass(frozen=True, kw_only=True)
+class ContextCompacted(Event):
+    type: ClassVar[str] = "context_compacted"
+    turns: int
+    tokens_before: int
+    tokens_after: int
+    summary: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class ExamplesInjected(Event):
+    type: ClassVar[str] = "examples_injected"
+    examples: list[ExampleRef]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -132,7 +157,7 @@ class ConfirmationResolved(Event):
 
 @dataclass(frozen=True, kw_only=True)
 class QuestionAsked(Event):
-    """The model called ask_user: the turn waits for an answer (v1.1-extensions.md §2.1)."""
+    """The model called ask_user: the turn waits for an answer (events.md §3.15)."""
 
     type: ClassVar[str] = "question_asked"
     question_id: str
@@ -174,6 +199,16 @@ class MemoryUpdated(Event):
 
 
 @dataclass(frozen=True, kw_only=True)
+class DocumentUpdated(Event):
+    type: ClassVar[str] = "document_updated"
+    doc_id: str
+    revision: int
+    section_id: str | None
+    op: DocumentOp
+    summary: str
+
+
+@dataclass(frozen=True, kw_only=True)
 class MessageDone(Event):
     type: ClassVar[str] = "message_done"
     content: str
@@ -210,6 +245,8 @@ EVENT_TYPES: dict[str, type[Event]] = {
     for cls in (
         TurnStarted,
         ContextInjected,
+        ContextCompacted,
+        ExamplesInjected,
         Token,
         Thinking,
         ToolCall,
@@ -220,6 +257,7 @@ EVENT_TYPES: dict[str, type[Event]] = {
         QuestionAnswered,
         ToolResult,
         MemoryUpdated,
+        DocumentUpdated,
         MessageDone,
         JudgeStarted,
         JudgeReport,

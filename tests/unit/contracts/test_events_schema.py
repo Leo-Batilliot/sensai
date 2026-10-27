@@ -27,6 +27,13 @@ SAMPLES: list[ev.Event] = [
         **COMMON,
         refs=[ev.MemoryRef(kind="glossary", ref="client rentable", label="client rentable")],
     ),
+    ev.ContextCompacted(
+        **COMMON, turns=6, tokens_before=6120, tokens_after=2480, summary="Client rentable = …"
+    ),
+    ev.ExamplesInjected(
+        **COMMON,
+        examples=[ev.ExampleRef(id="ex-07", question="CA HT par commercial ?", score=7.4)],
+    ),
     ev.Token(**COMMON, delta="Voici"),
     ev.Thinking(**COMMON, delta="L'utilisateur veut"),
     ev.ToolCall(
@@ -97,6 +104,22 @@ SAMPLES: list[ev.Event] = [
         duration_ms=0,
     ),
     ev.MemoryUpdated(**COMMON, op="delete", kind="fact", ref="17", summary="Fait n°17 supprimé"),
+    ev.DocumentUpdated(
+        **COMMON,
+        doc_id="note-comite",
+        revision=4,
+        section_id="rentabilite",
+        op="replace",
+        summary="Section « Rentabilité » mise à jour (révision 4)",
+    ),
+    ev.DocumentUpdated(
+        **COMMON,
+        doc_id="note-comite",
+        revision=5,
+        section_id=None,
+        op="restore",
+        summary="Révision 3 rétablie (révision 5)",
+    ),
     ev.MessageDone(
         **COMMON,
         content="Voici",
@@ -185,12 +208,19 @@ def changed(sample_type: str, **fields: Any) -> dict[str, Any]:
         changed("token", delta=""),
         changed("tool_call", tool="nom avec espaces"),
         changed("token", extra="champ inconnu"),
+        {k: v for k, v in SAMPLES[0].to_dict().items() if k != "user_message"},
+        # v1.1
+        changed("context_compacted", turns=0),
+        changed("examples_injected", examples=[]),
         changed("question_asked", options=[], allow_free_text=False),
+        changed("question_asked", options=[{"id": f"o{i}", "label": "x"} for i in range(6)]),
         changed("question_asked", options=[{"id": "Avec Espace", "label": "x"}]),
         changed("question_answered", status="answered", option_id=None, text=None),
         changed("question_answered", status="timeout", option_id="trimestre"),
         changed("error", code="QUESTION_LIMIT"),  # a tool_result code, not an error event
-        {k: v for k, v in SAMPLES[0].to_dict().items() if k != "user_message"},
+        changed("document_updated", op="restore"),  # keeps the section of the sample
+        changed("document_updated", section_id=None),
+        changed("document_updated", revision=0),
     ],
     ids=[
         "ui-turn-with-message",
@@ -204,16 +234,30 @@ def changed(sample_type: str, **fields: Any) -> dict[str, Any]:
         "empty-delta",
         "invalid-tool-name",
         "extra-field",
+        "missing-field",
+        "compaction-without-turns",
+        "no-examples",
         "question-without-any-answer-possible",
+        "six-options",
         "invalid-option-id",
         "answered-without-answer",
-        "option-without-answer",
+        "timeout-with-option",
         "tool-code-in-error-event",
-        "missing-field",
+        "restore-of-one-section",
+        "patch-without-section",
+        "revision-zero",
     ],
 )
 def test_contract_violations_are_rejected(data: dict[str, Any]) -> None:
     assert not is_valid(data)
+
+
+@pytest.mark.parametrize(
+    "code",
+    ["PERSONA_NOT_FOUND", "PROMPT_VERSION_NOT_FOUND", "UNKNOWN_QUESTION", "SCHEDULE_NOT_FOUND"],
+)
+def test_v1_1_error_codes_are_in_the_closed_list(code: str) -> None:
+    assert is_valid(changed("error", code=code))
 
 
 # Errors that the Engine turns into `error` events: those of the Ollama client, plus the

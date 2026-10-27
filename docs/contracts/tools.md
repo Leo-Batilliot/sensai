@@ -190,6 +190,7 @@ Pour chaque appel demandé par le modèle (`message.tool_calls`), dans cet ordre
 - Un nom qui ne respecte pas `[A-Za-z0-9_-]{1,64}` (modèle qui invente) est émis comme `"unknown_tool"` dans `tool_call.tool`, et l'étape 1 échoue avec `UNKNOWN_TOOL`.
 - Chaque `tool_call` reçoit exactement un `tool_result`, sauf si le tour se termine par un `error` (`events.md` §4.1).
 - Après un refus, le message pour le modèle dit : « Action refusée par l'utilisateur. Ne la retente pas ; explique-le dans ta réponse. » (PROJECT §6.5).
+- **Auto-correction SQL (CORE-09)** : après un échec `SQL_ERROR`, le modèle lit « La requête a échoué : <erreur>. Corrige-la et relance l'outil (encore N essais). », au plus `[agent] max_sql_retries` fois par tour. À l'erreur suivante, il lit « Limite de N correction(s) atteinte : ne relance plus de requête… », et le moteur le rappelle **sans outils** : il doit expliquer l'échec en citant la dernière erreur. Un refus de la garde (`SQL_FORBIDDEN`) n'est pas compté : le modèle lit que ce n'est pas une erreur à corriger, qu'il ne doit pas retenter la requête, et qu'une modification passe par `preview_write` puis `execute_write`.
 - Le résultat d'un outil de données est précédé d'une ligne qui indique que ce sont des données, pas des instructions (protection contre l'injection, SEC-02).
 - Les actions lancées depuis l'interface (`Engine.run_ui_action`, P-6) suivent les étapes 1 et 3 à 8, avec la liste blanche `memory_update` et `memory_delete`. Hors liste, l'échec est `UI_ACTION_FORBIDDEN` (`events.md` §5.1).
 

@@ -174,6 +174,13 @@ class WebConfig(_Section):
     port: int = Field(default=8000, ge=1, le=65535)
 
 
+class DemoConfig(_Section):
+    # Act 3 of the demo (scenario S-1, CORE-20): a figure of the answer is made wrong
+    # before the judge, only for the questions that contain alter_trigger. Announced.
+    alter_answer: bool = False
+    alter_trigger: str = Field(default="Brasserie Lemaire", min_length=1)
+
+
 class Config(_Section):
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
@@ -183,6 +190,7 @@ class Config(_Section):
     mcp: McpConfig = Field(default_factory=McpConfig)
     files: FilesConfig = Field(default_factory=FilesConfig)
     web: WebConfig = Field(default_factory=WebConfig)
+    demo: DemoConfig = Field(default_factory=DemoConfig)
 
 
 def load_config(
