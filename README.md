@@ -295,7 +295,7 @@ make ci             # la CI en local : lint + tests sur Python 3.10 et 3.12, env
 
 ## Documentation
 
-- [`docs/contracts/`](docs/contracts/) : contrats entre les briques (événements du moteur, outils et confirmation, WebSocket, mémoire, rapport du juge) ; ajouts de l'extension dans [`v1.1-extensions.md`](docs/contracts/v1.1-extensions.md)
+- [`docs/contracts/`](docs/contracts/) : contrats entre les briques (événements du moteur, outils et confirmation, WebSocket, mémoire et note du comité, rapport du juge, prompts versionnés et exemples dynamiques) ; ajouts de l'extension dans [`v1.1-extensions.md`](docs/contracts/v1.1-extensions.md)
 - [`docs/user-stories/`](docs/user-stories/) : user stories par fonctionnalité (16)
 - [`docs/decisions.md`](docs/decisions.md) : journal des décisions ; [`docs/midterm-feedback.md`](docs/midterm-feedback.md) : retours de la mid-term
 - [`docs/keynote/scenario.md`](docs/keynote/scenario.md) : scénario de démonstration
