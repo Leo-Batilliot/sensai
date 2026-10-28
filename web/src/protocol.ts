@@ -303,6 +303,50 @@ export interface SharedSnapshot extends ShareInfo {
   document: unknown // the committee note with M4, null before
 }
 
+// Scheduled tasks (X5, websocket.md §4.11, §5.2): sent to every open session
+export type ScheduleTrigger = 'schedule' | 'manual'
+
+export interface ScheduleRunStarted extends WebCommon {
+  type: 'schedule_run_started'
+  schedule_id: string
+  run_id: string
+  trigger: ScheduleTrigger
+}
+
+export interface ScheduleRunFinished extends WebCommon {
+  type: 'schedule_run_finished'
+  schedule_id: string
+  run_id: string
+  status: 'ok' | 'error'
+  badge: Badge | null
+  report_path: string | null
+  error: { code: string; message: string } | null
+}
+
+// GET /api/schedules (websocket.md §9). A run still going has status, badge and finished_at null.
+export interface ScheduleRun {
+  run_id: string
+  trigger: ScheduleTrigger
+  started_at: number
+  finished_at: number | null
+  status: 'ok' | 'error' | null
+  badge: Badge | null
+  report_path: string | null
+  error: { code: string; message: string } | null
+}
+
+export interface ScheduleInfo {
+  id: string
+  at: string | null // "MON 07:00", "DAILY 07:00"
+  every_minutes: number | null
+  question: string
+  persona: string | null
+  output: string
+  enabled: boolean
+  next_run: number | null
+  last_runs: ScheduleRun[]
+}
+
 export type ServerMessage =
   | EngineEvent
   | SessionReady
@@ -312,6 +356,8 @@ export type ServerMessage =
   | PersonaChanged
   | ShareCreated
   | ShareRevoked
+  | ScheduleRunStarted
+  | ScheduleRunFinished
 
 export const PROTOCOL_VERSION = 1
 
@@ -329,3 +375,4 @@ export type ClientMessage =
   | { type: 'answer'; id?: string; question_id: string; option_id?: string; text?: string }
   | { type: 'share'; id?: string }
   | { type: 'unshare'; id?: string; token: string }
+  | { type: 'run_schedule'; id?: string; schedule_id: string }

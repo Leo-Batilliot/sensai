@@ -23,6 +23,7 @@ export interface Session {
   answer: (questionId: string, reply: { optionId: string } | { text: string }) => void
   share: () => void
   unshare: (token: string) => void
+  runSchedule: (scheduleId: string) => void
   uiAction: (tool: 'memory_update' | 'memory_delete', args: Record<string, unknown>) => void
   dismissNotice: (id: number) => void
 }
@@ -123,6 +124,7 @@ export function useSession(): Session {
       uiAction: (tool, args) => send({ type: 'ui_action', tool, arguments: args }),
       share: () => send({ type: 'share' }),
       unshare: (token) => send({ type: 'unshare', token }),
+      runSchedule: (scheduleId) => send({ type: 'run_schedule', schedule_id: scheduleId }),
       dismissNotice: (id) => dispatch({ type: 'dismiss_notice', id }),
     }),
     [state, busy, connected, send],

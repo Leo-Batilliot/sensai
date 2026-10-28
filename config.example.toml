@@ -88,6 +88,16 @@ host = "127.0.0.1"
 port = 8000
 share_dir = "data/shares"       # X3: one frozen snapshot per shared link, deleted when revoked
 
+# X5: no task by default. Tasks run without a human, so without any write; the scheduler
+# writes the report under reports/planifie/. Uncomment to plan the point of act 5:
+# at = "MON 07:00" ... "SUN 07:00" or "DAILY 07:00" (local time), or every_minutes = 60
+# [schedules.point-lundi]
+# at = "MON 07:00"
+# question = "Prépare le point du lundi : chiffre d'affaires de la semaine dernière, top 5 des clients, factures en retard."
+# persona = "analyste"
+# output = "reports/planifie/point-lundi-{date}.md"
+# enabled = false
+
 # Act 3 of the demo (CORE-20): with alter_answer = true, for a question that contains
 # alter_trigger, a figure of the answer is raised by 15 % before the judge, which is
 # not told. The CLI and the web server say "Mode démo actif" at startup: tell the jury.

@@ -99,3 +99,8 @@ class WebBackend(Protocol):
         broker: WebConfirmationBroker,
         questions: WebQuestionBroker | None = None,
     ) -> WebEngine: ...
+
+    def scheduled_engine(self, session_id: str) -> WebEngine:
+        """The engine of a scheduled run (X5, V-4): nobody to confirm or answer, and no tool
+        that writes. Closed by the scheduler (aclose) after the run."""
+        ...

@@ -17,6 +17,7 @@ from sensai import __version__
 from sensai.core.config import Config
 from sensai.web.engines.backend import WebBackend
 from sensai.web.paths import STATIC_DIR
+from sensai.web.scheduler import Scheduler
 from sensai.web.shares import ShareStore, to_markdown
 from sensai.web.websocket.endpoint import install_websocket
 from sensai.web.websocket.messages import snapshot
@@ -40,17 +41,22 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await backend.start()
+        await scheduler.start()
         try:
             yield
         finally:
+            await scheduler.stop()  # a run cut here ends in error, announced to the sessions
             await app.state.sessions.close_all()
             await backend.stop()
 
     app = FastAPI(title="SENSAI", version=__version__, lifespan=lifespan)
     app.state.config = config
-    app.state.sessions = SessionManager(backend)
+    sessions = SessionManager(backend)
+    app.state.sessions = sessions
     shares = ShareStore(config.web.share_dir, config.web.host, config.web.port)
     app.state.shares = shares
+    scheduler = Scheduler(config, backend, sessions.broadcast)
+    app.state.scheduler = scheduler
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
@@ -112,7 +118,19 @@ def create_app(
             return PlainTextResponse(FRONTEND_MISSING, status_code=503)
         return FileResponse(index)
 
-    install_websocket(app, app.state.sessions, shares)
+    @app.get("/api/schedules")
+    async def schedules() -> dict[str, Any]:
+        return {"schedules": scheduler.describe()}
+
+    # Shown in the browser, not downloaded: the "rapport" link of the scheduled tasks panel
+    @app.get("/api/schedules/runs/{run_id}/report", response_model=None)
+    async def schedule_report(run_id: str) -> Response:
+        report = scheduler.report(run_id)
+        if report is None:
+            return api_error(404, "SCHEDULE_NOT_FOUND", "Pas de rapport pour cette exécution.")
+        return PlainTextResponse(report.read_text(encoding="utf-8"))
+
+    install_websocket(app, sessions, shares, scheduler)
 
     if (static_dir / "index.html").is_file():
         app.mount("/", StaticFiles(directory=static_dir, html=True), name="frontend")

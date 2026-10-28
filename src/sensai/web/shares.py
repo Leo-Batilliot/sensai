@@ -164,11 +164,12 @@ def to_markdown(events: list[Event], model: str, persona: dict[str, Any] | None)
             continue
         number += 1
         lines += ["---", ""]
-        lines += _turn_markdown(number, started, turn)
+        lines += turn_markdown(number, started, turn)
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _turn_markdown(number: int, started: Event, turn: list[Event]) -> list[str]:
+def turn_markdown(number: int, started: Event, turn: list[Event]) -> list[str]:
+    """One turn: question, clarification, answer, SQL and its table, check (X3, X5)."""
     of = {kind: [e for e in turn if e["type"] == kind] for kind in {e["type"] for e in turn}}
     if started["origin"] == "ui":
         call = (of.get("tool_call") or [{}])[0]

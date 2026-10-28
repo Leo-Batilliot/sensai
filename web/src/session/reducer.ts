@@ -92,6 +92,7 @@ export interface ChatState {
   turns: Turn[]
   personaMarks: PersonaMark[]
   sharesVersion: number // changes on share_created / share_revoked: the list is read again
+  schedulesVersion: number // changes when a scheduled run starts or ends (X5): same
   lastUsage: Usage | null // context gauge: keeps its last value when usage is null
   notices: Notice[] // errors outside any turn (BUSY, INVALID_MESSAGE…)
   incompatible: boolean // server speaks another protocol version
@@ -109,6 +110,7 @@ export const initialState: ChatState = {
   turns: [],
   personaMarks: [],
   sharesVersion: 0,
+  schedulesVersion: 0,
   lastUsage: null,
   notices: [],
   incompatible: false,
@@ -173,6 +175,10 @@ function applyMessage(state: ChatState, message: ServerMessage): ChatState {
     case 'share_created':
     case 'share_revoked':
       return { ...state, sharesVersion: state.sharesVersion + 1 }
+    case 'schedule_run_started':
+    case 'schedule_run_finished':
+      // Out of the conversation: the run has its own engine, the panel reads the result
+      return { ...state, schedulesVersion: state.schedulesVersion + 1 }
     case 'persona_changed': {
       // Effective from the next turn: the separator goes after the turn running now, if any
       const same = state.session?.persona?.id === message.persona.id
