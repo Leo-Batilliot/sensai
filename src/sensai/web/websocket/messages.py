@@ -12,6 +12,7 @@ from jsonschema import Draft202012Validator
 
 from sensai import __version__
 from sensai.web.engines.backend import ModelInfo, WebBackend
+from sensai.web.engines.note import NOTE_ACTIONS
 from sensai.web.scheduler import Scheduler, ScheduleRefused
 from sensai.web.shares import ShareStore
 from sensai.web.websocket.session import Session
@@ -21,7 +22,8 @@ logger = logging.getLogger(__name__)
 
 PROTOCOL_VERSION = 1
 RESET_WAIT_S = 5.0
-UI_ACTIONS = frozenset({"memory_update", "memory_delete"})
+# The memory panel, and the Note panel (memory.md §7.5): document_delete_section is confirmed
+UI_ACTIONS = frozenset({"memory_update", "memory_delete", *NOTE_ACTIONS})
 
 
 def protocol_error(
@@ -79,7 +81,7 @@ class MessageHandler:
                 {"id": p["id"], "name": p["name"], "role": p["role"]}
                 for p in self.backend.personas()[1]
             ],
-            "document_id": None,  # no committee note before M4
+            "document_id": self.backend.documents().doc_id,  # the committee note (M4)
         }
 
     async def handle(self, text: str) -> None:
@@ -220,7 +222,8 @@ class MessageHandler:
     async def _on_share(self, message: dict[str, Any], reply_to: str | None) -> None:
         websocket = self.session.websocket
         host = websocket.headers.get("host") if websocket is not None else None
-        share = self.shares.create(snapshot(self.session), host)
+        document = self.backend.documents().to_dict()
+        share = self.shares.create(snapshot(self.session, document), host)
         await self.session.send(self._ack("share_created", reply_to, **share))
 
     async def _on_unshare(self, message: dict[str, Any], reply_to: str | None) -> None:
@@ -276,12 +279,13 @@ class MessageHandler:
         return payload
 
 
-def snapshot(session: Session) -> dict[str, Any]:
-    """What a share freezes and an export writes: the finished turns (websocket.md §4.10)."""
+def snapshot(session: Session, document: dict[str, Any] | None = None) -> dict[str, Any]:
+    """What a share freezes and an export writes: the finished turns, and the committee
+    note at its current revision for a share (websocket.md §4.10)."""
     engine = session.engine
     return {
         "model": engine.model,
         "persona": engine.persona,
         "events": session.completed_history(),
-        "document": None,  # the committee note joins with M4
+        "document": document,
     }

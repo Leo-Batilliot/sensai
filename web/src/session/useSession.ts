@@ -1,7 +1,7 @@
 // Connection to WS /ws/{session_id} (websocket.md §2) and the actions of the interface.
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
-import type { ClientMessage, ServerMessage } from '../protocol'
+import type { ClientMessage, ServerMessage, UiActionTool } from '../protocol'
 import { chatReducer, initialState, isBusy, type ChatState } from './reducer'
 
 const STORAGE_KEY = 'sensai.session_id'
@@ -24,7 +24,7 @@ export interface Session {
   share: () => void
   unshare: (token: string) => void
   runSchedule: (scheduleId: string) => void
-  uiAction: (tool: 'memory_update' | 'memory_delete', args: Record<string, unknown>) => void
+  uiAction: (tool: UiActionTool, args: Record<string, unknown>) => void
   dismissNotice: (id: number) => void
 }
 

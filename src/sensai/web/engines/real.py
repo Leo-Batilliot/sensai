@@ -7,7 +7,8 @@ its socket.
 
 The Engine does not cover the whole web protocol: RealEngine adds the servers and tools
 of session_ready, the session settings of set_config, and run_ui_action until the
-Engine has its own (point P-6, P1). Profiles (A5) wait for PERS-01: none for now.
+Engine has its own (point P-6, P1): the Note panel's actions run (engines/note.py), the
+memory panel's not yet. Profiles (A5) wait for PERS-01: none for now.
 
 A scheduled run (X5) gets an Engine with nobody behind its brokers and a ReadOnlyRegistry:
 the tools that write are not even offered to the model.
@@ -24,12 +25,14 @@ from sensai.core.app_factory import ClientFactory, Services, ollama_client
 from sensai.core.config import Config
 from sensai.core.engine import ChatClient, Engine
 from sensai.core.errors import SensaiError
+from sensai.documents.store import DocumentStore
 from sensai.eval.online import OnlineJudge
 from sensai.mcp.manager import McpManager
 from sensai.tools.base import ServerStatus, ToolInfo, ToolRegistry, ToolResult
 from sensai.tools.policy import SqlClassifier, evaluate
 from sensai.tools.registry import Registry
 from sensai.web.engines.backend import ModelInfo, Persona, PersonaTools
+from sensai.web.engines.note import NOTE_ACTIONS, note_action, note_registry
 from sensai.web.websocket.ask import WebQuestionBroker
 from sensai.web.websocket.confirm import WebConfirmationBroker
 from sensai.web.websocket.settings import SESSION_SETTINGS, session_settings
@@ -83,6 +86,18 @@ class RealEngine:
         run = getattr(self.engine, "run_ui_action", None)
         if run is not None:
             async for event in run(tool, arguments):
+                yield event
+            return
+        documents = self.engine.documents
+        if tool in NOTE_ACTIONS and documents is not None:
+            async for event in note_action(
+                note_registry(documents, self.engine.session_id),
+                tool,
+                arguments,
+                session_id=self.engine.session_id,
+                broker=self.engine.broker,
+                hitl=self.engine.config.hitl,
+            ):
                 yield event
             return
         yield events.Error(
@@ -215,6 +230,9 @@ class RealBackend:
 
     def personas(self) -> tuple[str | None, list[PersonaTools]]:
         return None, []  # PERS-01
+
+    def documents(self) -> DocumentStore:
+        return self._services.documents
 
     async def ollama_available(self) -> bool:
         try:

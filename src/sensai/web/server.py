@@ -71,6 +71,25 @@ def create_app(
     async def memory() -> dict[str, list[dict[str, Any]]]:
         return await backend.memory_snapshot()
 
+    @app.get("/api/documents/current")
+    async def document() -> dict[str, Any]:
+        return backend.documents().to_dict()
+
+    @app.get("/api/documents/current/revisions")
+    async def document_revisions() -> dict[str, Any]:
+        return {"revisions": backend.documents().revisions()}
+
+    @app.get("/api/documents/current/export", response_model=None)
+    async def document_export(format: str = "md") -> Response:
+        if format != "md":
+            return api_error(400, "INVALID_MESSAGE", "Format d'export inconnu : md.")
+        documents = backend.documents()
+        return PlainTextResponse(
+            documents.to_markdown(),
+            media_type="text/markdown; charset=utf-8",
+            headers=download(f"{documents.doc_id}-r{documents.revision}.md"),
+        )
+
     @app.get("/api/personas")
     async def personas() -> dict[str, Any]:
         current, profiles = backend.personas()

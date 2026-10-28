@@ -29,9 +29,12 @@ from typing import Any
 from sensai.core.ask import Answer, PendingQuestion, QuestionBroker, answer_result, pending_question
 from sensai.core.config import Config
 from sensai.core.confirm import AutoRejectBroker, ConfirmationBroker, Decision, PendingAction
+from sensai.documents.store import DocumentStore
 from sensai.memory.errors import MemoryStoreError
 from sensai.memory.store import AuditContext, MemoryStore
+from sensai.tools.document_tools import document_tools
 from sensai.web.engines.backend import ModelInfo, Persona, PersonaTools
+from sensai.web.engines.note import NOTE_ACTIONS, note_action, note_registry
 from sensai.web.paths import FIXTURES_DIR
 from sensai.web.websocket.ask import WebQuestionBroker
 from sensai.web.websocket.confirm import WebConfirmationBroker
@@ -52,6 +55,7 @@ FIXTURES = (
     "file_write_reject",
     "question",
     "errors",
+    "document",
 )
 
 # Scenarios that wait for a confirmation: <name>_approve.jsonl and <name>_reject.jsonl
@@ -71,6 +75,7 @@ ROUTES = (
     Route(("exporte",), "file_write", 0),  # act 5
     Route(("délai moyen", "delai moyen"), "question", 0),  # act 1 with its clarifying question
     Route(("retiens", "mémorise", "memorise"), "memory", 0),
+    Route(("note du comité", "note du comite"), "document", 0),  # M4, before "clients rentables"
     Route(("clients rentables",), "memory", 1),
     Route(("piège", "piege", "brasserie lemaire"), "judge_contradiction", 0),
     Route(("erreur", "panne"), "errors", None),
@@ -144,6 +149,9 @@ MOCK_TOOLS = (
     _tool("glossary_define", None, "Définit un terme métier", False, False, False),
     _tool("memory_update", None, "Modifie une entrée de la mémoire", False, False, False),
     _tool("memory_delete", None, "Supprime une entrée de la mémoire", False, True, True),
+    _tool("document_read", None, "Lit la note du comité", True, False, False),
+    _tool("document_patch", None, "Modifie une section de la note", False, False, False),
+    _tool("document_delete_section", None, "Supprime une section de la note", False, True, True),
     _tool("file_list", None, "Liste les dossiers autorisés", True, False, False),
     _tool("file_read", None, "Lit un fichier d'un dossier autorisé", True, False, False),
     _tool("file_write", None, "Écrit un fichier dans un dossier autorisé", False, True, True),
@@ -238,8 +246,11 @@ class MockEngine:
         pacing: Pacing,
         memory: MemoryStore | None = None,
         questions: QuestionBroker | None = None,
+        documents: DocumentStore | None = None,
     ) -> None:
         self.session_id = session_id
+        self._config = config
+        self._documents = documents  # written for real by the replayed document_* calls
         self._questions = questions  # None: nobody answers, as NoHumanQuestionBroker
         self._question_timeout_s = config.agent.question_timeout_s
         self._memory = memory  # kept in step with the replayed memory_updated events
@@ -276,7 +287,17 @@ class MockEngine:
         prefix, branches = self._pick(user_message)
         return self._replay(prefix, branches, user_message)
 
-    def run_ui_action(self, tool: str, arguments: dict[str, Any]) -> AsyncIterator[Event]:
+    def run_ui_action(self, tool: str, arguments: dict[str, Any]) -> AsyncIterator[Any]:
+        if tool in NOTE_ACTIONS and self._documents is not None:
+            # The Note panel: the same turn as on the real engine, on the mock's note
+            return note_action(
+                note_registry(self._documents, self.session_id),
+                tool,
+                arguments,
+                session_id=self.session_id,
+                broker=self._broker,
+                hitl=self._config.hitl,
+            )
         prefix, branches = _ui_action_turn(tool, arguments)
         if tool == "memory_delete" and branches is not None and self._memory is not None:
             # The real preview of the store, cascades included, as the engine would show it
@@ -363,6 +384,7 @@ class MockEngine:
         question: PendingQuestion | None = None
         answer: Answer | None = None
         last_call: Event | None = None  # the tool behind the next memory_updated
+        written: Event | None = None  # the note write behind the next document_updated
         queue = list(prefix)
         index = 0
         while index < len(queue):
@@ -397,8 +419,19 @@ class MockEngine:
                 event["duration_ms"] = _elapsed_ms(started)
             elif kind == "tool_call":
                 last_call = event
+                if self._documents is not None and "base_revision" in event["arguments"]:
+                    # Written on the note as it is now, which the user may have edited
+                    revision = self._documents.revision
+                    event["arguments"] = {**event["arguments"], "base_revision": revision}
+            elif kind == "tool_result" and last_call is not None and self._documents is not None:
+                if last_call["tool"].startswith("document_"):
+                    written = await self._write_note(last_call, event)
             elif kind == "memory_updated":
                 self._remember(last_call, origin_ui=user_message is None)
+            elif kind == "document_updated" and self._documents is not None:
+                if written is None:
+                    continue  # nothing changed on the note: no document_updated (memory.md §7.3)
+                event.update(written)
             yield event
             if kind == "question_asked":
                 question = pending_question(
@@ -472,6 +505,32 @@ class MockEngine:
                 self._memory.delete(args["kind"], args["ref"], ctx)
         except (MemoryStoreError, KeyError):
             logger.debug("Mock memory left unchanged by %s", call["tool"], exc_info=True)
+
+    async def _write_note(self, call: Event, event: Event) -> Event | None:
+        """Run the replayed note call on the mock's note, so that the Note panel shows it;
+        the tool_result becomes the real one. Returns the change, if any."""
+        assert self._documents is not None
+        tools = {tool.name: tool for tool in document_tools(self._documents, self.session_id)}
+        tool = tools.get(call["tool"])
+        if tool is None:
+            return None
+        result = await tool.call(call["arguments"])
+        error = (
+            None
+            if result.error is None
+            else {"code": result.error.code, "message": result.error.message}
+        )
+        event.update(ok=result.ok, summary=result.summary, data=result.data, error=error)
+        change = result.document_change
+        if change is None:
+            return None
+        return {
+            "doc_id": change.doc_id,
+            "revision": change.revision,
+            "section_id": change.section_id,
+            "op": change.op,
+            "summary": change.summary,
+        }
 
     def _event(self, kind: str, turn_id: str, **fields: Any) -> Event:
         return {
@@ -580,6 +639,7 @@ class MockBackend:
         # A real store, in RAM and shared by the sessions, so that the memory panel has real
         # data. Opened on first use: SQLite wants the thread of the server's event loop.
         self._memory: MemoryStore | None = None
+        self._documents: DocumentStore | None = None  # the committee note, same way
 
     async def start(self) -> None:
         return None  # no server to start
@@ -588,6 +648,9 @@ class MockBackend:
         if self._memory is not None:
             self._memory.close()
             self._memory = None
+        if self._documents is not None:
+            self._documents.close()
+            self._documents = None
 
     async def memory_snapshot(self) -> dict[str, list[dict[str, Any]]]:
         return self._store().dump()
@@ -596,6 +659,11 @@ class MockBackend:
         if self._memory is None:
             self._memory = mock_memory()
         return self._memory
+
+    def documents(self) -> DocumentStore:
+        if self._documents is None:
+            self._documents = DocumentStore.open(":memory:", self._config.documents.template)
+        return self._documents
 
     async def list_models(self) -> list[ModelInfo]:
         models = [ModelInfo(**model) for model in MOCK_MODELS]
@@ -631,6 +699,7 @@ class MockBackend:
             self._pacing,
             memory=self._store(),
             questions=questions,
+            documents=self.documents(),
         )
 
     def scheduled_engine(self, session_id: str) -> MockEngine:

@@ -105,19 +105,24 @@ Un serveur qui ne prend pas encore en charge un type de la v1.1 répond `INVALID
 
 ### 4.2 `ui_action`
 
-Permet à l'interface de déclencher un outil sans passer par le modèle : modifier ou supprimer une entrée depuis le panneau Mémoire (US-M3-03).
+Permet à l'interface de déclencher un outil sans passer par le modèle : modifier ou supprimer une entrée depuis le panneau Mémoire (US-M3-03), modifier la note du comité depuis le panneau Note (v1.1, M4, US-M4-01 et 02).
 
 ```json
 {"type": "ui_action", "id": "c-31", "tool": "memory_delete", "arguments": {"kind": "fact", "ref": "17"}}
 ```
 
-- **Liste blanche** : seuls `memory_update` et `memory_delete` sont appelables. **Jamais `execute_write`** ni aucun autre outil. Un autre nom donne l'erreur `UI_ACTION_FORBIDDEN`. Le moteur applique la même liste blanche (défense en profondeur).
+- **Liste blanche** : seuls `memory_update`, `memory_delete` et, en v1.1, `document_patch`, `document_delete_section` et `document_restore` sont appelables. **Jamais `execute_write`** ni aucun autre outil. Un autre nom donne l'erreur `UI_ACTION_FORBIDDEN`. Le moteur applique la même liste blanche (défense en profondeur).
 - `arguments` sont **exactement ceux des outils mémoire** (`memory.md`, P3) :
 
 | Outil | Arguments | Confirmation |
 |---|---|---|
 | `memory_update` | `{kind, ref, patch}` | Non |
 | `memory_delete` | `{kind, ref}` | **Oui** (l'outil déclare `destructiveHint: true`) |
+| `document_patch` (v1.1) | `{section_id, op, content, title?, base_revision}` | Non (réversible, versionné) |
+| `document_delete_section` (v1.1) | `{section_id, base_revision}` | **Oui** (`destructiveHint: true`) |
+| `document_restore` (v1.1) | `{revision}` | Non (crée une révision) |
+
+- Outils `document_*` : arguments de `memory.md` §7.3, audit `actor = "user"`. `base_revision` est la révision que le panneau affichait : si l'agent a écrit entre-temps, le `tool_result` échoue (`REVISION_CONFLICT`) et le panneau relit la note. `document_updated` suit chaque écriture effective, comme pour l'agent. Tant que l'`Engine` n'a pas son `run_ui_action` (P-6), le serveur web construit ce tour lui-même (`web/engines/note.py`), sur le mock comme sur le vrai moteur ; les actions du panneau Mémoire attendent P-6 sur le vrai moteur.
 
 - `kind` : `"glossary"`, `"entity"`, `"relation"` ou `"fact"`.
 - `ref` : **toujours une chaîne**. C'est le terme pour le glossaire, et l'`id` en texte pour les autres.
@@ -706,7 +711,7 @@ V-7 et V-10 ont été proposés par P4 dans la relecture de la section 4 : ils s
 | V-6 | Pas d'expiration des liens de partage en v1.1 (révocation manuelle), cité en limite | — | §4.10 |
 | V-7 | `persona_changed` entre dans `session_ready.history`, à sa place | P1 | §5.2 |
 | V-10 | `SHARE_NOT_FOUND` pour un jeton inconnu ou révoqué | P1 | §7.1 |
-| — | Les nouvelles clés de `set_config` (`prompt_version`, `fewshot_enabled`) et les outils `document_*` d'`ui_action` sont reportés ici par la PR de la fonctionnalité qui les lit (A4, A7, M4) | P1, P3 | §4.2, §4.7 |
+| — | Les nouvelles clés de `set_config` (`prompt_version`, `fewshot_enabled`) et les outils `document_*` d'`ui_action` sont reportés ici par la PR de la fonctionnalité qui les lit (A4, A7, M4). `document_*` : reportés par WEB-17 | P1, P3 | §4.2, §4.7 |
 
 ---
 

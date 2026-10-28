@@ -4,6 +4,7 @@ import './chat/chat.css'
 import './hitl/hitl.css'
 import './judge/judge.css'
 import './memory/memory.css'
+import './note/note.css'
 import './question/question.css'
 import './results/results.css'
 import './schedule/schedule.css'
@@ -21,17 +22,21 @@ import { MemoryPanel } from './memory/MemoryPanel'
 import { ConversationActions } from './share/ConversationActions'
 import { memoryVersion, recentChanges } from './memory/memory'
 import { useMemory } from './memory/useMemory'
+import { NotePanel } from './note/NotePanel'
+import { lastUpdate, noteVersion, recentSections } from './note/note'
+import { useNote } from './note/useNote'
 import { SchedulesPanel } from './schedule/SchedulesPanel'
 import { useSchedules } from './schedule/useSchedules'
 import { useSession } from './session/useSession'
 import { StatusBar } from './statusbar/StatusBar'
 import { Timeline } from './timeline/Timeline'
 
-type SideTab = 'timeline' | 'memory' | 'schedules'
+type SideTab = 'timeline' | 'memory' | 'note' | 'schedules'
 
 const TABS: { id: SideTab; label: string }[] = [
   { id: 'timeline', label: 'Timeline' },
   { id: 'memory', label: 'Mémoire' },
+  { id: 'note', label: 'Note' },
   { id: 'schedules', label: 'Tâches planifiées' },
 ]
 
@@ -47,6 +52,7 @@ export default function App() {
   const pinned = state.turns.findIndex((turn) => turn.id === pinnedTurnId)
   const timelineIndex = pinned !== -1 ? pinned : state.turns.length - 1
   const memory = useMemory(session.connected, memoryVersion(state.turns))
+  const note = useNote(session.connected, noteVersion(state.turns))
   const schedules = useSchedules(session.connected, state.schedulesVersion)
   const canAct = session.connected && !session.busy
 
@@ -120,6 +126,7 @@ export default function App() {
             onAsk={ask}
             onShowSteps={showSteps}
             onShowMemory={() => setTab('memory')}
+            onShowNote={() => setTab('note')}
           />
         )}
 
@@ -142,7 +149,10 @@ export default function App() {
         />
       </main>
 
-      <aside className="sidepanel" aria-label="Étapes de l'agent, mémoire et tâches planifiées">
+      <aside
+        className="sidepanel"
+        aria-label="Étapes de l'agent, mémoire, note du comité et tâches planifiées"
+      >
         <div className="tabs" role="tablist">
           {TABS.map(({ id, label }) => (
             <button
@@ -166,6 +176,16 @@ export default function App() {
             <MemoryPanel
               memory={memory}
               recent={recentChanges(state.turns)}
+              canAct={canAct}
+              onAction={session.uiAction}
+            />
+          )}
+          {tab === 'note' && (
+            <NotePanel
+              note={note.note}
+              revisions={note.revisions}
+              recent={recentSections(state.turns)}
+              last={lastUpdate(state.turns)}
               canAct={canAct}
               onAction={session.uiAction}
             />
