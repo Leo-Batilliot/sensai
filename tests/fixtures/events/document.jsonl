@@ -1,0 +1,18 @@
+{"type":"turn_started","session_id":"s-fixture","turn_id":"t-1","ts":1760433400.05,"origin":"user","user_message":"Mets à jour la section Rentabilité de la note du comité."}
+{"type":"tool_call","session_id":"s-fixture","turn_id":"t-1","ts":1760433400.1,"call_id":"k-1","server":null,"tool":"document_read","arguments":{}}
+{"type":"tool_result","session_id":"s-fixture","turn_id":"t-1","ts":1760433400.15,"call_id":"k-1","ok":true,"summary":"Plan de la note, révision 0","data":{"doc_id":"note-comite","title":"Note au comité de direction","revision":0,"sections":[{"section_id":"synthese","position":1,"title":"Synthèse","chars":0},{"section_id":"chiffres-cles","position":2,"title":"Chiffres clés","chars":0},{"section_id":"rentabilite","position":3,"title":"Rentabilité","chars":0},{"section_id":"encours-retards","position":4,"title":"Encours et retards de paiement","chars":0},{"section_id":"actions","position":5,"title":"Actions proposées","chars":0}]},"error":null,"duration_ms":3}
+{"type":"tool_call","session_id":"s-fixture","turn_id":"t-1","ts":1760433400.2,"call_id":"k-2","server":null,"tool":"document_patch","arguments":{"section_id":"rentabilite","op":"replace","content":"Selon la règle retenue (marge brute supérieure à 25 % du chiffre d'affaires HT), 3 clients sont rentables ce trimestre :\n\n- Cabinet Roussel : 31,2 %\n- Imprimerie Vasseur : 27,8 %\n- Atelier Morel : 25,4 %","base_revision":0}}
+{"type":"tool_result","session_id":"s-fixture","turn_id":"t-1","ts":1760433400.25,"call_id":"k-2","ok":true,"summary":"Section « Rentabilité » mise à jour (révision 1)","data":{"doc_id":"note-comite","revision":1,"op":"replace","section_id":"rentabilite","summary":"Section « Rentabilité » mise à jour (révision 1)"},"error":null,"duration_ms":6}
+{"type":"document_updated","session_id":"s-fixture","turn_id":"t-1","ts":1760433400.3,"doc_id":"note-comite","revision":1,"section_id":"rentabilite","op":"replace","summary":"Section « Rentabilité » mise à jour (révision 1)"}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433400.35,"delta":"J'ai mis à jour "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433400.4,"delta":"la section "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433400.45,"delta":"« Rentabilité » "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433400.5,"delta":"de la note "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433400.55,"delta":"du comité "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433400.6,"delta":"(révision 1) "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433400.65,"delta":": les 3 clients "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433400.7,"delta":"rentables du trimestre, "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433400.75,"delta":"avec leur marge. "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433400.8,"delta":"Les autres sections "}
+{"type":"token","session_id":"s-fixture","turn_id":"t-1","ts":1760433400.85,"delta":"n'ont pas changé."}
+{"type":"message_done","session_id":"s-fixture","turn_id":"t-1","ts":1760433400.9,"content":"J'ai mis à jour la section « Rentabilité » de la note du comité (révision 1) : les 3 clients rentables du trimestre, avec leur marge. Les autres sections n'ont pas changé.","interrupted":false,"usage":{"prompt_tokens":2480,"completion_tokens":96,"ctx_used":2576,"ctx_max":8192},"duration_ms":1300}

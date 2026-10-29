@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { MessageList } from '../chat/MessageList'
+import { NotePanel } from '../note/NotePanel'
+import { isBlank } from '../note/note'
 import type { SharedSnapshot } from '../protocol'
 import { formatSharedAt, sharedState } from './share'
 
@@ -62,6 +64,19 @@ export function SharedPage({ token }: { token: string }) {
               canAsk={false}
               onAsk={() => undefined}
             />
+            {snapshot.document !== null && !isBlank(snapshot.document) && (
+              // The note at its revision of the share (websocket.md §4.10), read only
+              <section className="shared-note" aria-label="Note du comité">
+                <h2>Note du comité</h2>
+                <NotePanel
+                  note={snapshot.document}
+                  revisions={[]}
+                  recent={new Map()}
+                  last={null}
+                  canAct={false}
+                />
+              </section>
+            )}
           </>
         )}
       </main>

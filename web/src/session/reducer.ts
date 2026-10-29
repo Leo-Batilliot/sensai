@@ -6,6 +6,7 @@ import {
   type ConfirmationRequired,
   type ConfirmationResolved,
   type ContextInjected,
+  type DocumentUpdated,
   type EngineError,
   type EngineEvent,
   type JudgeReport,
@@ -56,6 +57,7 @@ export interface Turn {
   question: QuestionAsked | null // the last question of the turn, kept once answered
   answer: QuestionAnswered | null
   memoryUpdates: MemoryUpdated[]
+  documentUpdates: DocumentUpdated[] // sections of the committee note written by this turn
   error: EngineError | null
   usage: Usage | null
   durationMs: number | null
@@ -233,6 +235,7 @@ function newTurn(id: string, origin: Turn['origin'], userMessage: string | null)
     question: null,
     answer: null,
     memoryUpdates: [],
+    documentUpdates: [],
     error: null,
     usage: null,
     durationMs: null,
@@ -278,6 +281,8 @@ function applyToTurn(turn: Turn, event: EngineEvent): Turn {
       return { ...turn, answer: event, status: 'running' }
     case 'memory_updated':
       return { ...turn, memoryUpdates: [...turn.memoryUpdates, event] }
+    case 'document_updated':
+      return { ...turn, documentUpdates: [...turn.documentUpdates, event] }
     case 'message_done':
       return {
         ...turn,

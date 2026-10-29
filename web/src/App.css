@@ -166,7 +166,8 @@
 }
 
 .tabs button {
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-3); /* four tabs on one line in the side panel */
+  white-space: nowrap;
   border: 0;
   border-bottom: 3px solid transparent;
   background: none;

@@ -65,6 +65,7 @@ interface Props {
   onAsk: (question: string) => void
   onShowSteps?: (turnId: string) => void
   onShowMemory?: () => void
+  onShowNote?: () => void
 }
 
 export function AssistantMessage({
@@ -76,6 +77,7 @@ export function AssistantMessage({
   onAsk,
   onShowSteps,
   onShowMemory,
+  onShowNote,
 }: Props) {
   const streaming = turn.status === 'running'
   const label = activity(turn)
@@ -119,6 +121,29 @@ export function AssistantMessage({
               ) : (
                 <span key={`${entry.kind}:${entry.ref}`} className="chip chip-small">
                   {entry.label}
+                </span>
+              ),
+            )}
+          </p>
+        )}
+        {turn.documentUpdates.length > 0 && (
+          // What the agent wrote in the committee note (M4): "seule la section Rentabilité change"
+          <p className="context-chips">
+            <span className="muted">Note du comité :</span>
+            {turn.documentUpdates.map((update) =>
+              onShowNote !== undefined ? (
+                <button
+                  key={update.revision}
+                  type="button"
+                  className="chip chip-small chip-up"
+                  title="Voir la note du comité"
+                  onClick={onShowNote}
+                >
+                  {update.summary}
+                </button>
+              ) : (
+                <span key={update.revision} className="chip chip-small chip-up">
+                  {update.summary}
                 </span>
               ),
             )}

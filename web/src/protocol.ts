@@ -123,6 +123,18 @@ export interface MemoryUpdated extends Common {
   summary: string
 }
 
+export type DocumentOp = 'replace' | 'append' | 'insert_after' | 'delete' | 'restore'
+
+// A section of the committee note was written, by the agent or the Note panel (M4)
+export interface DocumentUpdated extends Common {
+  type: 'document_updated'
+  doc_id: string
+  revision: number
+  section_id: string | null // null for a restore: the whole note changed
+  op: DocumentOp
+  summary: string
+}
+
 export interface Usage {
   prompt_tokens: number
   completion_tokens: number
@@ -197,6 +209,7 @@ export type EngineEvent =
   | QuestionAsked
   | QuestionAnswered
   | MemoryUpdated
+  | DocumentUpdated
   | MessageDone
   | JudgeStarted
   | JudgeReport
@@ -300,7 +313,32 @@ export interface SharedSnapshot extends ShareInfo {
   model: string
   persona: Persona | null
   events: SessionReady['history']
-  document: unknown // the committee note with M4, null before
+  document: NoteDocument | null // the committee note at its revision of the share
+}
+
+// GET /api/documents/current (memory.md §7.5)
+export interface NoteSection {
+  section_id: string
+  position: number
+  title: string
+  content: string
+  updated_at: string
+}
+
+export interface NoteDocument {
+  id: string
+  title: string
+  revision: number
+  sections: NoteSection[]
+}
+
+// GET /api/documents/current/revisions, oldest first
+export interface NoteRevision {
+  revision: number
+  op: DocumentOp
+  section_id: string | null
+  actor: 'agent' | 'user'
+  at: string
 }
 
 // Scheduled tasks (X5, websocket.md §4.11, §5.2): sent to every open session
@@ -363,9 +401,17 @@ export const PROTOCOL_VERSION = 1
 
 // --- client messages (websocket.md §4) --------------------------------------------------
 
+// The tools the panels may run (websocket.md §4.2, memory.md §7.5)
+export type UiActionTool =
+  | 'memory_update'
+  | 'memory_delete'
+  | 'document_patch'
+  | 'document_delete_section'
+  | 'document_restore'
+
 export type ClientMessage =
   | { type: 'user_message'; id?: string; content: string }
-  | { type: 'ui_action'; id?: string; tool: string; arguments: Record<string, unknown> }
+  | { type: 'ui_action'; id?: string; tool: UiActionTool; arguments: Record<string, unknown> }
   | { type: 'confirm'; id?: string; action_id: string; decision: 'approve' | 'reject'; comment?: string }
   | { type: 'cancel'; id?: string }
   | { type: 'reset'; id?: string }

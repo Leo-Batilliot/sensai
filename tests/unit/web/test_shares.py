@@ -172,7 +172,8 @@ def test_share_freezes_the_conversation_and_unshare_revokes_it(
     assert [s["token"] for s in listed] == [token]
     assert listing["local_only"] is True  # [web] host = 127.0.0.1 by default
     turns = {e["turn_id"] for e in shared["events"] if e["type"] == "turn_started"}
-    assert len(turns) == 1 and shared["document"] is None
+    assert len(turns) == 1
+    assert (shared["document"]["id"], shared["document"]["revision"]) == ("note-comite", 0)
     assert frozen == shared  # the rest of the conversation never reaches the snapshot
     assert page.status_code == 200 and "SENSAI" in page.text
     SERVER.validate(revoked)

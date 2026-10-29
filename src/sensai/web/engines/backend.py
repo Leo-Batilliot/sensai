@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any, Protocol, TypedDict
 
+from sensai.documents.store import DocumentStore
 from sensai.web.websocket.ask import WebQuestionBroker
 from sensai.web.websocket.confirm import WebConfirmationBroker
 
@@ -91,6 +92,10 @@ class WebBackend(Protocol):
 
     def personas(self) -> tuple[str | None, list[PersonaTools]]:
         """The profile a new session starts with, and every profile (GET /api/personas)."""
+        ...
+
+    def documents(self) -> DocumentStore:
+        """The committee note (M4): GET /api/documents/current, shares, Note panel."""
         ...
 
     def new_engine(

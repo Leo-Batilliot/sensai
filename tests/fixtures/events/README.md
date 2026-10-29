@@ -14,6 +14,7 @@ Une ligne = un événement complet, tel que le serveur l'envoie sur le WebSocket
 | `file_write_approve.jsonl` | Acte 5 : export de la note dans `reports/` | `file_write` sous confirmation, `impact.file` (chemin, taille, nouveau fichier, début du contenu), `approve`, « Fichier créé » |
 | `question.jsonl` | Acte 1 avec la question de précision (X4) | `ask_user` → `question_asked` (« Ce trimestre » / « Tout l'historique », champ libre) → `question_answered` → réponse `Réponse : Tout l'historique`, puis le tour de `nominal.jsonl` |
 | `file_write_reject.jsonl` | Acte 5 : export refusé | Même début, `reject` avec commentaire, `ACTION_REJECTED`, aucun fichier écrit |
+| `document.jsonl` | Acte 2 : la note du comité (M4) | `document_read` (plan de la note), `document_patch` sur la seule section « Rentabilité », `document_updated` (révision 1), réponse sans juge |
 | `errors.jsonl` | Trois pannes, un tour chacune | `OLLAMA_UNAVAILABLE` (fin de tour) ; serveur de date indisponible (`MCP_SERVER_UNAVAILABLE`, l'agent demande la période) ; requêtes en échec (`SQL_ERROR`), un appel répété ignoré (`DUPLICATE_CALL`, le tour continue), puis la limite de 6 appels atteinte (`MAX_ITERATIONS`, fin de tour) |
 
 ## Règles pour le `MockEngine`
@@ -28,12 +29,13 @@ Implémentation : [`src/sensai/web/engines/mock.py`](../../../src/sensai/web/eng
   | « exporte » | Acte 5 (`file_write_*`) : même pause que l'acte 4, pour une écriture de fichier |
   | « délai moyen » | Acte 1 avec sa question (`question.jsonl`) : attend la réponse (`answer`), puis rejoue `question_answered` et le résultat d'`ask_user` avec le choix fait |
   | « retiens », « mémorise » | Acte 2, tour 1 (`memory.jsonl`) |
+  | « note du comité » | Acte 2, la note (`document.jsonl`) : les appels `document_*` sont exécutés pour de vrai sur la note du mock, à sa révision courante |
   | « clients rentables » | Acte 2, tour 2 (`memory.jsonl`) |
   | « piège », « brasserie lemaire » | Acte 3 (`judge_contradiction.jsonl`) |
   | « erreur », « panne » | Tour suivant d'`errors.jsonl`, en boucle (`reset` repart du premier) |
   | autre chose | Acte 1 (`nominal.jsonl`) |
 
-- **`ui_action`** : tour synthétique (`origin: "ui"`) ; `memory_delete` demande une confirmation, `memory_update` non.
+- **`ui_action`** : tour synthétique (`origin: "ui"`) ; `memory_delete` demande une confirmation, `memory_update` non. Les outils `document_*` du panneau Note passent par le même code que le vrai moteur (`web/engines/note.py`), sur la note du mock : `document_delete_section` demande une confirmation.
 - **Un tour par message** : un fichier peut contenir plusieurs tours (`memory.jsonl`, `errors.jsonl`) ; le `MockEngine` rejoue le tour suivant à chaque `user_message`.
 - **Identifiants** : `session_id` (`s-fixture`) est remplacé par celui de la session ; les `turn_id`, `call_id` et `action_id` peuvent être régénérés, puisqu'ils sont opaques.
 - **Rythme** : les `ts` donnent l'ordre, pas le rythme. Le `MockEngine` impose le sien (environ 30 ms par `token`, 400 ms par outil) et réécrit `ts` à l'émission.

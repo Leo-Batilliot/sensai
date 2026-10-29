@@ -1,0 +1,159 @@
+/* Note panel (M4): the committee note, its sections and its revisions */
+.note-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.note-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.note-head h3 {
+  margin: 0;
+  margin-right: auto;
+  font-size: 15px;
+}
+
+.note-head a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.note-last {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ok);
+}
+
+.note-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.note-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  font-size: 13px;
+}
+
+.note-recent {
+  border-color: var(--ok);
+  background: var(--ok-bg);
+}
+
+.note-section-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.note-section-head h4 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.note-section p {
+  margin: 0;
+}
+
+.note-content {
+  overflow-wrap: anywhere;
+}
+
+.note-content > * + * {
+  margin-top: var(--space-1);
+}
+
+.note-content ul,
+.note-content ol {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.note-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.note-delete {
+  color: var(--bad);
+}
+
+.note-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 12px;
+}
+
+.note-edit textarea {
+  padding: var(--space-1) var(--space-2);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.note-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.note-history h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.note-history ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.note-history li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.note-revision {
+  overflow-wrap: anywhere;
+}
+
+/* The note on a shared page: under the conversation */
+.shared-note {
+  padding: var(--space-4);
+  border-top: 1.5px solid var(--line);
+}
+
+.shared-note > h2 {
+  margin: 0 0 var(--space-3);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
