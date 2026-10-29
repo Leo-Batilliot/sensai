@@ -12,6 +12,7 @@ from sensai.data.schema import connect, create_schema
 from sensai.web.engines.mock import MockBackend, Pacing
 from sensai.web.engines.real import RealBackend
 from sensai.web.server import create_app
+from sensai.web.websocket.settings import SESSION_SETTINGS
 
 INSTANT = Pacing(token=0, tool=0, judge=0, other=0)
 
@@ -47,6 +48,21 @@ def test_models_lists_the_default_and_the_tool_support(dist: Path) -> None:
     names = {model["name"]: model["supports_tools"] for model in body["models"]}
     assert names[Config().ollama.model] is True
     assert False in names.values()  # one model without tools, to show the warning
+
+
+def test_config_gives_the_settings_of_the_interface(dist: Path) -> None:
+    body = make_client(dist).get("/api/config").json()
+    config = Config()
+    # exactly the keys set_config accepts, with the values of config.toml
+    assert set(body["defaults"]) == set(SESSION_SETTINGS)
+    assert body["defaults"]["num_ctx"] == config.ollama.num_ctx
+    assert body["defaults"]["judge_model"] is None  # empty in config.toml: same as the agent
+    assert body["bounds"] == {"temperature": [0.0, 1.0], "num_ctx": [2048, 32768]}
+    assert body["read_only"]["confirmation_timeout_s"] == config.hitl.confirmation_timeout_s
+    # never a path, an MCP command, a deny list nor the [web] section
+    text = str(body)
+    assert "path" not in text and "deny" not in text and "command" not in text
+    assert str(config.web.port) not in text
 
 
 def test_serves_the_built_frontend(dist: Path) -> None:

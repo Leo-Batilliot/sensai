@@ -85,6 +85,14 @@ select {
   color: inherit;
 }
 
+/* Projector and large screens (WEB-13): the layout is drawn for about 1280×720; at 1920×1080
+   and above, everything is scaled up rather than lost in wide margins */
+@media (min-width: 1700px) and (min-height: 950px) {
+  :root {
+    zoom: 1.25;
+  }
+}
+
 :focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;

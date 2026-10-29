@@ -1,6 +1,7 @@
-import type { Persona, ServerInfo, Usage } from '../protocol'
+import type { Persona, ServerInfo, SessionConfig, Usage } from '../protocol'
 import type { ChatState, ConnectionStatus } from '../session/reducer'
 import { useMenu } from '../shared/useMenu'
+import { SettingsMenu } from './SettingsMenu'
 import { GAUGE_HINT, gauge, modelChoices, modelLabel, serversUp } from './status'
 import { useModels } from './useModels'
 
@@ -17,11 +18,13 @@ interface Props {
   state: ChatState
   connected: boolean
   onSetModel: (model: string) => void
+  onSetConfig: (patch: Partial<SessionConfig>) => void
   onSetPersona: (persona: string) => void
 }
 
-// Status bar (docs/keynote/ui/BarreEtat): profile, model, MCP servers, context window, connection
-export function StatusBar({ state, connected, onSetModel, onSetPersona }: Props) {
+// Status bar (docs/keynote/ui/BarreEtat): profile, model, MCP servers, context window,
+// settings, connection
+export function StatusBar({ state, connected, onSetModel, onSetConfig, onSetPersona }: Props) {
   const connection = CONNECTION[state.connection]
   const session = state.session
 
@@ -49,6 +52,12 @@ export function StatusBar({ state, connected, onSetModel, onSetPersona }: Props)
         />
         <ServersMenu servers={session?.servers ?? []} />
         <ContextGauge usage={state.lastUsage} ctxMax={session?.ctxMax ?? null} />
+        <SettingsMenu
+          config={session?.config ?? null}
+          model={session?.model ?? null}
+          connected={connected}
+          onSetConfig={onSetConfig}
+        />
         <span className={`chip ${connection.tone}`} role="status">
           {connection.label}
         </span>
@@ -158,7 +167,8 @@ function ServersMenu({ servers }: { servers: ServerInfo[] }) {
   )
 }
 
-// Tokens of the last model call over the context window: past 100 %, the start is lost
+// Tokens of the last model call over the context window: past 100 %, the start is lost.
+// The window is the session's: a size changed in Réglages shows at once, not after a turn.
 function ContextGauge({ usage, ctxMax }: { usage: Usage | null; ctxMax: number | null }) {
   if (usage === null) {
     return (
@@ -167,11 +177,12 @@ function ContextGauge({ usage, ctxMax }: { usage: Usage | null; ctxMax: number |
       </span>
     )
   }
-  const { percent, tone } = gauge(usage.ctx_used, usage.ctx_max)
+  const max = ctxMax ?? usage.ctx_max
+  const { percent, tone } = gauge(usage.ctx_used, max)
   return (
     <span className={`chip context-gauge gauge-${tone}`} title={GAUGE_HINT[tone]}>
       <span>
-        Contexte : {numbers.format(usage.ctx_used)} / {numbers.format(usage.ctx_max)}
+        Contexte : {numbers.format(usage.ctx_used)} / {numbers.format(max)}
         {tone === 'over' && ' · dépassé'}
       </span>
       <span

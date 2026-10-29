@@ -51,8 +51,10 @@
 
 .brand {
   display: flex;
+  flex: none;
   align-items: center;
   gap: var(--space-2);
+  white-space: nowrap;
 }
 
 .brand strong {
@@ -135,6 +137,7 @@
 
 .composer button {
   height: 40px;
+  min-width: 88px; /* « Envoyer » and « Arrêter » take the same width */
   flex: none;
   padding: 0 var(--space-4);
   border: 1.5px solid var(--ink);

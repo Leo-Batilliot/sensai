@@ -22,6 +22,7 @@ from sensai.web.shares import ShareStore, to_markdown
 from sensai.web.websocket.endpoint import install_websocket
 from sensai.web.websocket.messages import snapshot
 from sensai.web.websocket.session import SessionManager
+from sensai.web.websocket.settings import config_view
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,10 @@ def create_app(
     @app.get("/api/models")
     async def models() -> dict[str, Any]:
         return {"default": config.ollama.model, "models": await backend.list_models()}
+
+    @app.get("/api/config")
+    async def settings() -> dict[str, Any]:
+        return config_view(config)
 
     @app.get("/api/memory")
     async def memory() -> dict[str, list[dict[str, Any]]]:

@@ -224,6 +224,22 @@ export interface SessionConfig {
   judge_model: string | null
 }
 
+// GET /api/config (websocket.md §9): the values of config.toml, never changed by set_config
+export interface ConfigView {
+  defaults: SessionConfig
+  bounds: { temperature: [number, number]; num_ctx: [number, number] }
+  read_only: {
+    ollama_host: string
+    keep_alive: string
+    max_tool_iterations: number
+    max_sql_retries: number
+    row_limit: number
+    query_timeout_ms: number
+    confirmation_timeout_s: number
+    numeric_tolerance: number
+  }
+}
+
 export interface ServerInfo {
   name: string
   status: 'up' | 'down'

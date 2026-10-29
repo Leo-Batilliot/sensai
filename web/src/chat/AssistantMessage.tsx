@@ -8,6 +8,7 @@ import { KeyFigures } from '../judge/KeyFigures'
 import { QuestionCard, type Reply } from '../question/QuestionCard'
 import { ResultTable } from '../results/ResultTable'
 import { asRowSet } from '../results/table'
+import { InlineCode } from '../shared/InlineCode'
 import type { Turn } from '../session/reducer'
 import { messageQueries, stepStatus, stepsSummary } from '../session/steps'
 import { SqlBlock } from '../sql/SqlBlock'
@@ -181,7 +182,7 @@ export function AssistantMessage({
         {turn.status === 'interrupted' && <p className="interrupted">Réponse interrompue.</p>}
         {turn.error !== null && (
           <p className="turn-error" role="alert">
-            {turn.error.message}
+            <InlineCode text={turn.error.message} />
           </p>
         )}
         {messageQueries(turn).map((step) => {

@@ -29,7 +29,7 @@ export const GAUGE_HINT: Record<GaugeTone, string> = {
   ok: 'Tokens utilisés par le dernier appel au modèle, sur la taille de sa fenêtre de contexte.',
   warn: 'La fenêtre de contexte est presque pleine : une réponse longue ou une conversation qui continue peut la dépasser.',
   over:
-    "La fenêtre de contexte est dépassée : le modèle a oublié le début de la conversation, consignes et outils compris. Commencez une nouvelle conversation ou augmentez num_ctx.",
+    "La fenêtre de contexte est dépassée : le modèle a oublié le début de la conversation, consignes et outils compris. Commencez une nouvelle conversation ou agrandissez la fenêtre de contexte (Réglages).",
 }
 
 export function serversUp(servers: ServerInfo[]): number {
