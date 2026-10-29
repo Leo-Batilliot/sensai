@@ -52,8 +52,9 @@ winget install --id Git.Git -e
 winget install --id Python.Python.3.12 -e
 winget install --id Ollama.Ollama -e
 winget install --id astral-sh.uv -e
-winget install --id OpenJS.NodeJS.LTS -e
 ```
+
+Node.js n'est pas nécessaire : l'interface web est livrée déjà construite (`web/dist`). Il ne sert qu'à modifier le front (`winget install --id OpenJS.NodeJS.LTS -e`).
 
 **Fermer puis rouvrir PowerShell** pour que les nouvelles commandes soient trouvées, puis :
 
@@ -78,8 +79,9 @@ Le dépôt est privé : au premier `git clone`, une fenêtre de connexion GitHub
 
 ```powershell
 .venv\Scripts\python -m sensai seed     # base de démo, date de référence = aujourd'hui
-cd web; npm ci; npm run build; cd ..    # construit web/dist
 ```
+
+L'interface web est déjà construite dans le dépôt (`web/dist`) : rien à faire.
 
 ### 4. Vérifier
 
@@ -158,7 +160,7 @@ sudo pacman -S --needed uv
 
 Puis : `uvx mcp-server-time --help`. Le serveur est téléchargé une première fois et mis en cache, pour ne pas attendre au lancement.
 
-### 4. Node.js 22 ou plus (interface web)
+### 4. Node.js 22 ou plus (seulement pour modifier le front)
 
 Ubuntu, Debian ou WSL2 :
 
@@ -174,7 +176,7 @@ Arch :
 sudo pacman -S --needed nodejs npm
 ```
 
-Vérifier : `node --version` affiche v22 ou plus. Node n'est nécessaire que pour construire le front (`make web-build`) et pour MCP Inspector.
+Vérifier : `node --version` affiche v22 ou plus. L'interface web est livrée construite (`web/dist`) : `make web` n'a pas besoin de Node. Node ne sert qu'à modifier le front (`make web-build`) et à MCP Inspector ; cette étape peut être sautée sur une machine de démo.
 
 ### 5. Le projet
 
@@ -184,7 +186,6 @@ cd sensai
 git checkout v0.5.0 # la version de la mid-term (sinon rester sur main)
 make install        # crée .venv et installe les dépendances (dev incluses)
 make seed           # base de démo, date de référence = aujourd'hui
-make web-build      # construit web/dist
 make test           # tests sans Ollama ni outils externes, comme la CI
 make help           # toutes les commandes
 ```
@@ -258,13 +259,12 @@ La timeline des outils (`• time__get_current_time`, `• sql_toolbox__run_sele
 ### Interface web
 
 ```bash
-make web-build      # npm ci + build du front dans web/dist
 make seed           # une fois : la base de démonstration data/business.db
 make web            # http://127.0.0.1:8000, sur le moteur réel (Ollama lancé)
 make web-mock       # ou : sur le MockEngine, sans Ollama ni base
 ```
 
-Développement du front avec rechargement à chaud : voir [`web/README.md`](web/README.md).
+L'interface est servie depuis `web/dist`, committé : pas besoin de Node pour la lancer. Après une modification de `web/src`, `make web-build` la reconstruit, puis on committe `web/dist` (un test de la CI signale un `web/dist` plus ancien que les sources). Développement du front avec rechargement à chaud : voir [`web/README.md`](web/README.md).
 
 ### Tests et qualité
 

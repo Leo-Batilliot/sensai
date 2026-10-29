@@ -21,9 +21,9 @@ config.toml
 # Exports written by the file_write tool
 /reports/
 
-# Frontend: web/dist is force-added at release tags (git add -f web/dist)
+# Frontend: web/dist is committed, so that `make web` needs no Node (WEB-14)
 web/node_modules/
-web/dist/
+!/web/dist/
 
 # Editors and OS
 .idea/
