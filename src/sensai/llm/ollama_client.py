@@ -192,6 +192,16 @@ class OllamaClient:
             context_length=_context_length(data.get("model_info") or {}),
         )
 
+    async def load(self, model: str, num_ctx: int | None = None) -> None:
+        """Load a model into memory without generating anything (POST /api/generate with
+        no prompt), kept keep_alive. With the num_ctx of the turns: another one reloads it."""
+        payload: dict[str, Any] = {"model": model}
+        if num_ctx is not None:
+            payload["options"] = {"num_ctx": num_ctx}
+        if self.keep_alive is not None:
+            payload["keep_alive"] = self.keep_alive
+        await self._request_json("POST", "/api/generate", payload, model=model)
+
     def _chat_payload(
         self,
         model: str,

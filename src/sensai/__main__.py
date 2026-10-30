@@ -1,4 +1,4 @@
-"""Entry point: python -m sensai {chat,web,eval,seed,prompts,schedule}."""
+"""Entry point: python -m sensai {chat,web,eval,seed,prompts,schedule,demo-reset}."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ COMMANDS: dict[str, tuple[str, str]] = {
     "seed": ("Génère la base de démonstration", "DATA-02"),
     "prompts": ("Versions publiées des prompts", "PROMPT-01"),
     "schedule": ("Tâches planifiées : liste, ou exécution immédiate", "SCHED-01"),
+    "demo-reset": ("Remet la démonstration à zéro avant un passage", "CORE-19"),
 }
 
 
@@ -238,6 +239,53 @@ def _run_seed(args: argparse.Namespace) -> int:
         f"{volumes['clients']} clients, {volumes['orders']} commandes, "
         f"{volumes['invoices']} factures. Manifeste : {MANIFEST_NAME}"
     )
+    return 0
+
+
+def _add_demo_reset_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--no-preload", action="store_true", help="sans précharger le modèle (Ollama arrêté)"
+    )
+    parser.add_argument("--config", help="fichier de configuration (défaut : ./config.toml)")
+
+
+def _run_demo_reset(args: argparse.Namespace) -> int:
+    import asyncio
+
+    from sensai.core.config import ConfigError, load_config
+    from sensai.demo_reset import (
+        ResetError,
+        Step,
+        check_mcp_cache,
+        check_session,
+        preload_models,
+        reset_data,
+    )
+
+    try:
+        config = load_config(args.config)
+    except ConfigError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    try:
+        steps = reset_data(config)
+    except ResetError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    steps += check_session(config)
+    problem = prompt_problem(config)
+    if problem is not None:
+        steps.append(Step(problem, ok=False))
+    steps += check_mcp_cache(config)
+    if not args.no_preload:
+        steps += asyncio.run(preload_models(config))
+    for step in steps:
+        print(f"- {step.text}" if step.ok else f"! ATTENTION : {step.text}")
+    warnings = sum(not step.ok for step in steps)
+    if warnings:
+        print(f"Données remises à zéro, mais {warnings} point(s) à corriger avant la démo (!).")
+    else:
+        print("Démo prête : lancez `sensai web`.")
     return 0
 
 
@@ -576,6 +624,7 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "seed": _run_seed,
     "prompts": _run_prompts,
     "schedule": _run_schedule,
+    "demo-reset": _run_demo_reset,
 }
 
 
@@ -597,6 +646,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_prompts_arguments(command)
         elif name == "schedule":
             _add_schedule_arguments(command)
+        elif name == "demo-reset":
+            _add_demo_reset_arguments(command)
     return parser
 
 
