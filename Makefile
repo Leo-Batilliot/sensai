@@ -41,7 +41,7 @@ web: ## Start the web server (http://127.0.0.1:8000)
 web-mock: ## Start the web server on the MockEngine (replays tests/fixtures/events)
 	$(PY) -m sensai web --mock
 
-web-build: ## Build the frontend (web/dist)
+web-build: ## Rebuild the frontend after a change in web/src, then commit web/dist (needs Node 22)
 	cd web && npm ci && npm run build
 
 seed: ## Generate the demo database

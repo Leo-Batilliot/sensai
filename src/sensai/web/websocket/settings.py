@@ -52,3 +52,25 @@ def invalid_session_patch(patch: dict[str, Any]) -> str | None:
         elif key == "judge_model" and value is not None and not (isinstance(value, str) and value):
             return "judge_model doit être un nom de modèle ou null."
     return None
+
+
+def config_view(config: Config) -> dict[str, Any]:
+    """`GET /api/config` (websocket.md §9): what the Réglages menu is built from.
+
+    `defaults` are the values of config.toml (« Réinitialiser » sends them back), `bounds`
+    the limits of the numeric settings, `read_only` what is shown but never changed from
+    the interface. No file path, MCP command, deny list nor [web] section."""
+    return {
+        "defaults": session_settings(config),
+        "bounds": {"temperature": list(TEMPERATURE_BOUNDS), "num_ctx": list(NUM_CTX_BOUNDS)},
+        "read_only": {
+            "ollama_host": config.ollama.host,
+            "keep_alive": config.ollama.keep_alive,
+            "max_tool_iterations": config.agent.max_tool_iterations,
+            "max_sql_retries": config.agent.max_sql_retries,
+            "row_limit": config.database.row_limit,
+            "query_timeout_ms": config.database.query_timeout_ms,
+            "confirmation_timeout_s": config.hitl.confirmation_timeout_s,
+            "numeric_tolerance": config.eval.numeric_tolerance,
+        },
+    }

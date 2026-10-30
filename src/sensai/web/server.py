@@ -11,17 +11,18 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
-from fastapi.staticfiles import StaticFiles
 
 from sensai import __version__
 from sensai.core.config import Config
 from sensai.web.engines.backend import WebBackend
+from sensai.web.frontend import REVALIDATE, FrontendFiles
 from sensai.web.paths import STATIC_DIR
 from sensai.web.scheduler import Scheduler
 from sensai.web.shares import ShareStore, to_markdown
 from sensai.web.websocket.endpoint import install_websocket
 from sensai.web.websocket.messages import snapshot
 from sensai.web.websocket.session import SessionManager
+from sensai.web.websocket.settings import config_view
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,10 @@ def create_app(
     @app.get("/api/models")
     async def models() -> dict[str, Any]:
         return {"default": config.ollama.model, "models": await backend.list_models()}
+
+    @app.get("/api/config")
+    async def settings() -> dict[str, Any]:
+        return config_view(config)
 
     @app.get("/api/memory")
     async def memory() -> dict[str, list[dict[str, Any]]]:
@@ -135,7 +140,7 @@ def create_app(
         index = static_dir / "index.html"
         if not index.is_file():
             return PlainTextResponse(FRONTEND_MISSING, status_code=503)
-        return FileResponse(index)
+        return FileResponse(index, headers={"Cache-Control": REVALIDATE})
 
     @app.get("/api/schedules")
     async def schedules() -> dict[str, Any]:
@@ -152,7 +157,7 @@ def create_app(
     install_websocket(app, sessions, shares, scheduler)
 
     if (static_dir / "index.html").is_file():
-        app.mount("/", StaticFiles(directory=static_dir, html=True), name="frontend")
+        app.mount("/", FrontendFiles(directory=static_dir, html=True), name="frontend")
     else:
         logger.warning("Interface web absente (%s) : lancez `make web-build`.", static_dir)
 

@@ -54,7 +54,7 @@ Si une seconde connexion s'ouvre avec le même `session_id`, la première est fe
 ### 2.4 Durée de vie et reconnexion
 
 - Une session (un `Engine` et son historique) vit **en mémoire du serveur**. Elle est conservée **1 h** après la dernière déconnexion, puis libérée.
-- Un redémarrage du serveur perd les sessions (la mémoire long terme `memory.db` est conservée). Le client reçoit alors `session_ready` avec `resumed: false` et vide son affichage.
+- Un redémarrage du serveur perd les sessions (la mémoire long terme `memory.db` est conservée). Le client reçoit alors `session_ready` avec `resumed: false`, vide son affichage et le dit dans un bandeau (« Le serveur a redémarré… »).
 - **Reconnexion côté client** : automatique, avec un délai croissant de 0,5 s, 1 s, 2 s, puis 5 s maximum. Pendant ce temps, la barre d'état affiche « reconnexion en cours ».
 - **Déconnexion pendant un tour** (CORE-11) : le tour est annulé (`engine.cancel()`, comme un `cancel`), et toute confirmation en attente est **refusée** (`decision: "reject"`, `reason: "disconnected"`). Une action destructive n'est donc jamais laissée en suspens sans personne devant l'écran. À la reconnexion, `session_ready.history` contient la fin du tour annulé.
 - Le maintien de la connexion repose sur les pings WebSocket d'uvicorn (`ws_ping_interval` par défaut). Il n'y a pas de message applicatif de type « heartbeat ».

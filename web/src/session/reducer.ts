@@ -120,6 +120,17 @@ export const initialState: ChatState = {
 }
 
 const MAX_NOTICES = 3
+export const SESSION_LOST =
+  "Le serveur a redémarré : la conversation précédente n'a pas pu être reprise."
+
+function withNotice(state: ChatState, code: string, message: string): ChatState {
+  const notice = { id: state.nextNoticeId, code, message }
+  return {
+    ...state,
+    notices: [...state.notices, notice].slice(-MAX_NOTICES),
+    nextNoticeId: state.nextNoticeId + 1,
+  }
+}
 
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
@@ -146,8 +157,11 @@ function applyMessage(state: ChatState, message: ServerMessage): ChatState {
       // session null while replaying: every persona_changed of the history is a real change
       const empty = { ...state, session: null, turns: [], personaMarks: [], lastUsage: null }
       const replayed = message.history.reduce<ChatState>(applyMessage, empty)
+      // A reconnection to a server that restarted: the turns on screen are gone, say so
+      // rather than showing an empty conversation without a word (WEB-13)
+      const lost = !message.resumed && state.turns.length > 0
       return {
-        ...replayed,
+        ...(lost ? withNotice(replayed, 'SESSION_LOST', SESSION_LOST) : replayed),
         connection: 'open',
         incompatible: message.protocol_version !== PROTOCOL_VERSION,
         session: {
@@ -203,12 +217,7 @@ function applyEvent(state: ChatState, event: EngineEvent): ChatState {
     return { ...state, turns: [...state.turns, newTurn(event.turn_id, event.origin, event.user_message)] }
   }
   if (event.type === 'error' && event.turn_id === null) {
-    const notice = { id: state.nextNoticeId, code: event.code, message: event.message }
-    return {
-      ...state,
-      notices: [...state.notices, notice].slice(-MAX_NOTICES),
-      nextNoticeId: state.nextNoticeId + 1,
-    }
+    return withNotice(state, event.code, event.message)
   }
   const index = state.turns.findIndex((turn) => turn.id === event.turn_id)
   if (index === -1) return state // late event of a turn erased by a reset

@@ -145,3 +145,139 @@
 .gauge-over .gauge-bar > span {
   background: var(--bad);
 }
+
+/* Réglages (X1): the settings of set_config, for the session; config.toml read only */
+.settings-menu {
+  position: relative;
+}
+
+.settings-menu summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.settings-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-dot {
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+}
+
+.settings-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(340px, calc(100vw - 32px));
+  padding: var(--space-3) var(--space-4);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  font-size: 13px;
+}
+
+.settings-popover p {
+  margin: 0;
+}
+
+.settings-hint code {
+  font-family: var(--font-mono);
+}
+
+.setting {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.setting-label {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.setting output {
+  font-variant-numeric: tabular-nums;
+}
+
+.setting select {
+  height: 30px;
+  padding: 0 var(--space-2);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+}
+
+.setting input[type='range'] {
+  width: 100%;
+  accent-color: var(--ink);
+}
+
+.setting small {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.setting-check {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.setting :disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.settings-actions .btn-small:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings-fixed {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.settings-fixed summary {
+  color: var(--ink-muted);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-fixed dl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+}
+
+.settings-fixed dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.settings-fixed dt {
+  color: var(--ink-muted);
+}
+
+.settings-fixed dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+  text-align: right;
+}

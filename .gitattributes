@@ -6,3 +6,6 @@
 *.jpg  binary
 *.mp4  binary
 *.pdf  binary
+
+# The committed frontend build (WEB-14): generated, kept out of diffs and reviews
+web/dist/** linguist-generated=true -diff

@@ -1,7 +1,7 @@
 // Connection to WS /ws/{session_id} (websocket.md §2) and the actions of the interface.
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
-import type { ClientMessage, ServerMessage, UiActionTool } from '../protocol'
+import type { ClientMessage, ServerMessage, SessionConfig, UiActionTool } from '../protocol'
 import { chatReducer, initialState, isBusy, type ChatState } from './reducer'
 
 const STORAGE_KEY = 'sensai.session_id'
@@ -19,6 +19,7 @@ export interface Session {
   reset: () => void
   confirm: (actionId: string, decision: 'approve' | 'reject', comment?: string) => void
   setModel: (model: string) => void
+  setConfig: (patch: Partial<SessionConfig>) => void
   setPersona: (persona: string) => void
   answer: (questionId: string, reply: { optionId: string } | { text: string }) => void
   share: () => void
@@ -114,6 +115,7 @@ export function useSession(): Session {
       confirm: (actionId, decision, comment) =>
         send({ type: 'confirm', action_id: actionId, decision, comment }),
       setModel: (model) => send({ type: 'set_model', model }),
+      setConfig: (patch) => send({ type: 'set_config', patch }),
       setPersona: (persona) => send({ type: 'set_persona', persona }),
       answer: (questionId, reply) =>
         send(

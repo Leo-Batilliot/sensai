@@ -1,15 +1,14 @@
 # SENSAI — Front web
 
-Interface web de SENSAI (fonctionnalité X1) : React 19, TypeScript, Vite. Le build (`web/dist`) est servi par FastAPI, donc la démo se lance avec une seule commande. Le front ne contient aucune logique métier : il affiche les événements du moteur et lui envoie les actions de l'utilisateur ([contrat WebSocket](../docs/contracts/websocket.md)).
+Interface web de SENSAI (fonctionnalité X1) : React 19, TypeScript, Vite. Le build (`web/dist`) est **committé** et servi par FastAPI : la démo se lance avec une seule commande, sans Node (WEB-14). Le front ne contient aucune logique métier : il affiche les événements du moteur et lui envoie les actions de l'utilisateur ([contrat WebSocket](../docs/contracts/websocket.md)).
 
-Prérequis : Node.js 22 LTS.
+Prérequis pour modifier le front : Node.js 22 LTS. Pour seulement le lancer : rien, `web/dist` est dans le dépôt.
 
 ## Lancer
 
 **Comme pour la démo** (depuis la racine du dépôt) :
 
 ```bash
-make web-build   # npm ci + build → web/dist
 make web         # http://127.0.0.1:8000, sur le moteur réel (make seed et Ollama d'abord)
 make web-mock    # ou : sur le MockEngine, qui rejoue les scénarios enregistrés
 ```
@@ -55,4 +54,6 @@ Le serveur de développement de Vite redirige `/api` et `/ws` vers le backend (`
 
 - Les variables CSS de `src/index.css` reprennent les noms des tokens des maquettes ([docs/keynote/ui](../docs/keynote/ui/)).
 - Textes affichés en français, commentaires dans le code en anglais.
-- `package-lock.json` est commité ; `node_modules/` et `dist/` sont ignorés (`dist/` est ajouté de force aux tags de livraison).
+- `package-lock.json` et `dist/` sont commités, `node_modules/` est ignoré.
+- **Après une modification de `src/`** : `make web-build` (depuis la racine), puis committer `web/dist` avec le reste. `npm run build` écrit `dist/build.json`, l'empreinte des sources du build (`vite.config.ts`) ; le test `tests/unit/web/test_frontend.py` la recalcule sans Node et échoue en CI si `dist/` est plus ancien que les sources. `make web` le signale aussi au démarrage. Les fichiers de test (`*.test.ts`, `src/test/`) ne comptent pas.
+- **Cache** : FastAPI sert `dist/assets/` (noms avec empreinte) avec un cache d'un an, et `index.html` en `no-cache`. Un nouveau build s'affiche donc au rechargement normal de la page, sans Ctrl+Maj+R.

@@ -26,6 +26,7 @@ import { NotePanel } from './note/NotePanel'
 import { lastUpdate, noteVersion, recentSections } from './note/note'
 import { useNote } from './note/useNote'
 import { SchedulesPanel } from './schedule/SchedulesPanel'
+import { InlineCode } from './shared/InlineCode'
 import { useSchedules } from './schedule/useSchedules'
 import { useSession } from './session/useSession'
 import { StatusBar } from './statusbar/StatusBar'
@@ -72,6 +73,7 @@ export default function App() {
         state={state}
         connected={session.connected}
         onSetModel={session.setModel}
+        onSetConfig={session.setConfig}
         onSetPersona={session.setPersona}
       />
 
@@ -102,7 +104,9 @@ export default function App() {
           )}
           {state.notices.map((notice) => (
             <div key={notice.id} className="banner" role="alert">
-              <p>{notice.message}</p>
+              <p>
+                <InlineCode text={notice.message} />
+              </p>
               <button type="button" onClick={() => session.dismissNotice(notice.id)}>
                 Fermer
               </button>

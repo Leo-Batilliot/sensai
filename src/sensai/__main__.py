@@ -62,6 +62,8 @@ def _run_web(args: argparse.Namespace) -> int:
 
     from sensai.core.config import ConfigError, load_config
     from sensai.core.demo import demo_notice
+    from sensai.web.frontend import stale
+    from sensai.web.paths import STATIC_DIR, WEB_DIR
     from sensai.web.server import create_app
 
     try:
@@ -80,6 +82,12 @@ def _run_web(args: argparse.Namespace) -> int:
         notice = demo_notice(config)  # the mock backend replays fixtures: never altered
         if notice is not None:
             print(notice, file=sys.stderr)
+    if stale(STATIC_DIR, WEB_DIR):  # web/dist is committed: a front change not rebuilt
+        print(
+            "Interface web plus ancienne que web/src : lancez `make web-build` (Node 22), "
+            "puis committez web/dist.",
+            file=sys.stderr,
+        )
     # Single worker: web sessions live in memory
     app = create_app(config, backend)
     uvicorn.run(app, host=config.web.host, port=config.web.port)
