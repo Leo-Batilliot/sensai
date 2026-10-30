@@ -22,7 +22,12 @@ from typing import Any, Protocol
 
 from sensai.core.errors import SensaiError
 from sensai.core.events import Badge
-from sensai.eval.numeric_check import DEFAULT_TOLERANCE, NumericCheck, check_numbers
+from sensai.eval.numeric_check import (
+    DEFAULT_TOLERANCE,
+    NumericCheck,
+    check_numbers,
+    checked_key_figures,
+)
 from sensai.llm.ollama_client import Chunk, Message
 from sensai.llm.structured import RepairStats, generate_structured
 
@@ -178,6 +183,12 @@ class Judge:
             tolerance=self.tolerance,
         )
         report = await self._report(case)
+        if report is not None:
+            # A card shows '✓ colonne' only if its value really is in that column (US-T5-02)
+            figures = checked_key_figures(
+                report["key_figures"], case.columns, case.rows, self.tolerance
+            )
+            report = {**report, "key_figures": figures}
         duration_ms = round((time.monotonic() - started) * 1000)
         return Verdict(compute_badge(report, numeric), numeric, report, duration_ms)
 
