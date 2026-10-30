@@ -14,9 +14,12 @@ from fakes import (
     HANG,
     MODEL,
     OTHER_MODEL,
+    PERSONAS_DIR,
     FakeClient,
     FakeToolRegistry,
     answer,
+    fake_tool,
+    select_tool,
     tool_request,
 )
 from sensai.cli.app import ChatSession, run_chat, run_interruptible, run_repl
@@ -27,8 +30,10 @@ from sensai.core.app_factory import Services
 from sensai.core.config import Config
 from sensai.core.engine import Engine
 from sensai.core.errors import OllamaUnavailable, StreamInterrupted
+from sensai.core.personas import load_personas
 from sensai.data.schema import connect, create_schema
 from sensai.llm.ollama_client import Chunk, Message
+from sensai.tools.base import ServerStatus, ToolResult
 
 
 def make_session(client: FakeClient) -> tuple[ChatSession, io.StringIO]:
@@ -265,6 +270,8 @@ async def test_command_errors_are_shown_and_the_session_goes_on() -> None:
     [
         ("/help", "/model <nom>"),
         ("/tools", "Aucun outil : la base de démonstration est absente"),
+        ("/personas", "Aucun profil : la base de démonstration est absente"),
+        ("/persona", "Aucun profil : la base de démonstration est absente"),
         ("/memory", "Aucune mémoire : la base de démonstration est absente."),
         ("/inconnue", "Commande inconnue : /inconnue. Tapez /help."),
     ],
@@ -497,6 +504,7 @@ def demo_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         f'[ollama]\nmodel = "{MODEL}"\n\n'
         f'[database]\nbusiness_path = "{business.as_posix()}"\n'
         f'memory_path = "{(tmp_path / "memory.db").as_posix()}"\n\n'
+        f'[agent]\npersonas_dir = "{PERSONAS_DIR.as_posix()}"\n\n'
         "[mcp.servers]\n",
         encoding="utf-8",
     )
@@ -557,3 +565,150 @@ def test_the_chat_runs_on_the_assembled_engine(
     assert client.closed
     with pytest.raises(RuntimeError):  # stopped: the memory store is closed
         _ = built[0].store
+
+
+# --- agent profiles (A5) ---
+
+
+async def done(arguments: dict[str, object]) -> ToolResult:
+    return ToolResult(ok=True, text="fait", summary="fait")
+
+
+def persona_session(client: FakeClient) -> tuple[ChatSession, io.StringIO]:
+    """A session with the profiles of personas/, on run_select and file_write."""
+    out = io.StringIO()
+    console = Console(file=out, width=100, color_system=None, highlight=False)
+    write = fake_tool("file_write", done, server=None, read_only=False)
+    registry = FakeToolRegistry(select_tool(), write)
+    engine = Engine(
+        Config(),
+        client,
+        registry=registry,
+        session_id="s-1",
+        sql_classifier=lambda sql: None,
+        personas=load_personas(PERSONAS_DIR),
+    )
+    return ChatSession(engine, Renderer(console)), out
+
+
+async def test_persona_command_switches_and_keeps_the_history() -> None:
+    client = FakeClient(answer("Un."), answer("Deux."))
+    session, out = persona_session(client)
+
+    await session.handle("Premier")
+    await session.handle("/persona admin")
+    await session.handle("Second")
+
+    assert "Profil : Admin (Copilote d'Inès, administratrice) (historique conservé)." in (
+        out.getvalue()
+    )
+    _model, messages, _options = client.calls[1]
+    assert messages[1:3] == exchange("Premier", "Un.")
+    assert messages[3]["content"] == "Profil actif : Admin (Copilote d'Inès, administratrice)"
+
+
+async def test_personas_command_marks_the_current_profile() -> None:
+    session, out = persona_session(FakeClient())
+
+    await session.handle("/personas")
+    await session.handle("/persona")
+
+    text = out.getvalue()
+    assert "* analyste : Contrôle de gestion (Copilote de Claire, contrôleuse de gestion)" in text
+    assert "  adv : ADV (Copilote de Karim, responsable ADV)" in text
+    assert "Profil actuel : Contrôle de gestion" in text
+
+
+async def test_unknown_persona_is_refused_and_the_session_goes_on() -> None:
+    session, out = persona_session(FakeClient())
+
+    assert await session.handle("/persona compta") is True
+
+    assert "Le profil « compta » n'existe pas." in out.getvalue()
+    assert session.engine.persona is not None and session.engine.persona.id == "analyste"
+
+
+async def test_tools_command_shows_the_tools_of_the_profile() -> None:
+    session, out = persona_session(FakeClient())
+
+    session.show_tools()
+    assert "sql_toolbox__run_select" in out.getvalue()
+    assert "file_write" not in out.getvalue()  # Claire only reads
+
+    await session.handle("/persona admin")
+    session.show_tools()
+    assert "file_write (confirmation)" in out.getvalue()  # the profile never lifts it
+
+
+def test_the_chat_announces_the_profile_at_startup(
+    demo_config: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    client = FakeClient(answer("Bonjour."))
+
+    def services(config: Config) -> Services:
+        return Services(config, client_factory=lambda _config: client)
+
+    assert run_chat(str(demo_config), read_line=scripted("Salut"), services_factory=services) == 0
+
+    out = capsys.readouterr().out
+    assert "Profil : Contrôle de gestion (Copilote de Claire" in out
+    assert "# Profil actif : Contrôle de gestion" in client.calls[0][1][0]["content"]
+
+
+def test_an_invalid_profile_stops_the_chat(
+    demo_config: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder = tmp_path / "personas"
+    folder.mkdir()
+    (folder / "analyste.toml").write_text('id = "analyste"\n', encoding="utf-8")
+    text = demo_config.read_text(encoding="utf-8").replace(
+        PERSONAS_DIR.as_posix(), folder.as_posix()
+    )
+    demo_config.write_text(text, encoding="utf-8")
+
+    assert run_chat(str(demo_config), read_line=scripted("Salut")) == 1
+
+    error = capsys.readouterr().err
+    assert "analyste.toml" in error and "name" in error
+
+
+async def test_compaction_is_reported() -> None:
+    session, out = make_session(FakeClient())
+    compacted = events.ContextCompacted(
+        session_id="s-1",
+        turn_id="t-19",
+        turns=6,
+        tokens_before=6120,
+        tokens_after=2480,
+        summary="Chiffres : Marge Brasserie Lemaire : 48712.4 €",
+    )
+
+    session._show(compacted)
+
+    text = out.getvalue()
+    assert "Historique allégé : 6 échange(s), 6 120 tokens ramenés à 2 480" in text
+    assert "Chiffres : Marge Brasserie Lemaire : 48712.4 €" in text
+
+
+class DownServerRegistry(FakeToolRegistry):
+    """The date server could not start: its tools are gone, the others still work."""
+
+    def servers(self) -> list[ServerStatus]:
+        return [
+            ServerStatus(name="sql_toolbox", status="up"),
+            ServerStatus(name="time", status="down", error="la commande `uvx` est introuvable"),
+        ]
+
+
+async def test_a_server_down_at_startup_is_visible_in_tools() -> None:
+    out = io.StringIO()
+    console = Console(file=out, width=100, color_system=None, highlight=False)
+    engine = Engine(Config(), FakeClient(), registry=DownServerRegistry(select_tool()))
+    session = ChatSession(engine, Renderer(console))
+
+    await session.handle("/tools")
+
+    text = out.getvalue()
+    assert "Serveur MCP time : indisponible (la commande `uvx` est introuvable)" in text
+    assert "Serveur MCP sql_toolbox : en ligne" in text
+    assert "sql_toolbox__run_select" in text  # the other tools are still there

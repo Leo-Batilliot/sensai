@@ -8,7 +8,8 @@ its socket.
 The Engine does not cover the whole web protocol: RealEngine adds the servers and tools
 of session_ready, the session settings of set_config, and run_ui_action until the
 Engine has its own (point P-6, P1): the Note panel's actions run (engines/note.py), the
-memory panel's not yet. Profiles (A5) wait for PERS-01: none for now.
+memory panel's not yet. Profiles (A5) are the Engine's: RealEngine only shows them in
+the shape of the protocol, with the tools of the active one.
 
 A scheduled run (X5) gets an Engine with nobody behind its brokers and a ReadOnlyRegistry:
 the tools that write are not even offered to the model.
@@ -17,14 +18,15 @@ the tools that write are not even offered to the model.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from sensai.core import events
 from sensai.core.app_factory import ClientFactory, Services, ollama_client
 from sensai.core.config import Config
 from sensai.core.engine import ChatClient, Engine
-from sensai.core.errors import SensaiError
+from sensai.core.errors import PersonaNotFound, SensaiError
+from sensai.core.personas import Persona as Profile
 from sensai.documents.store import DocumentStore
 from sensai.eval.online import OnlineJudge
 from sensai.mcp.manager import McpManager
@@ -50,11 +52,15 @@ class RealEngine:
         self.registry = registry
         self._client = client
         self.session_config = session_settings(engine.config)
-        self.persona: Persona | None = None  # no profiles before PERS-01 (P1)
 
     @property
     def model(self) -> str:
         return self.engine.model
+
+    @property
+    def persona(self) -> Persona | None:
+        profile = self.engine.persona
+        return _persona(profile) if profile is not None else None
 
     def describe(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         servers = [
@@ -62,6 +68,8 @@ class RealEngine:
             for server in self.registry.servers()
         ]
         hitl = self.engine.config.hitl
+        profile = self.engine.persona
+        # The tools the model gets with the active profile; their padlocks never change
         tools = [
             {
                 "name": info.name,
@@ -73,11 +81,16 @@ class RealEngine:
                 "requires_confirmation": evaluate(info, {}, hitl).action == "confirm",
             }
             for info in self.registry.tools()
+            if profile is None or profile.allows(info.name)
         ]
         return servers, tools
 
     def set_persona(self, persona_id: str) -> bool:
-        return False  # PERS-01: every profile is unknown until the Engine loads them
+        try:
+            self.engine.set_persona(persona_id)
+        except PersonaNotFound:
+            return False
+        return True
 
     def run_turn(self, user_message: str) -> AsyncIterator[Any]:
         return self.engine.run_turn(user_message)
@@ -161,9 +174,11 @@ class ReadOnlyRegistry:
     def servers(self) -> list[ServerStatus]:
         return self._registry.servers()
 
-    def ollama_tools(self) -> list[dict[str, Any]]:
-        allowed = {info.name for info in self.tools()}
-        return [t for t in self._registry.ollama_tools() if t["function"]["name"] in allowed]
+    def ollama_tools(self, allowed: Callable[[str], bool] | None = None) -> list[dict[str, Any]]:
+        # `allowed` keeps the tools of the active profile (A5), as in Registry
+        readable = {info.name for info in self.tools()}
+        tools = self._registry.ollama_tools(allowed)
+        return [t for t in tools if t["function"]["name"] in readable]
 
     def validate_arguments(self, name: str, arguments: dict[str, Any]) -> list[str]:
         return self._registry.validate_arguments(name, arguments)
@@ -229,7 +244,14 @@ class RealBackend:
         return self._services.store.dump()
 
     def personas(self) -> tuple[str | None, list[PersonaTools]]:
-        return None, []  # PERS-01
+        names = [info.name for info in self._services.registry().tools()]
+        profiles = [
+            PersonaTools(
+                **_persona(profile), tools=[name for name in names if profile.allows(name)]
+            )
+            for profile in self._services.personas.values()
+        ]
+        return self._services.config.agent.persona, profiles
 
     def documents(self) -> DocumentStore:
         return self._services.documents
@@ -258,3 +280,8 @@ class RealBackend:
         registry = ReadOnlyRegistry(engine.registry)
         engine.registry = registry
         return RealEngine(engine, registry, engine.client)
+
+
+def _persona(profile: Profile) -> Persona:
+    """A profile of personas/ as the selector shows it (websocket.md §5.2)."""
+    return Persona(id=profile.id, name=profile.name, role=profile.role)

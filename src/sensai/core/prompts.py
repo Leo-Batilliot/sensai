@@ -40,7 +40,7 @@ EMPTY = "aucun"  # value of a placeholder with nothing to show
 
 # Holes filled once per engine, and holes filled at every turn (prompts.md §1.1, rule 3)
 FIXED_HOLES = frozenset({"schema", "tools_hint", "date_rule"})
-TURN_HOLES = frozenset({"memory", "examples", "document_outline"})
+TURN_HOLES = frozenset({"memory", "examples", "document_outline", "persona"})  # persona: A5, v2
 
 # Date tool of mcp-server-time (MCP-06), whatever the name of its server in config.toml
 DATE_TOOL_SUFFIX = "get_current_time"
@@ -200,13 +200,22 @@ class SystemPrompt:
         self.fixed = {hole: value for hole, value in fixed.items() if hole in holes}
         self.holes = frozenset(holes & TURN_HOLES)
 
-    def __call__(self, memory: str = "", **blocks: str) -> str:
+    def __call__(
+        self, memory: str = "", tool_names: Iterable[str] | None = None, **blocks: str
+    ) -> str:
+        """`tool_names`: the tools of the active profile (A5), which the prompt names
+        instead of all of them; None keeps the tools given at construction."""
         values = {"memory": memory, **blocks}
         unknown = set(values) - TURN_HOLES
         if unknown:
             raise ValueError(f"blocs inconnus : {sorted(unknown)}")
         turn = {hole: values.get(hole) or EMPTY for hole in self.holes}
-        return Template(self.text).substitute({**self.fixed, **turn})
+        fixed = dict(self.fixed)
+        if tool_names is not None:
+            names = list(tool_names)
+            narrowed = {"tools_hint": ", ".join(names) or EMPTY, "date_rule": date_rule(names)}
+            fixed.update({hole: value for hole, value in narrowed.items() if hole in fixed})
+        return Template(self.text).substitute({**fixed, **turn})
 
 
 def system_prompt(db_path: str | Path, tool_names: Iterable[str], memory: str = "") -> str:

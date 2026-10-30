@@ -271,6 +271,9 @@ Le juge ne tourne pas (ni `judge_started` ni `judge_report`) : sans `run_select`
  "summary": "Client rentable = marge brute > 25 % ; top 5 du T4 : Brasserie Lemaire (18,4 k€)…"}
 ```
 
+- Aussi émis quand les tours sont retirés **sans** résumé : stratégie `truncate`, résumé en échec (repli, jamais d'`error`), ou tours récents trop longs à eux seuls. `summary` dit alors pourquoi : « Troncature : 4 échange(s) retiré(s) sans résumé. », « Résumé impossible : … », « Échanges récents trop longs : … ».
+- Les estimations sont en tokens (caractères / 3,5, recalées sur le `prompt_eval_count` d'Ollama) et comptent le prompt système, l'historique, la question et la définition des outils.
+
 ### 3.14 `examples_injected` (v1.1)
 
 Émis quand des exemples question → SQL de la banque (`[fewshot]`, A7) ont été ajoutés au prompt du tour. Il est distinct de `context_injected`, qui reste réservé à la mémoire et à son ablation (point V-3).
@@ -370,7 +373,7 @@ Ajoutés en v1.1 (`tests/contract_rules.py`, `tests/unit/contracts/test_turn_rul
 | `OLLAMA_UNAVAILABLE` | Connexion à Ollama impossible | true | oui |
 | `OLLAMA_TIMEOUT` | Pas de réponse d'Ollama dans `timeout_s` | true | — |
 | `MODEL_NOT_FOUND` | Modèle absent d'Ollama (le message propose `ollama pull`) | true | oui |
-| `MODEL_NO_TOOLS` | Le modèle ne gère pas les outils (`/api/show`, `capabilities`) | true | oui |
+| `MODEL_NO_TOOLS` | Le modèle ne gère pas les outils (`/api/show`, `capabilities`), ou Ollama refuse les outils d'un tour (HTTP 400, CORE-11) | true | oui |
 | `STREAM_INTERRUPTED` | Flux Ollama coupé ou JSON invalide en cours de réponse (ce n'est pas un `cancel`) | true | — |
 | `OLLAMA_ERROR` | Autre erreur signalée par Ollama : statut HTTP d'erreur, ou ligne `error` au milieu du flux | true | oui |
 | `MAX_ITERATIONS` | `max_tool_iterations` atteint sans réponse finale (CORE-06) | true | — |
@@ -393,10 +396,12 @@ Codes posés par le moteur ou par la couche MCP (en majuscules) :
 
 | Code | Quand |
 |---|---|
+| `UNKNOWN_TOOL` | Le modèle demande un outil qui n'existe pas ; le message ne cite que les outils du profil actif (`tools.md` §4, étape 1) |
 | `INVALID_ARGUMENTS` | Arguments non conformes à l'`inputSchema` (T5) ; le modèle a droit à une réparation |
 | `ACTION_REJECTED` | Confirmation refusée, expirée ou interrompue (§3.7) |
 | `DUPLICATE_CALL` | Même outil avec les mêmes arguments que l'appel précédent : l'appel n'est pas exécuté, le modèle en est informé et le tour continue (CORE-06) |
-| `TOOL_DENIED` | Outil interdit par `[hitl] deny` |
+| `TOOL_DENIED` | Outil interdit par `[hitl] deny`, ou hors du profil actif (v1.1, A5) |
+| `QUESTION_LIMIT` | `ask_user` au-delà de `[agent] max_questions_per_turn` : le modèle doit faire une hypothèse (v1.1, X4) |
 | `MCP_SERVER_UNAVAILABLE` | Serveur MCP arrêté ou planté (après une tentative de redémarrage) |
 | `TOOL_TIMEOUT` | L'outil n'a pas répondu à temps |
 | `TOOL_FAILED` | Erreur d'exécution signalée par l'outil (`isError: true`) sans code plus précis |
@@ -404,6 +409,8 @@ Codes posés par le moteur ou par la couche MCP (en majuscules) :
 | `SQL_FORBIDDEN` | La garde SQL refuse la requête (écriture passée à `run_select`, `ATTACH`, `PRAGMA`…) |
 
 Les codes propres à un outil sont transmis tels quels, avec leur casse (`memory.md` §3.4 : `not_found`, `entity_not_found`, `ambiguous_entity`, `invalid_patch`, `conflict`).
+
+Les messages de chaque code, et la panne qui le produit, sont dans [`errors.md`](errors.md) (CORE-11).
 
 ## 6. Côté Python (CORE-05)
 

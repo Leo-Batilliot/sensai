@@ -141,7 +141,7 @@ async def test_approved_action_runs() -> None:
     assert kinds.index("confirmation_resolved") < kinds.index("tool_result")
 
 
-async def test_no_answer_in_time_is_a_refusal() -> None:
+async def test_no_answer_in_time_is_a_refusal(caplog: pytest.LogCaptureFixture) -> None:
     tool, calls = recording_tool(DELETE, DESTRUCTIVE, server=None)
     eng = engine(
         tool_request(DELETE, kind="fact", ref="17"),
@@ -154,6 +154,10 @@ async def test_no_answer_in_time_is_a_refusal() -> None:
     (resolved,) = of_type(emitted, events.ConfirmationResolved)
     assert (resolved.decision, resolved.reason) == ("timeout", "timeout")
     assert calls == []
+    # Logged (CORE-11), without the arguments: they may hold business data
+    (record,) = [r for r in caplog.records if "not given in" in r.getMessage()]
+    assert record.levelname == "WARNING" and DELETE in record.getMessage()
+    assert "17" not in record.getMessage().replace(resolved.action_id, "")
 
 
 async def test_read_only_tools_need_no_confirmation() -> None:

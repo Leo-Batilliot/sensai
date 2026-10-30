@@ -102,6 +102,18 @@ class AgentConfig(_Section):
     question_timeout_s: float = Field(default=120, gt=0)
     # Version of the system prompt in core/prompts/registry.toml (A4); "v1" is the way back
     prompt_version: str = Field(default="v1", pattern=r"^v[0-9]+$")
+    # Agent profile of a new session (A5): personas/<id>.toml, relative to the launch directory
+    persona: str = Field(default="analyste", min_length=1)
+    personas_dir: Path = Path("personas")
+
+
+class ContextConfig(_Section):
+    # Token budget of the prompt (M2, CORE-13): over budget_ratio × num_ctx, the oldest
+    # exchanges are summarized ("compress") or dropped ("truncate", the witness of EVAL-10)
+    strategy: Literal["compress", "truncate"] = "compress"
+    budget_ratio: float = Field(default=0.75, gt=0, lt=1)  # the rest: answer and tool results
+    keep_recent_turns: int = Field(default=4, ge=0)  # recent exchanges never summarized
+    summary_max_tokens: int = Field(default=500, ge=50)
 
 
 class DatabaseConfig(_Section):
@@ -235,6 +247,7 @@ class DemoConfig(_Section):
 class Config(_Section):
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
+    context: ContextConfig = Field(default_factory=ContextConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     hitl: HitlConfig = Field(default_factory=HitlConfig)
     eval: EvalConfig = Field(default_factory=EvalConfig)

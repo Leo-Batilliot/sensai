@@ -26,6 +26,14 @@ effective write of a document tool gives document_updated.
 
 With [demo] alter_answer (CORE-20, core/demo.py), the answer to the question of act 3
 gets one wrong figure while it streams, before the judge: the demo of a caught mistake.
+
+With agent profiles (A5, core/personas.py), each turn uses the profile it started with:
+the model only gets its tools, the policy refuses the others, and its block ends the
+system prompt. A change keeps the history and is noted in it at the next turn.
+
+Before the first model call of a turn, the prompt is kept under the token budget (M2,
+core/context.py): over it, the oldest exchanges give way to a rolling summary
+(context_compacted). The estimate is rescaled on Ollama's count after each answer.
 """
 
 from __future__ import annotations
@@ -37,7 +45,7 @@ import logging
 import re
 import time
 import uuid
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Callable, Mapping
 from typing import Any, Protocol
 
 from sensai.core import events
@@ -59,10 +67,13 @@ from sensai.core.confirm import (
     Decision,
     PendingAction,
 )
+from sensai.core.context import Compactor, ContextBudget
 from sensai.core.demo import AnswerAlteration
-from sensai.core.errors import SensaiError
+from sensai.core.errors import PersonaNotFound, SensaiError
 from sensai.core.fewshot import ExampleIndex, Selected, examples_block
 from sensai.core.history import History
+from sensai.core.personas import Persona
+from sensai.core.prompts import SystemPrompt
 from sensai.documents.store import DocumentStore
 from sensai.eval.online import OnlineJudge, SelectResult, select_result
 from sensai.llm.ollama_client import (
@@ -103,6 +114,17 @@ class ChatClient(Protocol):
         options: dict[str, Any] | None = None,
     ) -> AsyncGenerator[Chunk, None]: ...
 
+    async def chat(
+        self,
+        model: str,
+        messages: list[Message],
+        *,
+        format: dict[str, Any] | str | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> Chunk:
+        """One whole answer: the structured summary of the history (M2)."""
+        ...
+
     async def show(self, model: str) -> ModelDetails: ...
 
     async def list_models(self) -> list[str]: ...
@@ -124,8 +146,9 @@ class Engine:
         client: ChatClient | None = None,
         *,
         registry: ToolRegistry | None = None,
-        # Text, or a template that takes the memory block of the turn (MEM-04)
-        system_prompt: str | Callable[[str], str] | None = None,
+        # Text, or a template of the blocks of the turn (MEM-04); with profiles, a
+        # SystemPrompt, which also takes the names of the tools of the profile (A5)
+        system_prompt: str | SystemPrompt | Callable[..., str] | None = None,
         broker: ConfirmationBroker | None = None,
         session_id: str | None = None,
         memory: MemoryContext | None = None,
@@ -134,6 +157,7 @@ class Engine:
         questions: QuestionBroker | None = None,
         examples: ExampleIndex | None = None,
         documents: DocumentStore | None = None,
+        personas: Mapping[str, Persona] | None = None,
     ) -> None:
         self.config = config
         # Sent first in every model call, never stored in the history (CORE-08)
@@ -174,6 +198,14 @@ class Engine:
         self._questions_asked = 0  # in the running turn, against max_questions_per_turn
         # Bumped by reset(): a turn that was running during a reset is not recorded
         self._epoch = 0
+        # Agent profiles (A5); without them (tests, harness) every tool is offered
+        self.personas = dict(personas or {})
+        self.persona = self._find_persona(config.agent.persona) if self.personas else None
+        # The profile the history last told the model about: a change is noted once
+        self._noted_persona = self.persona
+        # Token budget of the prompt (M2): a long session gives way to a rolling summary
+        self.budget = ContextBudget()
+        self.compactor = Compactor(self.client, self.budget)
 
     async def aclose(self) -> None:
         await self.client.aclose()
@@ -185,17 +217,38 @@ class Engine:
     def busy(self) -> bool:
         return self._running
 
-    def _system_messages(self, memory: str = "", **blocks: str) -> list[Message]:
-        """The system prompt of a turn, with the memory block of its question (MEM-04) and
-        the other blocks its version shows (examples, plan of the note)."""
+    def _system_messages(
+        self, memory: str = "", persona: Persona | None = None, **blocks: str
+    ) -> list[Message]:
+        """The system prompt of a turn, with the memory block of its question (MEM-04), the
+        other blocks its version shows (examples, plan of the note) and the block of its
+        profile (A5)."""
+        holes = getattr(self.system_prompt, "holes", frozenset())
         if callable(self.system_prompt):
-            prompt = self.system_prompt(memory, **blocks)
+            if persona is not None and "persona" in holes:  # prompt v2 (CORE-14)
+                blocks = {**blocks, "persona": persona.prompt_body()}
+            names = self._tool_names(persona)
+            # Without a profile, a template of the memory block alone still works
+            prompt = (
+                self.system_prompt(memory, **blocks)
+                if names is None
+                else self.system_prompt(memory, tool_names=names, **blocks)
+            )
         else:
             block = f"{MEMORY_HEADING}\n{memory}" if memory else ""
             prompt = "\n\n".join(part for part in (self.system_prompt, block) if part)
+        if persona is not None and "persona" not in holes:
+            # A version without a $persona hole (v1): the block of the profile comes last
+            prompt = "\n\n".join(part for part in (prompt, persona.prompt_block()) if part)
         if not prompt:
             return []
         return [{"role": "system", "content": prompt}]
+
+    def _tool_names(self, persona: Persona | None) -> list[str] | None:
+        """Tools the prompt names for this profile; None: those of the template."""
+        if persona is None or self.registry is None:
+            return None
+        return [info.name for info in self.registry.tools() if persona.allows(info.name)]
 
     def chat_options(self) -> dict[str, Any]:
         """Ollama options of every chat request, from the configuration."""
@@ -214,11 +267,28 @@ class Engine:
     def set_model(self, model: str) -> None:
         """Model of the next turns; a running turn keeps its own. Check it with model_details()."""
         self.model = model
+        self.budget.reset()  # another tokenizer: the token estimate starts over
+
+    def set_persona(self, persona_id: str) -> Persona:
+        """Profile of the next turns (A5); a running turn keeps its own. The history is
+        kept, and the next turn notes the change in it: "Profil actif : …" (point V-5).
+
+        Raises PersonaNotFound for an unknown profile, which changes nothing.
+        """
+        self.persona = self._find_persona(persona_id)
+        return self.persona
+
+    def _find_persona(self, persona_id: str) -> Persona:
+        persona = self.personas.get(persona_id)
+        if persona is None:
+            raise PersonaNotFound(persona_id, list(self.personas))
+        return persona
 
     def reset(self) -> None:
         """Empty the history. A running turn will not be recorded (cancel it first)."""
         self.history.clear()
         self._epoch += 1
+        self._noted_persona = self.persona  # the system prompt already names the profile
 
     def cancel(self) -> bool:
         """Stop the running turn at its next chunk; it ends with message_done(interrupted).
@@ -245,7 +315,8 @@ class Engine:
         self._cancel_requested = False
         self._questions_asked = 0
         turn_id = new_id()
-        model, epoch = self.model, self._epoch
+        # A model or profile chosen during the turn applies from the next one
+        model, epoch, persona = self.model, self._epoch, self.persona
         started = time.monotonic()
         released = False  # the session is freed at message_done, before the judge
         repairs = _ArgumentRepairs(self.argument_stats)
@@ -262,24 +333,42 @@ class Engine:
                 yield events.ContextInjected(
                     session_id=self.session_id, turn_id=turn_id, refs=list(context.refs)
                 )
+            self._note_persona(persona)
             blocks: dict[str, str] = {}
+            chosen: list[Selected] = []
             holes = getattr(self.system_prompt, "holes", frozenset())
             if "examples" in holes:
                 chosen = self._examples_for(user_message)
                 if chosen:
                     blocks["examples"] = examples_block(chosen)
-                    yield events.ExamplesInjected(
-                        session_id=self.session_id,
-                        turn_id=turn_id,
-                        examples=[item.ref() for item in chosen],
-                    )
             if "document_outline" in holes and self.documents is not None:
                 blocks["document_outline"] = self.documents.outline_text()
-            # Only this turn sees the tool messages: the history keeps the final answer
-            messages = self._system_messages(context.text, **blocks) + self.history.messages_for(
-                user_message
+            head = self._system_messages(context.text, persona, **blocks)
+            allowed = persona.allows if persona else None
+            tools = self.registry.ollama_tools(allowed) if self.registry else None
+            # Room for this turn (M2): the oldest exchanges may give way to a summary. The
+            # examples are in `head`, so they count; their event comes after (events.md §4.1)
+            compaction = await self.compactor.fit(
+                self.history, head, user_message, tools, model=model, config=self.config
             )
-            tools = self.registry.ollama_tools() if self.registry else None
+            if compaction is not None:
+                yield events.ContextCompacted(
+                    session_id=self.session_id,
+                    turn_id=turn_id,
+                    turns=compaction.turns,
+                    tokens_before=compaction.tokens_before,
+                    tokens_after=compaction.tokens_after,
+                    summary=compaction.summary,
+                )
+            if chosen:
+                yield events.ExamplesInjected(
+                    session_id=self.session_id,
+                    turn_id=turn_id,
+                    examples=[item.ref() for item in chosen],
+                )
+            # Only this turn sees the tool messages: the history keeps the final answer
+            messages = head + self.history.messages_for(user_message)
+            sent = 0  # raw size estimate of the last prompt sent, rescaled on Ollama's count
             parts: list[str] = []  # every token of the turn: message_done.content
             usage: Usage | None = None
             interrupted = answered = False
@@ -291,6 +380,7 @@ class Engine:
                 for _ in range(self.config.agent.max_tool_iterations):
                     text: list[str] = []
                     calls: list[ToolCall] = []
+                    sent = self.budget.raw(messages, tools)
                     stream = self.client.chat_stream(
                         model, messages, tools=tools, options=self.chat_options()
                     )
@@ -330,7 +420,14 @@ class Engine:
                     for call in calls:
                         async with contextlib.aclosing(
                             self._run_tool(
-                                turn_id, call, previous, messages, selects, repairs, retries
+                                turn_id,
+                                call,
+                                previous,
+                                messages,
+                                selects,
+                                repairs,
+                                retries,
+                                persona,
                             )
                         ) as steps:
                             async for event in steps:
@@ -357,9 +454,11 @@ class Engine:
                 yield self._error(turn_id, "MAX_ITERATIONS", message, recoverable=True)
                 return
 
+            if usage is not None and not interrupted:
+                self.budget.calibrate(sent, usage.prompt_tokens)  # the final call's prompt
             content = "".join(parts)
             if not interrupted and epoch == self._epoch:
-                self.history.commit(user_message, content)
+                self.history.commit(user_message, content, turn_id)
             yield events.MessageDone(
                 session_id=self.session_id,
                 turn_id=turn_id,
@@ -387,6 +486,15 @@ class Engine:
         self._running = False
         self._cancel_requested = False
 
+    def _note_persona(self, persona: Persona | None) -> None:
+        """Tell the model, in the history, that the profile changed since the last turn
+        (point V-5). Several changes between two turns give one note, the last profile."""
+        if persona is None or persona == self._noted_persona:
+            return
+        if len(self.history):  # an empty history: the system prompt already says it
+            self.history.note(f"Profil actif : {persona.label}")
+        self._noted_persona = persona
+
     def _examples_for(self, question: str) -> list[Selected]:
         """The closest examples of the question (A7), [] when disabled or on a failure:
         an example problem never stops a turn. [fewshot] is read at each turn."""
@@ -408,6 +516,8 @@ class Engine:
             return
         yield events.JudgeStarted(session_id=self.session_id, turn_id=turn_id)
         verdict = await self.judge.verdict(question, select, answer)
+        if verdict.report is not None:  # the figures that a summary must keep (M2)
+            self.history.add_key_figures(turn_id, verdict.report.get("key_figures") or [])
         yield events.JudgeReport(session_id=self.session_id, turn_id=turn_id, **verdict.to_dict())
 
     async def _run_tool(
@@ -419,10 +529,11 @@ class Engine:
         selects: list[SelectResult],
         repairs: _ArgumentRepairs,
         retries: _SqlRetries,
+        persona: Persona | None,
     ) -> AsyncGenerator[events.Event, None]:
         """One tool call asked by the model (tools.md §4): its events, then the tool
         message appended to `messages` for the next model call. A successful run_select
-        is appended to `selects`, for the judge."""
+        is appended to `selects`, for the judge. `persona` is the profile of the turn."""
         call_id = new_id()
         info = self.registry.get(call.name) if self.registry else None
         yield events.ToolCall(
@@ -434,11 +545,13 @@ class Engine:
             tool=call.name if TOOL_NAME.match(call.name) else "unknown_tool",
             arguments=call.arguments,
         )
-        result = self._check_call(call, info is not None, previous, repairs)
+        result = self._check_call(call, info is not None, previous, repairs, persona)
         if result is None and call.name == ASK_USER:
             # A pause for the user, not a tool run: [hitl] deny applies, never a confirmation
             assert info is not None  # _check_call refuses unknown tools
-            decision = evaluate(info, call.arguments, self.config.hitl, self.sql_classifier)
+            decision = evaluate(
+                info, call.arguments, self.config.hitl, self.sql_classifier, persona=persona
+            )
             if decision.action == "deny":
                 result = _policy_refusal(decision)
             elif self._questions_asked >= self.config.agent.max_questions_per_turn:
@@ -481,7 +594,9 @@ class Engine:
                 )
             # Policy, then confirmation (tools.md §4, steps 5-6)
             assert info is not None  # _check_call refuses unknown tools
-            decision = evaluate(info, call.arguments, self.config.hitl, self.sql_classifier)
+            decision = evaluate(
+                info, call.arguments, self.config.hitl, self.sql_classifier, persona=persona
+            )
             if decision.action == "deny":
                 result = _policy_refusal(decision)
             elif decision.action == "confirm":
@@ -554,12 +669,24 @@ class Engine:
         messages.append({"role": "tool", "tool_name": call.name, "content": content})
 
     def _check_call(
-        self, call: ToolCall, known: bool, previous: str | None, repairs: _ArgumentRepairs
+        self,
+        call: ToolCall,
+        known: bool,
+        previous: str | None,
+        repairs: _ArgumentRepairs,
+        persona: Persona | None,
     ) -> ToolResult | None:
         """Checks before running a call (tools.md §4, steps 1-3); None when it may run."""
         if not known or self.registry is None:
+            # The tools of the profile only: the others must not be suggested to the model
             available = (
-                ", ".join(info.name for info in self.registry.tools()) if self.registry else ""
+                ", ".join(
+                    info.name
+                    for info in self.registry.tools()
+                    if persona is None or persona.allows(info.name)
+                )
+                if self.registry
+                else ""
             )
             return ToolResult.failure(
                 "UNKNOWN_TOOL",
@@ -651,6 +778,13 @@ class Engine:
         try:
             return await asyncio.wait_for(self.broker.request(action), action.expires_in_s)
         except asyncio.TimeoutError:  # distinct from the builtin TimeoutError in 3.10
+            # Logged without the SQL: it may hold confidential business data
+            logger.warning(
+                "Confirmation of %s (action %s) not given in %g s: refused",
+                action.tool,
+                action.action_id,
+                action.expires_in_s,
+            )
             return Decision("timeout", "timeout")
 
     async def _ask(self, question: PendingQuestion) -> Answer:
@@ -662,6 +796,11 @@ class Engine:
         try:
             answer = await asyncio.wait_for(self.questions.ask(question), question.expires_in_s)
         except asyncio.TimeoutError:  # distinct from the builtin TimeoutError in 3.10
+            logger.info(
+                "Question %s not answered in %g s: the model makes an assumption",
+                question.question_id,
+                question.expires_in_s,
+            )
             return Answer("timeout")
         return checked(answer, question)
 

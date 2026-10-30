@@ -146,7 +146,7 @@ class Tool(Protocol):
 
 ```python
 class ToolRegistry(Protocol):
-    def ollama_tools(self) -> list[dict[str, Any]]: ...
+    def ollama_tools(self, allowed: Callable[[str], bool] | None = None) -> list[dict[str, Any]]: ...
     def get(self, name: str) -> ToolInfo | None: ...
     def tools(self) -> list[ToolInfo]: ...
     def servers(self) -> list[ServerStatus]: ...
@@ -163,7 +163,7 @@ class ServerStatus:
 
 | Méthode | Contrat |
 |---|---|
-| `ollama_tools()` | Les outils **disponibles** au format d'Ollama : `{"type": "function", "function": {"name", "description", "parameters"}}`. `parameters` est l'`inputSchema` sans sa clé `$schema`. Les outils d'un serveur `down` en sont absents. |
+| `ollama_tools()` | Les outils **disponibles** au format d'Ollama : `{"type": "function", "function": {"name", "description", "parameters"}}`. `parameters` est l'`inputSchema` sans sa clé `$schema`. Les outils d'un serveur `down` en sont absents. Avec `allowed` (v1.1, A5), seuls les outils dont `allowed(name)` est vrai : ceux du profil actif (`Persona.allows`). C'est un argument de l'appel, jamais un état du registry, partagé par les sessions du web |
 | `get(name)` | `None` si le nom est inconnu |
 | `tools()` | Tous les outils connus, pour `/tools`, `session_ready.tools` et `GET /api/tools` (§6) |
 | `servers()` | L'état de chaque serveur de `[mcp.servers]`, pour la barre d'état (`session_ready.servers`) |
@@ -178,11 +178,11 @@ Pour chaque appel demandé par le modèle (`message.tool_calls`), dans cet ordre
 
 | # | Étape | Si ça échoue | Événements |
 |---|---|---|---|
-| 1 | `call_id = new_id()`, `info = registry.get(name)` | `info is None` → échec `UNKNOWN_TOOL` | `tool_call` (avec `server: null`), puis `tool_result` |
+| 1 | `call_id = new_id()`, `info = registry.get(name)` | `info is None` → échec `UNKNOWN_TOOL`, dont le message ne cite que les outils du profil actif | `tool_call` (avec `server: null`), puis `tool_result` |
 | 2 | Même outil et mêmes arguments que l'appel précédent ? | oui → échec `DUPLICATE_CALL`, sans exécution | `tool_call`, `tool_result` |
 | 3 | `registry.validate_arguments(...)` | erreurs → échec `INVALID_ARGUMENTS`, le modèle a droit à une réparation | `tool_call`, `tool_result` |
 | 4 | Émettre l'appel ; si les arguments contiennent `sql`, classer la requête (`guard.classify`) | — | `tool_call`, puis `sql_generated` |
-| 5 | `policy.evaluate(info, arguments, config.hitl)` | `deny` → échec `TOOL_DENIED` (ou `SQL_FORBIDDEN` pour une écriture passée à `run_select`) | `tool_result` |
+| 5 | `policy.evaluate(info, arguments, config.hitl, classify, persona=...)` (profil du tour) | `deny` → échec `TOOL_DENIED` (ou `SQL_FORBIDDEN` pour une écriture passée à `run_select`) | `tool_result` |
 | 6 | Si `confirm` : calculer l'aperçu (`sql_toolbox__preview_write` pour du SQL, aperçu du `MemoryStore` pour `memory_delete`), construire un `PendingAction`, attendre `Engine._confirm()` | refus ou délai → échec `ACTION_REJECTED`, sans exécution | `confirmation_required`, `confirmation_resolved` |
 | 7 | `result = await registry.call(name, arguments)` | `result.ok` faux → transmis tel quel au modèle | `tool_result`, puis `memory_updated` si `result.memory_change` |
 | 8 | Ajouter `{"role": "tool", "tool_name": name, "content": result.text}` aux messages et rappeler le modèle | — | — |
@@ -203,10 +203,18 @@ class PolicyDecision:
     reasons: list[str]          # French, logged, shown in the confirmation panel
 
 
-def evaluate(tool: ToolInfo, arguments: dict[str, Any], config: HitlConfig) -> PolicyDecision: ...
+def evaluate(
+    tool: ToolInfo,
+    arguments: dict[str, Any],
+    config: HitlConfig,
+    classify: SqlClassifier | None = None,
+    *,
+    persona: Persona | None = None,   # v1.1, A5
+) -> PolicyDecision: ...
 ```
 
-- Déterministe, sans appel au modèle, la règle la plus stricte l'emporte. Les règles elles-mêmes sont celles de la fiche HITL-01 (P2) : `[hitl] deny` → `deny` ; écriture passée à `run_select` → `deny` ; `[hitl] always_confirm`, SQL classé écriture ou `destructiveHint` → `confirm` ; serveur non fiable sans `readOnlyHint: true` explicite → `confirm` ; outil fiable avec `readOnlyHint: false` et `destructiveHint: false` explicites → `allow` (outils mémoire additifs) ; `readOnlyHint: true` → `allow` ; tout autre cas → `confirm`.
+- Déterministe, sans appel au modèle, la règle la plus stricte l'emporte. Les règles elles-mêmes sont celles de la fiche HITL-01 (P2), précédées depuis la v1.1 de celle des profils (A5, PERS-01) : outil hors du profil actif (`not persona.allows(tool.name)`) → `deny` (`TOOL_DENIED`, raison « outil hors du profil « Contrôle de gestion » »), même si le modèle invente l'appel ; `[hitl] deny` → `deny` ; écriture passée à `run_select` → `deny` ; `[hitl] always_confirm`, SQL classé écriture ou `destructiveHint` → `confirm` ; serveur non fiable sans `readOnlyHint: true` explicite → `confirm` ; outil fiable avec `readOnlyHint: false` et `destructiveHint: false` explicites → `allow` (outils mémoire additifs) ; `readOnlyHint: true` → `allow` ; tout autre cas → `confirm`.
+- **Un profil ne fait que restreindre** : il n'ajoute qu'un `deny`. Il ne lève jamais une confirmation, ne modifie pas `[hitl]` et n'autorise pas un outil de `[hitl] deny` (`v1.1-extensions.md` §3.1).
 - **Outil fiable** (`ToolInfo.trusted`) : outil natif, ou outil d'un serveur de la liste de confiance, `sql_toolbox` en v1. Point ouvert T-1.
 - `requires_confirmation`, affiché par l'interface (P-15, §9), n'est pas un champ de `ToolInfo` : il est calculé par `evaluate(tool, {}, config).action == "confirm"`, la décision sans arguments. Un outil dont la décision dépend du SQL (`run_select`, `preview_write`) est donc affiché sans cadenas.
 
@@ -319,7 +327,7 @@ Les codes propres aux outils mémoire restent ceux de `memory.md` §3.4, en minu
 | # | Sujet | Avec |
 |---|---|---|
 | T-1 | Serveurs de confiance (ALL-02, question 7) : `sql_toolbox` et les outils natifs en v1. À confirmer, et à noter dans `docs/decisions.md` | P2 |
-| T-2 | Ajouter `UNKNOWN_TOOL` à `events.md` §5.2, et y renvoyer vers le §8 de ce document | P1 |
+| T-2 | ~~Ajouter `UNKNOWN_TOOL` à `events.md` §5.2, et y renvoyer vers le §8 de ce document~~ Fait (CORE-11), avec `QUESTION_LIMIT` ; messages dans [`errors.md`](errors.md) §4 | P1 |
 | T-3 | Valeur de `reason` pour un refus automatique (`AutoRejectBroker`) : proposer `"auto"` dans `events.md` §3.7 ; `"cancelled"` en attendant | P1, P4 |
 | T-4 | Aperçu d'une suppression en mémoire (cascades de `memory_delete`) : méthode du `MemoryStore` qui renvoie un `impact` (§7.4) | P3 |
 | T-5 | Section §7 à valider et compléter (descriptions, schémas, `outputSchema`) | P2 |

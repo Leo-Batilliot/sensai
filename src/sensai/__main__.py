@@ -100,6 +100,7 @@ def _web_backend(config: Config, mock: bool, command: str) -> WebBackend | None:
         from sensai.web.engines.mock import MockBackend
 
         return MockBackend(config)
+    from sensai.core.config import ConfigError
     from sensai.web.engines.real import RealBackend
 
     business_db = config.database.business_path
@@ -110,7 +111,11 @@ def _web_backend(config: Config, mock: bool, command: str) -> WebBackend | None:
             file=sys.stderr,
         )
         return None
-    return RealBackend(config)
+    try:
+        return RealBackend(config)
+    except ConfigError as exc:  # an invalid profile of personas/ (A5)
+        print(exc, file=sys.stderr)
+        return None
 
 
 def _add_schedule_arguments(parser: argparse.ArgumentParser) -> None:

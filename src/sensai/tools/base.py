@@ -9,6 +9,7 @@ exception: the Engine sends it back to the model so that it can correct itself.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
@@ -116,8 +117,9 @@ class Tool(Protocol):
 class ToolRegistry(Protocol):
     """The only entry point of the Engine to the tools (tools.md §3.6)."""
 
-    def ollama_tools(self) -> list[dict[str, Any]]:
-        """Available tools in Ollama's format, inputSchema without its $schema key."""
+    def ollama_tools(self, allowed: Callable[[str], bool] | None = None) -> list[dict[str, Any]]:
+        """Available tools in Ollama's format, inputSchema without its $schema key; only
+        those for which `allowed(name)` is true when given (tools of the profile, A5)."""
         ...
 
     def get(self, name: str) -> ToolInfo | None: ...

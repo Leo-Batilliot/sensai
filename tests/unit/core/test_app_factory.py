@@ -4,9 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from fakes import FakeClient
+from fakes import PERSONAS_DIR, FakeClient
 from sensai.core.app_factory import Services
-from sensai.core.config import Config, DatabaseConfig, McpConfig, McpServerConfig
+from sensai.core.config import AgentConfig, Config, DatabaseConfig, McpConfig, McpServerConfig
+from sensai.core.personas import PersonaError
 from sensai.data.schema import connect, create_schema
 from sensai.memory.context import MemoryContext
 from sensai.tools.registry import Registry
@@ -21,6 +22,7 @@ def config(tmp_path: Path) -> Config:
     return Config(
         database=DatabaseConfig(business_path=business, memory_path=tmp_path / "memory.db"),
         mcp=McpConfig(servers={}),
+        agent=AgentConfig(personas_dir=PERSONAS_DIR),
     )
 
 
@@ -98,6 +100,26 @@ async def test_stop_closes_the_memory(config: Config) -> None:
 
     with pytest.raises(RuntimeError):
         _ = services.store
+
+
+async def test_an_engine_starts_with_the_profile_of_the_configuration(config: Config) -> None:
+    services, _clients = services_for(config)
+    await services.start()
+    try:
+        first, second = services.new_engine(), services.new_engine()
+    finally:
+        await services.stop()
+
+    assert list(first.personas) == ["admin", "adv", "analyste"]
+    assert first.persona is not None and first.persona.id == "analyste"
+    first.set_persona("adv")  # one session changes profile, not the others
+    assert second.persona is not None and second.persona.id == "analyste"
+
+
+def test_an_unknown_starting_profile_stops_the_application(config: Config) -> None:
+    agent = config.agent.model_copy(update={"persona": "compta"})
+    with pytest.raises(PersonaError, match="compta"):
+        Services(config.model_copy(update={"agent": agent}))
 
 
 async def test_an_engine_gets_the_note_and_the_examples(config: Config) -> None:

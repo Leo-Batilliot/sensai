@@ -15,6 +15,7 @@ import pytest
 
 from sensai.core.errors import (
     ModelNotFound,
+    ModelNoTools,
     OllamaError,
     OllamaTimeout,
     OllamaUnavailable,
@@ -292,6 +293,14 @@ async def test_error_line_mid_stream_raises_ollama_error() -> None:
 
     with pytest.raises(OllamaError, match="out of memory"):
         await stream(reply(200, body))
+
+
+async def test_a_model_without_tools_raises_model_no_tools() -> None:
+    refused = reply(400, {"error": f"registry.ollama.ai/library/{MODEL} does not support tools"})
+
+    with pytest.raises(ModelNoTools) as exc:
+        await stream(refused)
+    assert f"« {MODEL} » ne gère pas les outils" in exc.value.message
 
 
 async def test_server_error_status_raises_ollama_error() -> None:

@@ -16,8 +16,8 @@ from fastapi.testclient import TestClient
 from starlette.testclient import WebSocketTestSession
 
 from contract_rules import check_event, check_turns
-from fakes import MODEL, OTHER_MODEL, FakeClient, answer, tool_request
-from sensai.core.config import Config, DatabaseConfig, McpConfig
+from fakes import MODEL, OTHER_MODEL, PERSONAS_DIR, FakeClient, answer, tool_request
+from sensai.core.config import AgentConfig, Config, DatabaseConfig, McpConfig
 from sensai.core.errors import OllamaUnavailable
 from sensai.data.schema import connect, create_schema
 from sensai.memory.store import MemoryStore
@@ -40,6 +40,7 @@ def config(tmp_path: Path) -> Config:
     return Config(
         database=DatabaseConfig(business_path=business, memory_path=tmp_path / "memory.db"),
         mcp=McpConfig(servers={}),
+        agent=AgentConfig(personas_dir=PERSONAS_DIR),
     )
 
 
@@ -147,11 +148,39 @@ async def test_ui_action_says_it_is_not_plugged_yet(started: RealBackend) -> Non
     await engine.aclose()
 
 
-async def test_no_profile_before_pers_01(started: RealBackend) -> None:
+async def test_a_session_starts_with_the_profile_of_the_configuration(
+    started: RealBackend,
+) -> None:
     engine = started.new_engine("s-1", WebConfirmationBroker())
-    assert engine.persona is None and engine.set_persona("adv") is False
-    assert started.personas() == (None, [])
+    assert engine.persona == {
+        "id": "analyste",
+        "name": "Contrôle de gestion",
+        "role": "Copilote de Claire, contrôleuse de gestion",
+    }
+    _servers, tools = engine.describe()
+    names = [tool["name"] for tool in tools]
+    assert "file_read" in names and "file_write" not in names  # Claire only reads
     await engine.aclose()
+
+
+async def test_set_persona_changes_the_tools_and_keeps_the_padlocks(started: RealBackend) -> None:
+    engine = started.new_engine("s-1", WebConfirmationBroker())
+    assert engine.set_persona("admin") is True
+    padlocks = {tool["name"]: tool["requires_confirmation"] for tool in engine.describe()[1]}
+    assert padlocks["file_write"] is True  # allowed by the profile, still confirmed
+    assert padlocks["memory_delete"] is True
+    assert engine.set_persona("compta") is False  # unknown: nothing changes
+    assert engine.persona is not None and engine.persona["id"] == "admin"
+    await engine.aclose()
+
+
+async def test_personas_lists_every_profile_with_its_tools(started: RealBackend) -> None:
+    current, profiles = started.personas()
+    assert current == "analyste"
+    assert [profile["id"] for profile in profiles] == ["admin", "adv", "analyste"]
+    tools = {profile["id"]: profile["tools"] for profile in profiles}
+    assert "file_write" in tools["admin"] and "file_write" not in tools["analyste"]
+    assert "memory_search" in tools["adv"]
 
 
 async def test_new_engine_needs_the_shared_services(config: Config) -> None:
@@ -201,6 +230,28 @@ def test_a_turn_on_the_real_engine(web: Callable[..., TestClient]) -> None:
         check_event(event)
     check_turns(events)
     assert events[-1]["content"] == "Bonjour."
+
+
+def test_a_profile_change_reaches_the_model(web: Callable[..., TestClient]) -> None:
+    script = Clients(answer("42 jours."), answer("Oui."))
+    with web(script) as client, client.websocket_connect(f"/ws/{SESSION}") as ws:
+        ready = ws.receive_json()
+        assert ready["persona"]["id"] == "analyste"
+        assert [profile["id"] for profile in ready["personas"]] == ["admin", "adv", "analyste"]
+        ws.send_json({"type": "user_message", "content": "Délai moyen ?"})
+        until(ws, of_type("message_done"))
+        ws.send_json({"type": "set_persona", "id": "c-1", "persona": "admin"})
+        changed = until(ws, of_type("persona_changed"))[-1]
+        assert "file_write" in [tool["name"] for tool in changed["tools"]]
+        ws.send_json({"type": "user_message", "content": "Et maintenant ?"})
+        until(ws, of_type("message_done"))
+    session_client = script.created[-1]  # the first one serves the REST routes
+    messages = session_client.calls[1][1]
+    assert "# Profil actif : Admin" in messages[0]["content"]
+    note = {"role": "system", "content": "Profil actif : Admin (Copilote d'Inès, administratrice)"}
+    assert messages[-2:] == [note, {"role": "user", "content": "Et maintenant ?"}]
+    tools = [tool["function"]["name"] for tool in session_client.tools_sent[1] or []]
+    assert "file_write" in tools
 
 
 def test_confirmation_approved_in_the_browser(

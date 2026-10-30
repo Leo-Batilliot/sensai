@@ -20,6 +20,8 @@ from sensai.tools.base import ServerStatus, ToolAnnotations, ToolInfo, ToolResul
 MODEL = "qwen3:8b"
 OTHER_MODEL = "llama3.1:8b"
 FIXED_NOW = "2026-10-14T09:30:00+02:00"
+# The agent profiles shipped with the repository (A5): analyste, adv, admin
+PERSONAS_DIR = Path(__file__).resolve().parents[1] / "personas"
 
 
 # --- Fake Ollama -----------------------------------------------------------------------
@@ -71,11 +73,15 @@ class FakeClient:
         models: tuple[str, ...] = (MODEL, OTHER_MODEL),
         capabilities: tuple[str, ...] = ("completion", "tools"),
         show_error: Exception | None = None,
+        summaries: tuple[dict[str, Any] | str | Exception, ...] = (),
     ) -> None:
         self.replies = list(replies)
         self.models = models
         self.capabilities = capabilities
         self.show_error = show_error
+        # Answers of chat() (the summary of the history, M2): JSON, raw text or an error
+        self.summaries = list(summaries)
+        self.chat_calls: list[list[Message]] = []
         # Copies of what each call received: the engine keeps extending its message list
         self.calls: list[tuple[str, list[Message], dict[str, Any] | None]] = []
         self.tools_sent: list[list[dict[str, Any]] | None] = []
@@ -109,6 +115,21 @@ class FakeClient:
                 yield item
         finally:
             self.open_streams -= 1
+
+    async def chat(
+        self,
+        model: str,
+        messages: list[Message],
+        *,
+        format: dict[str, Any] | str | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> Chunk:
+        self.chat_calls.append(list(messages))
+        reply = self.summaries.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        content = reply if isinstance(reply, str) else json.dumps(reply, ensure_ascii=False)
+        return Chunk(content=content, done=True)
 
     async def show(self, model: str) -> ModelDetails:
         if self.show_error is not None:
@@ -230,7 +251,7 @@ class FakeToolRegistry:
         self._tools = {tool.info.name: tool for tool in chosen}
         self.calls: list[tuple[str, dict[str, Any]]] = []
 
-    def ollama_tools(self) -> list[dict[str, Any]]:
+    def ollama_tools(self, allowed: Callable[[str], bool] | None = None) -> list[dict[str, Any]]:
         return [
             {
                 "type": "function",
@@ -245,6 +266,7 @@ class FakeToolRegistry:
                 },
             }
             for tool in self._tools.values()
+            if allowed is None or allowed(tool.info.name)
         ]
 
     def get(self, name: str) -> ToolInfo | None:

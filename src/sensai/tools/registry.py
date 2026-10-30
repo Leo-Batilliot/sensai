@@ -80,8 +80,12 @@ class Registry:
     def servers(self) -> list[ServerStatus]:
         return self.manager.status() if self.manager else []
 
-    def ollama_tools(self) -> list[dict[str, Any]]:
-        """Available tools in Ollama's format: the tools of a server that is down are left out."""
+    def ollama_tools(self, allowed: Callable[[str], bool] | None = None) -> list[dict[str, Any]]:
+        """Available tools in Ollama's format: the tools of a server that is down are left out.
+
+        `allowed` keeps the tools of the active profile (Persona.allows, A5). It is an
+        argument, never a state: the registry is shared by the sessions of the web.
+        """
         return [
             {
                 "type": "function",
@@ -92,7 +96,8 @@ class Registry:
                 },
             }
             for info in self.tools()
-            if info.server is None or self._is_up(info.server)
+            if (info.server is None or self._is_up(info.server))
+            and (allowed is None or allowed(info.name))
         ]
 
     def validate_arguments(self, name: str, arguments: dict[str, Any]) -> list[str]:

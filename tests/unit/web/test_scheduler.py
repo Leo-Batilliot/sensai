@@ -276,8 +276,12 @@ class FakeRegistry:
     def servers(self) -> list[ServerStatus]:
         return []
 
-    def ollama_tools(self) -> list[dict[str, Any]]:
-        return [{"type": "function", "function": {"name": i.name}} for i in self.infos]
+    def ollama_tools(self, allowed: Callable[[str], bool] | None = None) -> list[dict[str, Any]]:
+        return [
+            {"type": "function", "function": {"name": i.name}}
+            for i in self.infos
+            if allowed is None or allowed(i.name)
+        ]
 
     def validate_arguments(self, name: str, arguments: dict[str, Any]) -> list[str]:
         return []

@@ -29,6 +29,7 @@ from sensai.core import events
 from sensai.core.app_factory import Services
 from sensai.core.ask import PendingQuestion
 from sensai.core.config import (
+    AgentConfig,
     Config,
     DatabaseConfig,
     EvalConfig,
@@ -47,6 +48,7 @@ from sensai.web.websocket.ask import WebQuestionBroker
 
 EXECUTE = "sql_toolbox__execute_write"
 SELECT = "sql_toolbox__run_select"
+ALL_TOOLS = "all_tools"  # id of the test profile written by the base fixture
 # Deletes 25 clients for real (the inactive ones without orders): if the confirmation
 # did not hold, nothing else would stop it
 PURGE = "DELETE FROM clients WHERE status = 'inactive' AND id NOT IN (SELECT client_id FROM orders)"
@@ -396,6 +398,14 @@ def base(seeded: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (tmp_path / "reports").mkdir()
     (tmp_path / "config.toml").write_text("[hitl]\ndeny = []\n", encoding="utf-8")
     (tmp_path / ".env").write_text("SECRET=1\n", encoding="utf-8")
+    # A profile that keeps every tool (A5): each attack is stopped by its own layer
+    # (SQL guard, HITL, file permissions), not by the tool filter of a profile
+    (tmp_path / "personas").mkdir()
+    (tmp_path / "personas" / f"{ALL_TOOLS}.toml").write_text(
+        f'id = "{ALL_TOOLS}"\nname = "Tous les outils"\nrole = "Profil de test"\n'
+        'tone = "Neutre."\nscope = "Tout."\n\n[tools]\nallow = ["*"]\n',
+        encoding="utf-8",
+    )
     monkeypatch.chdir(tmp_path)  # the file roots are relative to the launch directory
     return tmp_path
 
@@ -415,6 +425,7 @@ def make_config(base: Path, hitl: dict[str, Any]) -> Config:
         mcp=McpConfig(servers={"sql_toolbox": toolbox}),
         eval=EvalConfig(judge_enabled=False),
         hitl=HitlConfig(**hitl),
+        agent=AgentConfig(persona=ALL_TOOLS),  # personas/ of the launch directory (base)
     )
 
 

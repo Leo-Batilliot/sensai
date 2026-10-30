@@ -40,13 +40,16 @@ HELP = """Commandes :
   /models        modèles installés dans Ollama
   /model <nom>   change de modèle (l'historique est conservé)
   /reset         vide l'historique
-  /tools         outils disponibles
+  /personas      profils d'agent
+  /persona <id>  change de profil (l'historique est conservé)
+  /tools         outils du profil actif
   /memory        mémoire de l'agent
   /exit          quitte (ou Ctrl+D)
 Ctrl+C pendant une réponse l'interrompt sans quitter."""
 
 NOT_KEPT = "Elle n'est pas conservée dans l'historique."
 NO_TOOLS = "Aucun outil : la base de démonstration est absente (lancez `sensai seed`)."
+NO_PERSONAS = "Aucun profil : la base de démonstration est absente (lancez `sensai seed`)."
 
 # Badge of the judge (events.md §3.11) -> label and renderer method
 BADGES = {
@@ -172,6 +175,12 @@ class ChatSession:
         elif isinstance(event, events.ContextInjected):
             labels = ", ".join(ref.label for ref in event.refs)
             self.render.hint(f"  contexte mémoire fourni : {labels}")
+        elif isinstance(event, events.ContextCompacted):
+            before, after = _thousands(event.tokens_before), _thousands(event.tokens_after)
+            self.render.hint(
+                f"Historique allégé : {event.turns} échange(s), {before} tokens ramenés à {after}"
+            )
+            self.render.hint(f"  {event.summary}")
         elif isinstance(event, events.JudgeStarted):
             self.render.hint("(vérification de la réponse…)")
         elif isinstance(event, events.JudgeReport):
@@ -202,6 +211,10 @@ class ChatSession:
             await self._show_models()
         elif name == "/model":
             await self._switch_model(argument.strip())
+        elif name == "/personas":
+            self.show_personas()
+        elif name == "/persona":
+            self._switch_persona(argument.strip())
         elif name == "/tools":
             self.show_tools()
         elif name == "/memory":
@@ -232,6 +245,31 @@ class ChatSession:
         lines = [f"{'*' if name == self.engine.model else ' '} {name}" for name in models]
         self.render.info("Modèles installés :\n" + "\n".join(lines))
 
+    def show_personas(self) -> None:
+        if not self.engine.personas:
+            self.render.hint(NO_PERSONAS)
+            return
+        current = self.engine.persona
+        lines = [
+            f"{'*' if persona == current else ' '} {persona.id} : {persona.label}"
+            for persona in self.engine.personas.values()
+        ]
+        self.render.info("Profils :\n" + "\n".join(lines))
+
+    def _switch_persona(self, persona_id: str) -> None:
+        current = self.engine.persona
+        if not persona_id:
+            if current is None:
+                self.render.hint(NO_PERSONAS)
+            else:
+                self.render.info(
+                    f"Profil actuel : {current.label}. Pour en changer : /persona <id>"
+                )
+            return
+        # An unknown profile raises PersonaNotFound, shown by handle()
+        persona = self.engine.set_persona(persona_id)
+        self.render.info(f"Profil : {persona.label} (historique conservé).")
+
     def show_servers(self) -> None:
         """State of each MCP server: shown at startup and by /tools."""
         registry = self.engine.registry
@@ -250,8 +288,11 @@ class ChatSession:
         if registry is None:
             return
         hitl = self.engine.config.hitl
+        persona = self.engine.persona
         lines = []
         for info in registry.tools():
+            if persona is not None and not persona.allows(info.name):
+                continue  # the model never gets it with this profile
             # The decision without arguments (tools.md §5): run_select shows no confirmation
             confirm = evaluate(info, {}, hitl).action == "confirm"
             lines.append(f"  {info.name}{' (confirmation)' if confirm else ''}")
@@ -277,6 +318,11 @@ class ChatSession:
                 f"Le modèle {details.name} ne gère pas les outils : "
                 "les questions sur les données ne fonctionneront pas avec lui."
             )
+
+
+def _thousands(number: int) -> str:
+    """6120 -> '6 120', with a plain space (cp1252)."""
+    return f"{number:,}".replace(",", " ")
 
 
 def run_interruptible(
@@ -376,7 +422,11 @@ def run_chat(
             renderer.warning(notice)
         business_db = config.database.business_path
         if business_db.is_file():
-            services = services_factory(config)
+            try:
+                services = services_factory(config)
+            except ConfigError as exc:  # an invalid profile of personas/ (A5)
+                print(exc, file=sys.stderr)
+                return 1
             renderer.hint("Démarrage des serveurs MCP…")
             run_interruptible(loop, services.start())
             engine = services.new_engine(broker, questions=questions)
@@ -389,6 +439,8 @@ def run_chat(
         session = ChatSession(engine, renderer, broker, questions)
         if services is not None:
             session.show_servers()
+        if engine.persona is not None:
+            renderer.hint(f"Profil : {engine.persona.label} · /personas pour en changer")
         if not run_interruptible(loop, session.check_model()):
             return 1
         run_repl(session, loop, read_line)
