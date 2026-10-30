@@ -123,6 +123,18 @@ export interface MemoryUpdated extends Common {
   summary: string
 }
 
+export type DocumentOp = 'replace' | 'append' | 'insert_after' | 'delete' | 'restore'
+
+// A section of the committee note was written, by the agent or the Note panel (M4)
+export interface DocumentUpdated extends Common {
+  type: 'document_updated'
+  doc_id: string
+  revision: number
+  section_id: string | null // null for a restore: the whole note changed
+  op: DocumentOp
+  summary: string
+}
+
 export interface Usage {
   prompt_tokens: number
   completion_tokens: number
@@ -197,6 +209,7 @@ export type EngineEvent =
   | QuestionAsked
   | QuestionAnswered
   | MemoryUpdated
+  | DocumentUpdated
   | MessageDone
   | JudgeStarted
   | JudgeReport
@@ -209,6 +222,22 @@ export interface SessionConfig {
   num_ctx: number
   judge_enabled: boolean
   judge_model: string | null
+}
+
+// GET /api/config (websocket.md §9): the values of config.toml, never changed by set_config
+export interface ConfigView {
+  defaults: SessionConfig
+  bounds: { temperature: [number, number]; num_ctx: [number, number] }
+  read_only: {
+    ollama_host: string
+    keep_alive: string
+    max_tool_iterations: number
+    max_sql_retries: number
+    row_limit: number
+    query_timeout_ms: number
+    confirmation_timeout_s: number
+    numeric_tolerance: number
+  }
 }
 
 export interface ServerInfo {
@@ -300,7 +329,76 @@ export interface SharedSnapshot extends ShareInfo {
   model: string
   persona: Persona | null
   events: SessionReady['history']
-  document: unknown // the committee note with M4, null before
+  document: NoteDocument | null // the committee note at its revision of the share
+}
+
+// GET /api/documents/current (memory.md §7.5)
+export interface NoteSection {
+  section_id: string
+  position: number
+  title: string
+  content: string
+  updated_at: string
+}
+
+export interface NoteDocument {
+  id: string
+  title: string
+  revision: number
+  sections: NoteSection[]
+}
+
+// GET /api/documents/current/revisions, oldest first
+export interface NoteRevision {
+  revision: number
+  op: DocumentOp
+  section_id: string | null
+  actor: 'agent' | 'user'
+  at: string
+}
+
+// Scheduled tasks (X5, websocket.md §4.11, §5.2): sent to every open session
+export type ScheduleTrigger = 'schedule' | 'manual'
+
+export interface ScheduleRunStarted extends WebCommon {
+  type: 'schedule_run_started'
+  schedule_id: string
+  run_id: string
+  trigger: ScheduleTrigger
+}
+
+export interface ScheduleRunFinished extends WebCommon {
+  type: 'schedule_run_finished'
+  schedule_id: string
+  run_id: string
+  status: 'ok' | 'error'
+  badge: Badge | null
+  report_path: string | null
+  error: { code: string; message: string } | null
+}
+
+// GET /api/schedules (websocket.md §9). A run still going has status, badge and finished_at null.
+export interface ScheduleRun {
+  run_id: string
+  trigger: ScheduleTrigger
+  started_at: number
+  finished_at: number | null
+  status: 'ok' | 'error' | null
+  badge: Badge | null
+  report_path: string | null
+  error: { code: string; message: string } | null
+}
+
+export interface ScheduleInfo {
+  id: string
+  at: string | null // "MON 07:00", "DAILY 07:00"
+  every_minutes: number | null
+  question: string
+  persona: string | null
+  output: string
+  enabled: boolean
+  next_run: number | null
+  last_runs: ScheduleRun[]
 }
 
 export type ServerMessage =
@@ -312,14 +410,24 @@ export type ServerMessage =
   | PersonaChanged
   | ShareCreated
   | ShareRevoked
+  | ScheduleRunStarted
+  | ScheduleRunFinished
 
 export const PROTOCOL_VERSION = 1
 
 // --- client messages (websocket.md §4) --------------------------------------------------
 
+// The tools the panels may run (websocket.md §4.2, memory.md §7.5)
+export type UiActionTool =
+  | 'memory_update'
+  | 'memory_delete'
+  | 'document_patch'
+  | 'document_delete_section'
+  | 'document_restore'
+
 export type ClientMessage =
   | { type: 'user_message'; id?: string; content: string }
-  | { type: 'ui_action'; id?: string; tool: string; arguments: Record<string, unknown> }
+  | { type: 'ui_action'; id?: string; tool: UiActionTool; arguments: Record<string, unknown> }
   | { type: 'confirm'; id?: string; action_id: string; decision: 'approve' | 'reject'; comment?: string }
   | { type: 'cancel'; id?: string }
   | { type: 'reset'; id?: string }
@@ -329,3 +437,4 @@ export type ClientMessage =
   | { type: 'answer'; id?: string; question_id: string; option_id?: string; text?: string }
   | { type: 'share'; id?: string }
   | { type: 'unshare'; id?: string; token: string }
+  | { type: 'run_schedule'; id?: string; schedule_id: string }

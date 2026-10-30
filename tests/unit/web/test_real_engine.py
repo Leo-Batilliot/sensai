@@ -402,3 +402,31 @@ def test_shutdown_closes_every_engine(web: Callable[..., TestClient]) -> None:
         ws.receive_json()
     assert len(clients.created) == 2  # the REST client and the session's engine
     assert all(fake.closed for fake in clients.created)
+
+
+# --- scheduled runs (X5) ------------------------------------------------------------------
+
+
+async def test_a_scheduled_engine_cannot_write(config: Config) -> None:
+    # Even when the model asks for a deletion, nothing changes: the tool is not offered,
+    # and the Engine refuses a tool it does not know (V-4)
+    ref = fact_ref(config)
+    clients = Clients(tool_request("memory_delete", kind="fact", ref=ref), answer("Impossible."))
+    backend = RealBackend(config, client_factory=clients)
+    await backend.start()
+    try:
+        engine = backend.scheduled_engine("schedule-r-1")
+        _, tools = engine.describe()
+        names = {tool["name"] for tool in tools}
+        assert "memory_search" in names and "ask_user" in names
+        assert not names & {"memory_delete", "memory_update", "glossary_define", "file_write"}
+        received = [event.to_dict() async for event in engine.run_turn("Oublie ce fait.")]
+        await engine.aclose()
+    finally:
+        await backend.stop()
+    kinds = [event["type"] for event in received]
+    assert "confirmation_required" not in kinds and "memory_updated" not in kinds
+    result = next(event for event in received if event["type"] == "tool_result")
+    assert not result["ok"]
+    with MemoryStore.open(config.database.memory_path) as store:
+        assert any(fact["ref"] == ref for fact in store.dump()["facts"])

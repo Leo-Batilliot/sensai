@@ -6,6 +6,7 @@ import {
   type ConfirmationRequired,
   type ConfirmationResolved,
   type ContextInjected,
+  type DocumentUpdated,
   type EngineError,
   type EngineEvent,
   type JudgeReport,
@@ -56,6 +57,7 @@ export interface Turn {
   question: QuestionAsked | null // the last question of the turn, kept once answered
   answer: QuestionAnswered | null
   memoryUpdates: MemoryUpdated[]
+  documentUpdates: DocumentUpdated[] // sections of the committee note written by this turn
   error: EngineError | null
   usage: Usage | null
   durationMs: number | null
@@ -92,6 +94,7 @@ export interface ChatState {
   turns: Turn[]
   personaMarks: PersonaMark[]
   sharesVersion: number // changes on share_created / share_revoked: the list is read again
+  schedulesVersion: number // changes when a scheduled run starts or ends (X5): same
   lastUsage: Usage | null // context gauge: keeps its last value when usage is null
   notices: Notice[] // errors outside any turn (BUSY, INVALID_MESSAGE…)
   incompatible: boolean // server speaks another protocol version
@@ -109,6 +112,7 @@ export const initialState: ChatState = {
   turns: [],
   personaMarks: [],
   sharesVersion: 0,
+  schedulesVersion: 0,
   lastUsage: null,
   notices: [],
   incompatible: false,
@@ -116,6 +120,17 @@ export const initialState: ChatState = {
 }
 
 const MAX_NOTICES = 3
+export const SESSION_LOST =
+  "Le serveur a redémarré : la conversation précédente n'a pas pu être reprise."
+
+function withNotice(state: ChatState, code: string, message: string): ChatState {
+  const notice = { id: state.nextNoticeId, code, message }
+  return {
+    ...state,
+    notices: [...state.notices, notice].slice(-MAX_NOTICES),
+    nextNoticeId: state.nextNoticeId + 1,
+  }
+}
 
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
@@ -142,8 +157,11 @@ function applyMessage(state: ChatState, message: ServerMessage): ChatState {
       // session null while replaying: every persona_changed of the history is a real change
       const empty = { ...state, session: null, turns: [], personaMarks: [], lastUsage: null }
       const replayed = message.history.reduce<ChatState>(applyMessage, empty)
+      // A reconnection to a server that restarted: the turns on screen are gone, say so
+      // rather than showing an empty conversation without a word (WEB-13)
+      const lost = !message.resumed && state.turns.length > 0
       return {
-        ...replayed,
+        ...(lost ? withNotice(replayed, 'SESSION_LOST', SESSION_LOST) : replayed),
         connection: 'open',
         incompatible: message.protocol_version !== PROTOCOL_VERSION,
         session: {
@@ -173,6 +191,10 @@ function applyMessage(state: ChatState, message: ServerMessage): ChatState {
     case 'share_created':
     case 'share_revoked':
       return { ...state, sharesVersion: state.sharesVersion + 1 }
+    case 'schedule_run_started':
+    case 'schedule_run_finished':
+      // Out of the conversation: the run has its own engine, the panel reads the result
+      return { ...state, schedulesVersion: state.schedulesVersion + 1 }
     case 'persona_changed': {
       // Effective from the next turn: the separator goes after the turn running now, if any
       const same = state.session?.persona?.id === message.persona.id
@@ -195,12 +217,7 @@ function applyEvent(state: ChatState, event: EngineEvent): ChatState {
     return { ...state, turns: [...state.turns, newTurn(event.turn_id, event.origin, event.user_message)] }
   }
   if (event.type === 'error' && event.turn_id === null) {
-    const notice = { id: state.nextNoticeId, code: event.code, message: event.message }
-    return {
-      ...state,
-      notices: [...state.notices, notice].slice(-MAX_NOTICES),
-      nextNoticeId: state.nextNoticeId + 1,
-    }
+    return withNotice(state, event.code, event.message)
   }
   const index = state.turns.findIndex((turn) => turn.id === event.turn_id)
   if (index === -1) return state // late event of a turn erased by a reset
@@ -227,6 +244,7 @@ function newTurn(id: string, origin: Turn['origin'], userMessage: string | null)
     question: null,
     answer: null,
     memoryUpdates: [],
+    documentUpdates: [],
     error: null,
     usage: null,
     durationMs: null,
@@ -272,6 +290,8 @@ function applyToTurn(turn: Turn, event: EngineEvent): Turn {
       return { ...turn, answer: event, status: 'running' }
     case 'memory_updated':
       return { ...turn, memoryUpdates: [...turn.memoryUpdates, event] }
+    case 'document_updated':
+      return { ...turn, documentUpdates: [...turn.documentUpdates, event] }
     case 'message_done':
       return {
         ...turn,

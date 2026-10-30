@@ -1,11 +1,12 @@
-/* Export and share (X3): two small menus over the conversation */
+/* Export and share (X3): two small menus on their own row above the conversation, so that
+   they never cover a message (WEB-13) */
 .conversation-toolbar {
-  position: absolute;
-  top: var(--space-2);
-  right: var(--space-4);
-  z-index: 1; /* over the messages, under the modal */
+  position: relative;
+  z-index: 1; /* the menus open over the messages, under the modal */
   display: flex;
+  justify-content: flex-end;
   gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) 0;
 }
 
 .toolbar-menu {

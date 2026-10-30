@@ -4,8 +4,10 @@ import './chat/chat.css'
 import './hitl/hitl.css'
 import './judge/judge.css'
 import './memory/memory.css'
+import './note/note.css'
 import './question/question.css'
 import './results/results.css'
+import './schedule/schedule.css'
 import './share/share.css'
 import './sql/sql.css'
 import './statusbar/statusbar.css'
@@ -20,11 +22,24 @@ import { MemoryPanel } from './memory/MemoryPanel'
 import { ConversationActions } from './share/ConversationActions'
 import { memoryVersion, recentChanges } from './memory/memory'
 import { useMemory } from './memory/useMemory'
+import { NotePanel } from './note/NotePanel'
+import { lastUpdate, noteVersion, recentSections } from './note/note'
+import { useNote } from './note/useNote'
+import { SchedulesPanel } from './schedule/SchedulesPanel'
+import { InlineCode } from './shared/InlineCode'
+import { useSchedules } from './schedule/useSchedules'
 import { useSession } from './session/useSession'
 import { StatusBar } from './statusbar/StatusBar'
 import { Timeline } from './timeline/Timeline'
 
-type SideTab = 'timeline' | 'memory'
+type SideTab = 'timeline' | 'memory' | 'note' | 'schedules'
+
+const TABS: { id: SideTab; label: string }[] = [
+  { id: 'timeline', label: 'Timeline' },
+  { id: 'memory', label: 'Mémoire' },
+  { id: 'note', label: 'Note' },
+  { id: 'schedules', label: 'Tâches planifiées' },
+]
 
 // Layout of the main screen (docs/keynote/ui/EcranPrincipal).
 export default function App() {
@@ -38,6 +53,8 @@ export default function App() {
   const pinned = state.turns.findIndex((turn) => turn.id === pinnedTurnId)
   const timelineIndex = pinned !== -1 ? pinned : state.turns.length - 1
   const memory = useMemory(session.connected, memoryVersion(state.turns))
+  const note = useNote(session.connected, noteVersion(state.turns))
+  const schedules = useSchedules(session.connected, state.schedulesVersion)
   const canAct = session.connected && !session.busy
 
   const ask = (content: string) => {
@@ -56,6 +73,7 @@ export default function App() {
         state={state}
         connected={session.connected}
         onSetModel={session.setModel}
+        onSetConfig={session.setConfig}
         onSetPersona={session.setPersona}
       />
 
@@ -86,7 +104,9 @@ export default function App() {
           )}
           {state.notices.map((notice) => (
             <div key={notice.id} className="banner" role="alert">
-              <p>{notice.message}</p>
+              <p>
+                <InlineCode text={notice.message} />
+              </p>
               <button type="button" onClick={() => session.dismissNotice(notice.id)}>
                 Fermer
               </button>
@@ -110,6 +130,7 @@ export default function App() {
             onAsk={ask}
             onShowSteps={showSteps}
             onShowMemory={() => setTab('memory')}
+            onShowNote={() => setTab('note')}
           />
         )}
 
@@ -132,43 +153,53 @@ export default function App() {
         />
       </main>
 
-      <aside className="sidepanel" aria-label="Étapes de l'agent et mémoire">
+      <aside
+        className="sidepanel"
+        aria-label="Étapes de l'agent, mémoire, note du comité et tâches planifiées"
+      >
         <div className="tabs" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            id="tab-timeline"
-            aria-controls="panel-side"
-            aria-selected={tab === 'timeline'}
-            onClick={() => setTab('timeline')}
-          >
-            Timeline
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id="tab-memory"
-            aria-controls="panel-side"
-            aria-selected={tab === 'memory'}
-            onClick={() => setTab('memory')}
-          >
-            Mémoire
-          </button>
+          {TABS.map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              id={`tab-${id}`}
+              aria-controls="panel-side"
+              aria-selected={tab === id}
+              onClick={() => setTab(id)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-        <div
-          className="tab-panel"
-          role="tabpanel"
-          id="panel-side"
-          aria-labelledby={tab === 'timeline' ? 'tab-timeline' : 'tab-memory'}
-        >
-          {tab === 'timeline' ? (
+        <div className="tab-panel" role="tabpanel" id="panel-side" aria-labelledby={`tab-${tab}`}>
+          {tab === 'timeline' && (
             <Timeline turn={state.turns[timelineIndex] ?? null} number={timelineIndex + 1} />
-          ) : (
+          )}
+          {tab === 'memory' && (
             <MemoryPanel
               memory={memory}
               recent={recentChanges(state.turns)}
               canAct={canAct}
               onAction={session.uiAction}
+            />
+          )}
+          {tab === 'note' && (
+            <NotePanel
+              note={note.note}
+              revisions={note.revisions}
+              recent={recentSections(state.turns)}
+              last={lastUpdate(state.turns)}
+              canAct={canAct}
+              onAction={session.uiAction}
+            />
+          )}
+          {tab === 'schedules' && (
+            <SchedulesPanel
+              schedules={schedules}
+              personas={state.session?.personas ?? []}
+              connected={session.connected} // a run does not wait for the conversation
+              onRun={session.runSchedule}
             />
           )}
         </div>

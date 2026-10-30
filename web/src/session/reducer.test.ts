@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { EngineEvent, Persona, PersonaChanged, ServerMessage, SessionReady } from '../protocol'
 import { FIXTURE_FILES, fixture, until } from '../test/fixtures'
-import { chatReducer, initialState, isBusy, type ChatState } from './reducer'
+import { SESSION_LOST, chatReducer, initialState, isBusy, type ChatState } from './reducer'
 
 const ANALYSTE: Persona = { id: 'analyste', name: 'Contrôle de gestion', role: 'Copilote de Claire' }
 const ADV: Persona = { id: 'adv', name: 'ADV', role: 'Copilote de Karim' }
@@ -202,6 +202,18 @@ describe('session messages', () => {
     expect(state.turns).toEqual([])
     const dismissed = chatReducer(state, { type: 'dismiss_notice', id: 3 })
     expect(dismissed.notices.map((notice) => notice.id)).toEqual([2, 4])
+  })
+
+  it('says so when a reconnection finds a server that lost the conversation', () => {
+    const before = play([ready(), ...fixture('nominal.jsonl')])
+    const restarted = play([{ ...ready(), resumed: false }], before)
+    expect(restarted.turns).toEqual([])
+    expect(restarted.notices.map((notice) => [notice.code, notice.message])).toEqual([
+      ['SESSION_LOST', SESSION_LOST],
+    ])
+    const history = fixture('nominal.jsonl').filter((event) => event.type !== 'token')
+    expect(play([ready(history)], before).notices).toEqual([]) // resumed: nothing lost
+    expect(play([ready()]).notices).toEqual([]) // first connection
   })
 
   it('flags a server that speaks another protocol version', () => {

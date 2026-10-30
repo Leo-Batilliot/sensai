@@ -3,7 +3,7 @@ PYTHON ?= python3
 PY     := $(VENV)/bin/python
 TAG    ?= dev
 
-.PHONY: help install test test-all lint format ci chat web web-mock web-build seed eval clean
+.PHONY: help install test test-all lint format ci chat web web-mock web-build seed eval eval-adversarial clean
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  make %-10s %s\n", $$1, $$2}'
@@ -41,7 +41,7 @@ web: ## Start the web server (http://127.0.0.1:8000)
 web-mock: ## Start the web server on the MockEngine (replays tests/fixtures/events)
 	$(PY) -m sensai web --mock
 
-web-build: ## Build the frontend (web/dist)
+web-build: ## Rebuild the frontend after a change in web/src, then commit web/dist (needs Node 22)
 	cd web && npm ci && npm run build
 
 seed: ## Generate the demo database
@@ -49,6 +49,9 @@ seed: ## Generate the demo database
 
 eval: ## Run the evaluation harness (make eval TAG=v0.5)
 	$(PY) -m sensai eval --suite eval/golden.jsonl --tag $(TAG)
+
+eval-adversarial: ## Replay the attacks of eval/adversarial.jsonl on the real model
+	$(PY) -m sensai eval --suite eval/adversarial.jsonl
 
 clean: ## Remove caches
 	rm -rf .pytest_cache .ruff_cache build dist src/*.egg-info

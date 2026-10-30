@@ -54,7 +54,7 @@ Si une seconde connexion s'ouvre avec le même `session_id`, la première est fe
 ### 2.4 Durée de vie et reconnexion
 
 - Une session (un `Engine` et son historique) vit **en mémoire du serveur**. Elle est conservée **1 h** après la dernière déconnexion, puis libérée.
-- Un redémarrage du serveur perd les sessions (la mémoire long terme `memory.db` est conservée). Le client reçoit alors `session_ready` avec `resumed: false` et vide son affichage.
+- Un redémarrage du serveur perd les sessions (la mémoire long terme `memory.db` est conservée). Le client reçoit alors `session_ready` avec `resumed: false`, vide son affichage et le dit dans un bandeau (« Le serveur a redémarré… »).
 - **Reconnexion côté client** : automatique, avec un délai croissant de 0,5 s, 1 s, 2 s, puis 5 s maximum. Pendant ce temps, la barre d'état affiche « reconnexion en cours ».
 - **Déconnexion pendant un tour** (CORE-11) : le tour est annulé (`engine.cancel()`, comme un `cancel`), et toute confirmation en attente est **refusée** (`decision: "reject"`, `reason: "disconnected"`). Une action destructive n'est donc jamais laissée en suspens sans personne devant l'écran. À la reconnexion, `session_ready.history` contient la fin du tour annulé.
 - Le maintien de la connexion repose sur les pings WebSocket d'uvicorn (`ws_ping_interval` par défaut). Il n'y a pas de message applicatif de type « heartbeat ».
@@ -105,19 +105,24 @@ Un serveur qui ne prend pas encore en charge un type de la v1.1 répond `INVALID
 
 ### 4.2 `ui_action`
 
-Permet à l'interface de déclencher un outil sans passer par le modèle : modifier ou supprimer une entrée depuis le panneau Mémoire (US-M3-03).
+Permet à l'interface de déclencher un outil sans passer par le modèle : modifier ou supprimer une entrée depuis le panneau Mémoire (US-M3-03), modifier la note du comité depuis le panneau Note (v1.1, M4, US-M4-01 et 02).
 
 ```json
 {"type": "ui_action", "id": "c-31", "tool": "memory_delete", "arguments": {"kind": "fact", "ref": "17"}}
 ```
 
-- **Liste blanche** : seuls `memory_update` et `memory_delete` sont appelables. **Jamais `execute_write`** ni aucun autre outil. Un autre nom donne l'erreur `UI_ACTION_FORBIDDEN`. Le moteur applique la même liste blanche (défense en profondeur).
+- **Liste blanche** : seuls `memory_update`, `memory_delete` et, en v1.1, `document_patch`, `document_delete_section` et `document_restore` sont appelables. **Jamais `execute_write`** ni aucun autre outil. Un autre nom donne l'erreur `UI_ACTION_FORBIDDEN`. Le moteur applique la même liste blanche (défense en profondeur).
 - `arguments` sont **exactement ceux des outils mémoire** (`memory.md`, P3) :
 
 | Outil | Arguments | Confirmation |
 |---|---|---|
 | `memory_update` | `{kind, ref, patch}` | Non |
 | `memory_delete` | `{kind, ref}` | **Oui** (l'outil déclare `destructiveHint: true`) |
+| `document_patch` (v1.1) | `{section_id, op, content, title?, base_revision}` | Non (réversible, versionné) |
+| `document_delete_section` (v1.1) | `{section_id, base_revision}` | **Oui** (`destructiveHint: true`) |
+| `document_restore` (v1.1) | `{revision}` | Non (crée une révision) |
+
+- Outils `document_*` : arguments de `memory.md` §7.3, audit `actor = "user"`. `base_revision` est la révision que le panneau affichait : si l'agent a écrit entre-temps, le `tool_result` échoue (`REVISION_CONFLICT`) et le panneau relit la note. `document_updated` suit chaque écriture effective, comme pour l'agent. Tant que l'`Engine` n'a pas son `run_ui_action` (P-6), le serveur web construit ce tour lui-même (`web/engines/note.py`), sur le mock comme sur le vrai moteur ; les actions du panneau Mémoire attendent P-6 sur le vrai moteur.
 
 - `kind` : `"glossary"`, `"entity"`, `"relation"` ou `"fact"`.
 - `ref` : **toujours une chaîne**. C'est le terme pour le glossaire, et l'`id` en texte pour les autres.
@@ -260,6 +265,8 @@ C'est la réponse à l'exigence « configuration » du catalogue X1. Règles (va
 - Tâche inconnue ou désactivée (`enabled = false`) : `SCHEDULE_NOT_FOUND`. Tâche déjà en cours : `BUSY` (« Cette tâche tourne déjà »).
 - La tâche tourne dans **son propre moteur** : brokers sans humain, profil de la tâche, aucun outil d'écriture ; le rapport est écrit par le planificateur. Elle n'occupe pas la session : `user_message` reste accepté.
 - Réponse : `schedule_run_started` (§5.2), avec `reply_to` dans la copie envoyée à la session qui l'a demandée.
+- Les événements du tour de la tâche ne sont pas envoyés aux sessions : seulement `schedule_run_started` et `schedule_run_finished`, hors historique. Le rapport reprend la question, la réponse, le SQL, les 20 premières lignes de chaque tableau, le badge, les chiffres clés et les hypothèses, comme l'export Markdown (§9). Un rapport du même jour remplace le précédent (`{date}` = AAAA-MM-JJ).
+- Hors du web : `sensai schedule` liste les tâches, `sensai schedule run <id>` en lance une, exactement comme « Exécuter maintenant ».
 
 ---
 
@@ -609,6 +616,7 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
 | `GET /api/shares/{token}` (v1.1) | L'instantané partagé (JSON) ; 404 si révoqué ou inconnu | Page partagée (X3) |
 | `GET /share/{token}` (v1.1) | **Page en lecture seule, sans authentification**, sans WebSocket ni action | Lien partagé (X3) |
 | `GET /api/schedules` (v1.1) | `{schedules: [{id, at, every_minutes, question, persona, output, enabled, next_run, last_runs}]}` | Tâches planifiées (X5) |
+| `GET /api/schedules/runs/{run_id}/report` (v1.1) | Le rapport Markdown d'une exécution, affiché dans le navigateur (`text/plain`) ; 404 `SCHEDULE_NOT_FOUND` sans rapport | Lien « Rapport » (X5) |
 
 - `supports_tools` vient de `POST /api/show` (champ `capabilities`) d'Ollama.
 - `GET /api/schema` est alimenté par `sql_toolbox` (`list_tables`, `describe_table`) via le registry. **La couche web n'ouvre jamais `business.db` elle-même** : `sql_toolbox` reste le seul accès à la base.
@@ -618,7 +626,8 @@ Ces routes servent à charger des listes au démarrage du front. Toutes renvoien
   - `GET /api/shares` : `local_only` vaut `true` quand le serveur n'accepte que cette machine (`[web] host` = `127.0.0.1`) ; le front prévient alors que le lien ne s'ouvre pas ailleurs.
   - `GET /api/shares/{token}` : `{token, created_at, model, persona, events, document}`, avec `events` comme `session_ready.history` et `document` comme `GET /api/documents/current` (ou `null`). L'instantané est **figé** dans `data/shares/<token>.json`.
   - `GET /share/{token}` est servie par le build du front (WEB-14) : la même application en mode lecture seule, qui lit `GET /api/shares/{token}`. Elle affiche « Toute personne qui a ce lien voit cette conversation ».
-  - `GET /api/schedules` : une tâche a soit `at`, soit `every_minutes` (l'autre vaut `null`). `next_run` vaut `null` si elle est désactivée. `last_runs` : les 5 dernières exécutions, de la plus récente à la plus ancienne, `[{run_id, trigger, started_at, finished_at, status, badge, report_path, error}]`.
+  - `GET /api/schedules` : une tâche a soit `at`, soit `every_minutes` (l'autre vaut `null`). `next_run` vaut `null` si elle est désactivée. `last_runs` : les 5 dernières exécutions, de la plus récente à la plus ancienne, `[{run_id, trigger, started_at, finished_at, status, badge, report_path, error}]`. Une exécution en cours a `status`, `finished_at` et `badge` à `null`.
+  - `GET /api/schedules/runs/{run_id}/report` : le chemin lu est celui enregistré par le planificateur pour cette exécution, jamais un chemin venu de la requête.
   - Les dates (`created_at`, `exported_at`, `next_run`, `started_at`, `finished_at`) sont en secondes epoch, comme `ts`.
 - En cas d'erreur : statut HTTP 5xx (4xx pour une ressource absente ou un paramètre invalide) et `{"error": {"code", "message"}}`, avec les codes d'`events.md`. Par exemple, `GET /api/models` répond 503 avec `OLLAMA_UNAVAILABLE` quand Ollama est arrêté.
 
@@ -702,7 +711,7 @@ V-7 et V-10 ont été proposés par P4 dans la relecture de la section 4 : ils s
 | V-6 | Pas d'expiration des liens de partage en v1.1 (révocation manuelle), cité en limite | — | §4.10 |
 | V-7 | `persona_changed` entre dans `session_ready.history`, à sa place | P1 | §5.2 |
 | V-10 | `SHARE_NOT_FOUND` pour un jeton inconnu ou révoqué | P1 | §7.1 |
-| — | Les nouvelles clés de `set_config` (`prompt_version`, `fewshot_enabled`) et les outils `document_*` d'`ui_action` sont reportés ici par la PR de la fonctionnalité qui les lit (A4, A7, M4) | P1, P3 | §4.2, §4.7 |
+| — | Les nouvelles clés de `set_config` (`prompt_version`, `fewshot_enabled`) et les outils `document_*` d'`ui_action` sont reportés ici par la PR de la fonctionnalité qui les lit (A4, A7, M4). `document_*` : reportés par WEB-17 | P1, P3 | §4.2, §4.7 |
 
 ---
 

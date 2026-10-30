@@ -8,6 +8,7 @@ import { KeyFigures } from '../judge/KeyFigures'
 import { QuestionCard, type Reply } from '../question/QuestionCard'
 import { ResultTable } from '../results/ResultTable'
 import { asRowSet } from '../results/table'
+import { InlineCode } from '../shared/InlineCode'
 import type { Turn } from '../session/reducer'
 import { messageQueries, stepStatus, stepsSummary } from '../session/steps'
 import { SqlBlock } from '../sql/SqlBlock'
@@ -65,6 +66,7 @@ interface Props {
   onAsk: (question: string) => void
   onShowSteps?: (turnId: string) => void
   onShowMemory?: () => void
+  onShowNote?: () => void
 }
 
 export function AssistantMessage({
@@ -76,6 +78,7 @@ export function AssistantMessage({
   onAsk,
   onShowSteps,
   onShowMemory,
+  onShowNote,
 }: Props) {
   const streaming = turn.status === 'running'
   const label = activity(turn)
@@ -124,6 +127,29 @@ export function AssistantMessage({
             )}
           </p>
         )}
+        {turn.documentUpdates.length > 0 && (
+          // What the agent wrote in the committee note (M4): "seule la section Rentabilité change"
+          <p className="context-chips">
+            <span className="muted">Note du comité :</span>
+            {turn.documentUpdates.map((update) =>
+              onShowNote !== undefined ? (
+                <button
+                  key={update.revision}
+                  type="button"
+                  className="chip chip-small chip-up"
+                  title="Voir la note du comité"
+                  onClick={onShowNote}
+                >
+                  {update.summary}
+                </button>
+              ) : (
+                <span key={update.revision} className="chip chip-small chip-up">
+                  {update.summary}
+                </span>
+              ),
+            )}
+          </p>
+        )}
         {label !== null && (
           <p className="activity" role="status">
             {label}
@@ -156,7 +182,7 @@ export function AssistantMessage({
         {turn.status === 'interrupted' && <p className="interrupted">Réponse interrompue.</p>}
         {turn.error !== null && (
           <p className="turn-error" role="alert">
-            {turn.error.message}
+            <InlineCode text={turn.error.message} />
           </p>
         )}
         {messageQueries(turn).map((step) => {

@@ -116,6 +116,14 @@
   color: var(--bad);
 }
 
+/* A command in a server message (« lancez `ollama serve` ») */
+.turn-error code,
+.banner code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 /* Markdown of the answer */
 .markdown {
   overflow-wrap: anywhere;

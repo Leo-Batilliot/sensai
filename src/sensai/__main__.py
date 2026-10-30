@@ -1,4 +1,4 @@
-"""Entry point: python -m sensai {chat,web,eval,seed,prompts}."""
+"""Entry point: python -m sensai {chat,web,eval,seed,prompts,schedule}."""
 
 from __future__ import annotations
 
@@ -6,12 +6,13 @@ import argparse
 import sys
 from collections.abc import Callable
 from datetime import date
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sensai import __version__
 
 if TYPE_CHECKING:
     from sensai.core.config import Config
+    from sensai.web.engines.backend import WebBackend
 
 # Subcommand -> planning task that implements it
 COMMANDS: dict[str, tuple[str, str]] = {
@@ -20,6 +21,7 @@ COMMANDS: dict[str, tuple[str, str]] = {
     "eval": ("Harness d'évaluation hors ligne", "EVAL-06"),
     "seed": ("Génère la base de démonstration", "DATA-02"),
     "prompts": ("Versions publiées des prompts", "PROMPT-01"),
+    "schedule": ("Tâches planifiées : liste, ou exécution immédiate", "SCHED-01"),
 }
 
 
@@ -60,6 +62,8 @@ def _run_web(args: argparse.Namespace) -> int:
 
     from sensai.core.config import ConfigError, load_config
     from sensai.core.demo import demo_notice
+    from sensai.web.frontend import stale
+    from sensai.web.paths import STATIC_DIR, WEB_DIR
     from sensai.web.server import create_app
 
     try:
@@ -71,33 +75,134 @@ def _run_web(args: argparse.Namespace) -> int:
     if problem is not None:
         print(problem, file=sys.stderr)
         return 1
-    if args.mock:
-        from sensai.web.engines.mock import MockBackend
-
-        backend = MockBackend(config)
-    else:
-        from sensai.web.engines.real import RealBackend
-
-        business_db = config.database.business_path
-        if not business_db.is_file():
-            print(
-                f"Base de démonstration absente ({business_db}) : lancez `make seed`, "
-                "ou `sensai web --mock` pour rejouer les scénarios sans base ni Ollama.",
-                file=sys.stderr,
-            )
-            return 1
-        try:
-            backend = RealBackend(config)
-        except ConfigError as exc:  # an invalid profile of personas/ (A5)
-            print(exc, file=sys.stderr)
-            return 1
+    backend = _web_backend(config, args.mock, "web")
+    if backend is None:
+        return 1
+    if not args.mock:
         notice = demo_notice(config)  # the mock backend replays fixtures: never altered
         if notice is not None:
             print(notice, file=sys.stderr)
+    if stale(STATIC_DIR, WEB_DIR):  # web/dist is committed: a front change not rebuilt
+        print(
+            "Interface web plus ancienne que web/src : lancez `make web-build` (Node 22), "
+            "puis committez web/dist.",
+            file=sys.stderr,
+        )
     # Single worker: web sessions live in memory
     app = create_app(config, backend)
     uvicorn.run(app, host=config.web.host, port=config.web.port)
     return 0
+
+
+def _web_backend(config: Config, mock: bool, command: str) -> WebBackend | None:
+    """The engine side of `sensai web` and `sensai schedule`: None if it cannot start."""
+    if mock:
+        from sensai.web.engines.mock import MockBackend
+
+        return MockBackend(config)
+    from sensai.core.config import ConfigError
+    from sensai.web.engines.real import RealBackend
+
+    business_db = config.database.business_path
+    if not business_db.is_file():
+        print(
+            f"Base de démonstration absente ({business_db}) : lancez `make seed`, "
+            f"ou `sensai {command} --mock` pour rejouer les scénarios sans base ni Ollama.",
+            file=sys.stderr,
+        )
+        return None
+    try:
+        return RealBackend(config)
+    except ConfigError as exc:  # an invalid profile of personas/ (A5)
+        print(exc, file=sys.stderr)
+        return None
+
+
+def _add_schedule_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "action", nargs="?", choices=("list", "run"), default="list", help="défaut : list"
+    )
+    parser.add_argument("schedule_id", nargs="?", help="la tâche à lancer (run)")
+    parser.add_argument("--config", help="fichier de configuration (défaut : ./config.toml)")
+    parser.add_argument(
+        "--mock", action="store_true", help="rejoue les scénarios de démonstration (sans Ollama)"
+    )
+
+
+def _run_schedule(args: argparse.Namespace) -> int:
+    import asyncio
+
+    from sensai.core.config import ConfigError, load_config
+
+    if args.action == "run" and not args.schedule_id:
+        print("usage : sensai schedule run TÂCHE", file=sys.stderr)
+        return 2
+    try:
+        config = load_config(args.config)
+    except ConfigError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    if not config.schedules:
+        print("Aucune tâche planifiée : ajoutez une section [schedules.<id>] à config.toml.")
+        return 0 if args.action == "list" else 1
+    problem = prompt_problem(config)
+    if problem is not None:
+        print(problem, file=sys.stderr)
+        return 1
+    backend = _web_backend(config, args.mock, "schedule")
+    if backend is None:
+        return 1
+    return asyncio.run(
+        _schedule(config, backend, args.schedule_id if args.action == "run" else None)
+    )
+
+
+async def _schedule(config: Config, backend: WebBackend, schedule_id: str | None) -> int:
+    """`sensai schedule`: the tasks and their last run; `sensai schedule run ID`: one run
+    now, exactly as "Exécuter maintenant" in the web (X5)."""
+    from datetime import datetime
+
+    from sensai.web.scheduler import Scheduler, ScheduleRefused, timetable
+
+    async def broadcast(message: dict[str, object], requester: object, reply_to: object) -> None:
+        return None  # no session to tell: the result is printed below
+
+    def when(epoch: float | None) -> str:
+        return "—" if epoch is None else datetime.fromtimestamp(epoch).strftime("%d/%m/%Y %H:%M")
+
+    await backend.start()
+    scheduler = Scheduler(config, backend, broadcast)
+    await scheduler.start(loop=False)
+    try:
+        if schedule_id is None:
+            for task in scheduler.describe():
+                schedule = config.schedules[task["id"]]
+                state = f"prochaine : {when(task['next_run'])}" if task["enabled"] else "désactivée"
+                last = task["last_runs"][0] if task["last_runs"] else None
+                done = (
+                    "jamais lancée"
+                    if last is None
+                    else f"dernière : {when(last['started_at'])} {last['status'] or 'en cours'}"
+                )
+                print(f"{task['id']}  {timetable(schedule)}  {state}  {done}")
+            return 0
+        try:
+            run_id = await scheduler.run(schedule_id, "manual")
+        except ScheduleRefused as refused:
+            print(refused.message, file=sys.stderr)
+            return 1
+        print(f"{schedule_id} : exécution sans humain, en lecture seule…")
+        await scheduler.wait()
+        run = scheduler.store.get(run_id)
+        assert run is not None
+        if run["status"] != "ok":
+            print(f"Échec : {run['error']['message']} ({run['error']['code']})", file=sys.stderr)
+            return 1
+        print(f"Rapport : {run['report_path']} · vérification : {run['badge'] or 'aucune'}")
+        return 0
+    finally:
+        await scheduler.stop()
+        await backend.stop()
 
 
 def _iso_date(value: str) -> date:
@@ -144,7 +249,14 @@ def _add_eval_arguments(parser: argparse.ArgumentParser) -> None:
         help="compare deux rapports (tags ou chemins .json), ou calibre le juge sur "
         "eval/judge_calibration.jsonl, au lieu de lancer le jeu",
     )
-    parser.add_argument("--suite", default="eval/golden.jsonl", help="jeu de questions")
+    parser.add_argument(
+        "--suite",
+        default="eval/golden.jsonl",
+        help="jeu de questions, ou jeu d'attaques (eval/adversarial.jsonl)",
+    )
+    parser.add_argument(
+        "--only", action="append", help="jeu d'attaques : ne rejouer que ce cas (répétable)"
+    )
     parser.add_argument("--tag", help="nom de la version mesurée, ex. v0.5")
     parser.add_argument(
         "--today", type=_iso_date, help="date de référence AAAA-MM-JJ (défaut : 2026-10-20)"
@@ -178,6 +290,10 @@ def _run_eval(args: argparse.Namespace) -> int:
 
     if args.compare == ["calibrate"]:
         return _run_calibration(args)
+    from sensai.eval.adversarial import is_adversarial_suite
+
+    if not args.compare and is_adversarial_suite(args.suite):
+        return _run_adversarial(args)
     if args.compare:
         if len(args.compare) != 3 or args.compare[0] != "compare":
             print("usage : sensai eval compare AVANT APRÈS", file=sys.stderr)
@@ -219,6 +335,68 @@ def _run_eval(args: argparse.Namespace) -> int:
         print(f"sensai eval : {problem}", file=sys.stderr)
         return 1
     return asyncio.run(_eval_run(args, config))
+
+
+def _run_adversarial(args: argparse.Namespace) -> int:
+    """`sensai eval --suite eval/adversarial.jsonl`: the attacks on the real model."""
+    import asyncio
+
+    from sensai.core.config import ConfigError, load_config
+    from sensai.eval.adversarial import load_cases
+
+    try:
+        config = load_config(
+            args.config,
+            overrides={
+                "ollama.model": args.model,
+                "ollama.host": args.host,
+                "agent.prompt_version": args.prompt_version,
+            },
+        )
+        cases = load_cases(args.suite)
+    except (ConfigError, ValueError, OSError) as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    if args.only:
+        cases = [case for case in cases if case.id in args.only]
+    problem = prompt_problem(config)
+    if problem is not None:
+        print(f"sensai eval : {problem}", file=sys.stderr)
+        return 1
+    return asyncio.run(_adversarial_run(args, config, cases))
+
+
+async def _adversarial_run(args: argparse.Namespace, config: Config, cases: list[Any]) -> int:
+    from sensai.eval.adversarial import CaseResult, build_report, run_suite, write_report
+    from sensai.eval.runtime import check_models
+
+    problem = await check_models(config)
+    if problem is not None:
+        print(f"sensai eval : {problem}", file=sys.stderr)
+        return 1
+
+    def progress(result: CaseResult) -> None:
+        detail = " ; ".join(result.reasons) or (result.error or "")
+        print(f"{result.id:<10} {result.verdict:<10} {result.duration_ms / 1000:5.1f} s  {detail}")
+
+    results = await run_suite(cases, config, seed=args.seed, on_result=progress)
+    info = {
+        "run_day": date.today().isoformat(),
+        "model": config.ollama.model,
+        "seed": args.seed,
+        "suite": args.suite,
+        "temperature": 0.0,
+        "prompt_version": config.agent.prompt_version,
+    }
+    report = build_report(results, info)
+    path = write_report(report)
+    total = report["rates"]["total"]
+    print(
+        f"held {total['held']}, soft_break {total['soft_break']}, hard_break "
+        f"{total['hard_break']} sur {total['n']} cas. Rapports : {path} et "
+        f"{path.with_suffix('.md')}"
+    )
+    return 1 if total["hard_break"] else 0
 
 
 async def _eval_run(args: argparse.Namespace, config: Config) -> int:
@@ -397,6 +575,7 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "eval": _run_eval,
     "seed": _run_seed,
     "prompts": _run_prompts,
+    "schedule": _run_schedule,
 }
 
 
@@ -416,6 +595,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_seed_arguments(command)
         elif name == "prompts":
             _add_prompts_arguments(command)
+        elif name == "schedule":
+            _add_schedule_arguments(command)
     return parser
 
 

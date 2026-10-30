@@ -7,14 +7,18 @@ its socket.
 
 The Engine does not cover the whole web protocol: RealEngine adds the servers and tools
 of session_ready, the session settings of set_config, and run_ui_action until the
-Engine has its own (point P-6, P1). Profiles (A5) are the Engine's: RealEngine only
-shows them in the shape of the protocol, with the tools of the active one.
+Engine has its own (point P-6, P1): the Note panel's actions run (engines/note.py), the
+memory panel's not yet. Profiles (A5) are the Engine's: RealEngine only shows them in
+the shape of the protocol, with the tools of the active one.
+
+A scheduled run (X5) gets an Engine with nobody behind its brokers and a ReadOnlyRegistry:
+the tools that write are not even offered to the model.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from sensai.core import events
@@ -23,11 +27,14 @@ from sensai.core.config import Config
 from sensai.core.engine import ChatClient, Engine
 from sensai.core.errors import PersonaNotFound, SensaiError
 from sensai.core.personas import Persona as Profile
+from sensai.documents.store import DocumentStore
 from sensai.eval.online import OnlineJudge
 from sensai.mcp.manager import McpManager
+from sensai.tools.base import ServerStatus, ToolInfo, ToolRegistry, ToolResult
 from sensai.tools.policy import SqlClassifier, evaluate
 from sensai.tools.registry import Registry
 from sensai.web.engines.backend import ModelInfo, Persona, PersonaTools
+from sensai.web.engines.note import NOTE_ACTIONS, note_action, note_registry
 from sensai.web.websocket.ask import WebQuestionBroker
 from sensai.web.websocket.confirm import WebConfirmationBroker
 from sensai.web.websocket.settings import SESSION_SETTINGS, session_settings
@@ -40,7 +47,7 @@ UI_ACTION_UNAVAILABLE = (
 class RealEngine:
     """WebEngine over one Engine. The Engine stays the only one to decide anything."""
 
-    def __init__(self, engine: Engine, registry: Registry, client: ChatClient) -> None:
+    def __init__(self, engine: Engine, registry: ToolRegistry, client: ChatClient) -> None:
         self.engine = engine
         self.registry = registry
         self._client = client
@@ -94,6 +101,18 @@ class RealEngine:
             async for event in run(tool, arguments):
                 yield event
             return
+        documents = self.engine.documents
+        if tool in NOTE_ACTIONS and documents is not None:
+            async for event in note_action(
+                note_registry(documents, self.engine.session_id),
+                tool,
+                arguments,
+                session_id=self.engine.session_id,
+                broker=self.engine.broker,
+                hitl=self.engine.config.hitl,
+            ):
+                yield event
+            return
         yield events.Error(
             session_id=self.engine.session_id,
             turn_id=None,
@@ -133,6 +152,49 @@ class RealEngine:
         self.engine.config = config
         if self.engine.judge is not None:
             self.engine.judge = OnlineJudge.from_config(config, self._client)
+
+
+class ReadOnlyRegistry:
+    """The registry of a scheduled run: a tool that may write does not exist for the model.
+
+    Kept: tools declared read-only, and those without a declaration (time server), which
+    the HITL policy sends to confirmation if untrusted, refused there by AutoRejectBroker.
+    """
+
+    def __init__(self, registry: ToolRegistry) -> None:
+        self._registry = registry
+
+    def tools(self) -> list[ToolInfo]:
+        return [info for info in self._registry.tools() if _reads_only(info)]
+
+    def get(self, name: str) -> ToolInfo | None:
+        info = self._registry.get(name)
+        return info if info is not None and _reads_only(info) else None
+
+    def servers(self) -> list[ServerStatus]:
+        return self._registry.servers()
+
+    def ollama_tools(self, allowed: Callable[[str], bool] | None = None) -> list[dict[str, Any]]:
+        # `allowed` keeps the tools of the active profile (A5), as in Registry
+        readable = {info.name for info in self.tools()}
+        tools = self._registry.ollama_tools(allowed)
+        return [t for t in tools if t["function"]["name"] in readable]
+
+    def validate_arguments(self, name: str, arguments: dict[str, Any]) -> list[str]:
+        return self._registry.validate_arguments(name, arguments)
+
+    async def preview(self, name: str, arguments: dict[str, Any]) -> dict[str, Any] | None:
+        preview = getattr(self._registry, "preview", None)
+        return None if preview is None else await preview(name, arguments)
+
+    async def call(self, name: str, arguments: dict[str, Any]) -> ToolResult:
+        if self.get(name) is None:  # the Engine already refuses an unknown tool
+            return ToolResult.failure("TOOL_DENIED", "Outil indisponible pour une tâche planifiée.")
+        return await self._registry.call(name, arguments)
+
+
+def _reads_only(info: ToolInfo) -> bool:
+    return info.annotations.read_only is not False and info.annotations.destructive is not True
 
 
 class RealBackend:
@@ -191,6 +253,9 @@ class RealBackend:
         ]
         return self._services.config.agent.persona, profiles
 
+    def documents(self) -> DocumentStore:
+        return self._services.documents
+
     async def ollama_available(self) -> bool:
         try:
             await self._client.list_models()
@@ -207,6 +272,14 @@ class RealBackend:
         engine = self._services.new_engine(broker, session_id, questions)
         assert isinstance(engine.registry, Registry)  # Services always gives one
         return RealEngine(engine, engine.registry, engine.client)
+
+    def scheduled_engine(self, session_id: str) -> RealEngine:
+        # No broker: AutoRejectBroker and NoHumanQuestionBroker (Engine defaults)
+        engine = self._services.new_engine(None, session_id, None)
+        assert isinstance(engine.registry, Registry)
+        registry = ReadOnlyRegistry(engine.registry)
+        engine.registry = registry
+        return RealEngine(engine, registry, engine.client)
 
 
 def _persona(profile: Profile) -> Persona:

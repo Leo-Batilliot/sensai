@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any, Protocol, TypedDict
 
+from sensai.documents.store import DocumentStore
 from sensai.web.websocket.ask import WebQuestionBroker
 from sensai.web.websocket.confirm import WebConfirmationBroker
 
@@ -93,9 +94,18 @@ class WebBackend(Protocol):
         """The profile a new session starts with, and every profile (GET /api/personas)."""
         ...
 
+    def documents(self) -> DocumentStore:
+        """The committee note (M4): GET /api/documents/current, shares, Note panel."""
+        ...
+
     def new_engine(
         self,
         session_id: str,
         broker: WebConfirmationBroker,
         questions: WebQuestionBroker | None = None,
     ) -> WebEngine: ...
+
+    def scheduled_engine(self, session_id: str) -> WebEngine:
+        """The engine of a scheduled run (X5, V-4): nobody to confirm or answer, and no tool
+        that writes. Closed by the scheduler (aclose) after the run."""
+        ...

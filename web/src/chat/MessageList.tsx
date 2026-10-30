@@ -18,6 +18,7 @@ interface Props {
   // Absent on a shared page: no timeline, no memory panel
   onShowSteps?: (turnId: string) => void
   onShowMemory?: () => void
+  onShowNote?: () => void
 }
 
 export function MessageList({
@@ -30,6 +31,7 @@ export function MessageList({
   onAsk,
   onShowSteps,
   onShowMemory,
+  onShowNote,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null)
   const followBottom = useRef(true)
@@ -60,9 +62,11 @@ export function MessageList({
               {turn.origin === 'user' ? (
                 <p className="bubble-user">{turn.userMessage}</p>
               ) : (
-                // A turn started from the interface (memory panel) has no user bubble
+                // A turn started from the interface (memory or Note panel) has no user bubble
                 <p className="ui-action">
-                  Action depuis le panneau Mémoire : <code>{turn.steps[0]?.tool ?? 'outil'}</code>
+                  Action depuis le panneau{' '}
+                  {turn.steps[0]?.tool.startsWith('document_') ? 'Note' : 'Mémoire'} :{' '}
+                  <code>{turn.steps[0]?.tool ?? 'outil'}</code>
                   {turn.steps[0]?.result && ` · ${turn.steps[0].result.summary}`}
                 </p>
               )}
@@ -76,6 +80,7 @@ export function MessageList({
                   onAsk={onAsk}
                   onShowSteps={onShowSteps}
                   onShowMemory={onShowMemory}
+                  onShowNote={onShowNote}
                 />
               )}
             </section>

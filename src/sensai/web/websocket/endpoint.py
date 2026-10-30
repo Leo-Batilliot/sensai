@@ -15,6 +15,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from jsonschema import Draft202012Validator
 
 from sensai.web.paths import SCHEMAS_DIR
+from sensai.web.scheduler import Scheduler
 from sensai.web.shares import ShareStore
 from sensai.web.websocket.messages import MessageHandler
 from sensai.web.websocket.session import SessionManager
@@ -28,7 +29,9 @@ def load_client_validator() -> Draft202012Validator:
     return Draft202012Validator(schema)
 
 
-def install_websocket(app: FastAPI, manager: SessionManager, shares: ShareStore) -> None:
+def install_websocket(
+    app: FastAPI, manager: SessionManager, shares: ShareStore, scheduler: Scheduler
+) -> None:
     validator = load_client_validator()
 
     @app.websocket("/ws/{session_id}")
@@ -38,7 +41,7 @@ def install_websocket(app: FastAPI, manager: SessionManager, shares: ShareStore)
             await websocket.close(code=CLOSE_INVALID_SESSION)
             return
         session, resumed = await manager.open(session_id)
-        handler = MessageHandler(session, manager.backend, validator, shares)
+        handler = MessageHandler(session, manager.backend, validator, shares, scheduler)
         await session.attach(websocket, lambda: handler.session_ready(resumed))
         try:
             while True:

@@ -12,6 +12,7 @@ Le serveur FastAPI qui relie le front React au moteur : routes REST, WebSocket `
 web/
 ├── server.py          crée l'application : routes REST, WebSocket, page construite
 ├── paths.py           chemins du dépôt (web/dist, fixtures, schémas du contrat)
+├── frontend.py        le build committé : empreinte des sources, en-têtes de cache (WEB-14)
 ├── websocket/         la connexion avec le navigateur
 │   ├── endpoint.py    porte d'entrée /ws/{id} : accepte, envoie session_ready, lit en boucle
 │   ├── messages.py    ce que fait chaque message (une méthode _on_<type> par message)
