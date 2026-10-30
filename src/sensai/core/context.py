@@ -203,7 +203,10 @@ class Compactor:
                 messages,
                 SUMMARY_SCHEMA,
                 model,
-                options={"num_ctx": config.ollama.num_ctx},
+                options={
+                    "num_ctx": config.ollama.num_ctx,
+                    "num_predict": config.ollama.num_predict,
+                },
             )
         except Exception:  # Ollama down or too slow: the turn goes on without a summary
             logger.exception("Summary of the history failed: truncation")

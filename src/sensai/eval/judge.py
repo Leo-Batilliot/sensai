@@ -149,6 +149,7 @@ class Judge:
         *,
         tolerance: float = DEFAULT_TOLERANCE,
         num_ctx: int | None = None,
+        num_predict: int | None = None,
         max_rows: int = MAX_ROWS,
     ) -> None:
         self.client = client
@@ -158,6 +159,9 @@ class Judge:
         self.options: dict[str, Any] = {"temperature": 0}
         if num_ctx is not None:
             self.options["num_ctx"] = num_ctx
+        if num_predict is not None:
+            # A judge stuck in a loop would hold the model and block the next turn
+            self.options["num_predict"] = num_predict
         # T5 counters of the judge reports, read by the harness ("JSON valide", EVAL-06)
         self.stats = RepairStats()
         self._schema = load_report_schema()

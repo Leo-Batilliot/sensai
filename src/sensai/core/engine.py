@@ -69,7 +69,7 @@ from sensai.core.confirm import (
 )
 from sensai.core.context import Compactor, ContextBudget
 from sensai.core.demo import AnswerAlteration
-from sensai.core.errors import PersonaNotFound, SensaiError
+from sensai.core.errors import PersonaNotFound, SensaiError, StreamInterrupted
 from sensai.core.fewshot import ExampleIndex, Selected, examples_block
 from sensai.core.history import History
 from sensai.core.personas import Persona
@@ -255,6 +255,7 @@ class Engine:
         return {
             "temperature": self.config.agent.temperature,
             "num_ctx": self.config.ollama.num_ctx,
+            "num_predict": self.config.ollama.num_predict,
         }
 
     async def model_details(self, model: str | None = None) -> ModelDetails:
@@ -406,6 +407,13 @@ class Engine:
                             calls.extend(chunk.tool_calls)
                             if chunk.usage is not None:
                                 usage = chunk.usage
+                            if chunk.done_reason == "length":
+                                # [ollama] num_predict reached: a thinking loop or an answer
+                                # cut short, never kept as if it were complete
+                                raise StreamInterrupted(
+                                    f"plus de {self.config.ollama.num_predict} tokens générés "
+                                    "sans conclure ; reformulez ou précisez la question"
+                                )
                     if demo is not None and (rest := demo.flush()):
                         parts.append(rest)
                         text.append(rest)

@@ -1,5 +1,6 @@
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -38,8 +39,11 @@ def test_runs_as_module() -> None:
     assert __version__ in result.stdout
 
 
-def test_prompts_commands(capsys: pytest.CaptureFixture[str]) -> None:
+def test_prompts_commands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     # US-A4-02: the registry and the differences between two versions, from the terminal
+    monkeypatch.chdir(tmp_path)  # without the config.toml of the machine: the default version
     assert main(["prompts"]) == 0
     listed = capsys.readouterr().out
     assert "* system_sql v1" in listed  # the configured version is marked

@@ -113,7 +113,8 @@ async def test_describe_shows_the_padlock_of_the_hitl_policy(started: RealBacken
 async def test_session_settings_reach_the_engine(started: RealBackend) -> None:
     engine = started.new_engine("s-1", WebConfirmationBroker())
     engine.set_config({"temperature": 0.5, "num_ctx": 4096, "judge_enabled": False})
-    assert engine.engine.chat_options() == {"temperature": 0.5, "num_ctx": 4096}
+    options = engine.engine.chat_options()
+    assert options == {"temperature": 0.5, "num_ctx": 4096, "num_predict": 8192}
     assert engine.engine.config.eval.judge_enabled is False
     assert engine.session_config["num_ctx"] == 4096
     await engine.aclose()

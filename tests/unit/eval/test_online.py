@@ -117,7 +117,9 @@ async def test_an_unexpected_failure_still_gives_a_verdict() -> None:
 
 def test_from_config_uses_the_judge_model_and_tolerance() -> None:
     config = Config(
-        ollama=OllamaConfig(model="qwen3:8b", judge_model="llama3.1:8b", num_ctx=4096),
+        ollama=OllamaConfig(
+            model="qwen3:8b", judge_model="llama3.1:8b", num_ctx=4096, num_predict=2048
+        ),
         eval=EvalConfig(numeric_tolerance=0.05),
     )
 
@@ -125,4 +127,5 @@ def test_from_config_uses_the_judge_model_and_tolerance() -> None:
 
     assert online.judge.model == "llama3.1:8b"
     assert online.judge.tolerance == 0.05
-    assert online.judge.options == {"temperature": 0, "num_ctx": 4096}
+    # Capped like the agent: a judge in a loop would block the next turn
+    assert online.judge.options == {"temperature": 0, "num_ctx": 4096, "num_predict": 2048}

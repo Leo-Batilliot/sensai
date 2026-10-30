@@ -42,7 +42,7 @@ Levées par le client Ollama ou le moteur (`sensai.core.errors`), affichées tel
 | `OLLAMA_TIMEOUT` | « Ollama n'a pas répondu en {n} s. Réessayez : l'historique est conservé. » | true |
 | `MODEL_NOT_FOUND` | « Le modèle « {m} » n'est pas installé. Lancez : `ollama pull {m}`. » | true |
 | `MODEL_NO_TOOLS` | « Le modèle « {m} » ne gère pas les outils : il ne peut pas interroger les données. Choisissez un modèle qui les gère, par exemple qwen3:8b. » | true |
-| `STREAM_INTERRUPTED` | « La réponse a été interrompue ({raison}). » ; la CLI ajoute « Elle n'est pas conservée dans l'historique. » | true |
+| `STREAM_INTERRUPTED` | « La réponse a été interrompue ({raison}). » ; la CLI ajoute « Elle n'est pas conservée dans l'historique. » Raison du plafond `[ollama] num_predict` : « plus de {n} tokens générés sans conclure ; reformulez ou précisez la question » | true |
 | `OLLAMA_ERROR` | « Erreur Ollama (HTTP {statut}) : {détail} », détail transmis tel quel par Ollama | true |
 | `MAX_ITERATIONS` | « Je n'ai pas trouvé de réponse en {n} étapes d'outils. Reformulez ou précisez la question. » | true |
 | `INTERNAL` | « Erreur inattendue du moteur (le détail est dans les journaux). Recommencez la conversation avec /reset. » | false |
