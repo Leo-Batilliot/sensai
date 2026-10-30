@@ -66,8 +66,15 @@ class Persona(BaseModel):
         allowed = any(fnmatchcase(tool_name, pattern) for pattern in self.tools.allow)
         return allowed and not any(fnmatchcase(tool_name, pattern) for pattern in self.tools.deny)
 
+    def prompt_body(self) -> str:
+        """The $persona hole of prompt v2, under its own '# Profil actif' heading (CORE-14)."""
+        lines = [self.label, f"Ton : {self.tone}", f"Périmètre : {self.scope}"]
+        if self.instructions:
+            lines.append(f"Consignes : {self.instructions}")
+        return "\n".join(lines)
+
     def prompt_block(self) -> str:
-        """The profile in the system prompt ($persona of prompt v2, CORE-14)."""
+        """The profile at the end of a prompt without a $persona hole (v1), with a heading."""
         lines = [
             f"# Profil actif : {self.name}",
             f"Rôle : {self.role}",

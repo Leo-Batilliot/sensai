@@ -40,7 +40,7 @@ EMPTY = "aucun"  # value of a placeholder with nothing to show
 
 # Holes filled once per engine, and holes filled at every turn (prompts.md §1.1, rule 3)
 FIXED_HOLES = frozenset({"schema", "tools_hint", "date_rule"})
-TURN_HOLES = frozenset({"memory", "examples", "document_outline"})
+TURN_HOLES = frozenset({"memory", "examples", "document_outline", "persona"})  # persona: A5, v2
 
 # Date tool of mcp-server-time (MCP-06), whatever the name of its server in config.toml
 DATE_TOOL_SUFFIX = "get_current_time"

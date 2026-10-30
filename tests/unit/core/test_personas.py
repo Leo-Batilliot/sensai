@@ -344,3 +344,23 @@ async def test_without_profiles_every_tool_is_offered() -> None:
     assert built.persona is None
     assert offered(client.tools_sent[0]) == ["sql_toolbox__run_select", EXECUTE]
     assert client.calls[0][1] == [{"role": "user", "content": "Question"}]  # no profile block
+
+
+async def test_with_prompt_v2_the_profile_fills_its_hole(tmp_path: Path) -> None:
+    conn = connect(tmp_path / "business.db")
+    create_schema(conn)
+    conn.close()
+    names = ["time__get_current_time", "sql_toolbox__run_select", EXECUTE]
+    template = system_prompt_template(tmp_path / "business.db", names, "v2")
+    built, client, _calls = engine(answer("Bonjour."), system_prompt=template)
+
+    await run(built)
+
+    prompt = client.calls[0][1][0]["content"]
+    assert (
+        "# Profil actif\nContrôle de gestion (Copilote de Claire, contrôleuse de gestion)\n"
+        in prompt
+    )
+    assert prompt.count("Profil actif") == 1  # in its hole, not added again at the end
+    assert prompt.rstrip().endswith("# Contexte mémorisé\naucun")
+    assert EXECUTE not in prompt  # the tools of the profile only, as with v1

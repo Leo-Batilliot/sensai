@@ -223,7 +223,10 @@ class Engine:
         """The system prompt of a turn, with the memory block of its question (MEM-04), the
         other blocks its version shows (examples, plan of the note) and the block of its
         profile (A5)."""
+        holes = getattr(self.system_prompt, "holes", frozenset())
         if callable(self.system_prompt):
+            if persona is not None and "persona" in holes:  # prompt v2 (CORE-14)
+                blocks = {**blocks, "persona": persona.prompt_body()}
             names = self._tool_names(persona)
             # Without a profile, a template of the memory block alone still works
             prompt = (
@@ -234,8 +237,8 @@ class Engine:
         else:
             block = f"{MEMORY_HEADING}\n{memory}" if memory else ""
             prompt = "\n\n".join(part for part in (self.system_prompt, block) if part)
-        if persona is not None:
-            # Prompt v1 has no $persona: the block comes last until prompt v2 (CORE-14)
+        if persona is not None and "persona" not in holes:
+            # A version without a $persona hole (v1): the block of the profile comes last
             prompt = "\n\n".join(part for part in (prompt, persona.prompt_block()) if part)
         if not prompt:
             return []

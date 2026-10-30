@@ -196,9 +196,37 @@ def test_turn_blocks_fill_the_holes_of_a_version() -> None:
     assert template.holes == {"memory", "examples", "document_outline"}
     assert template("M", examples="E") == "S\nM\nE\naucun"
     with pytest.raises(ValueError, match="blocs inconnus"):
-        template("M", persona="P")
+        template("M", mood="P")  # persona is a known block since prompt v2 (CORE-14)
 
 
 def test_a_hole_the_engine_cannot_fill_is_refused() -> None:
     with pytest.raises(ValueError, match="trous inconnus"):
         SystemPrompt("$schema $mood", {"schema": "S"})
+
+
+# --- prompt v2 (CORE-14) ---
+
+
+def test_the_v2_descends_from_the_v1() -> None:
+    v2 = PromptRegistry.load().get("v2")
+
+    assert (v2.parent, v2.file) == ("v1", "system_sql_v2.md")
+
+
+def test_the_v2_shows_the_profile_the_examples_and_the_note(empty_db: Path) -> None:
+    template = system_prompt_template(empty_db, ["sql_toolbox__run_select"], "v2")
+
+    assert template.holes == {"memory", "examples", "document_outline", "persona"}
+    text = template("<MEM>", persona="<PROFIL>", examples="<EX>", document_outline="<NOTE>")
+    assert "# Profil actif\n<PROFIL>\n" in text
+    assert "# Exemples proches de la question\n<EX>\n" in text
+    assert "# Note du comité\n<NOTE>\n" in text
+    assert text.rstrip().endswith("# Contexte mémorisé\n<MEM>")
+    assert LEFTOVER.search(text.replace("$$", "")) is None
+
+
+def test_the_v2_without_profile_nor_examples_says_so(empty_db: Path) -> None:
+    text = system_prompt_template(empty_db, [], "v2")("")
+
+    assert "# Profil actif\naucun\n" in text  # the harness runs without a profile
+    assert "# Exemples proches de la question\naucun\n" in text

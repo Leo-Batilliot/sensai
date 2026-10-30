@@ -10,3 +10,12 @@ created = "2026-10-13"
 parent = ""
 sha256 = "0279c84af1d787bb26f90420d1e1c120cc2bf4e3b437d1f2edcbdf88138c77c9"
 notes = "Mid-term : schéma compact, règles de dates SQLite, outil de date nommé dans le prompt."
+
+[[prompt]]
+name = "system_sql"
+version = "v2"
+file = "system_sql_v2.md"
+created = "2026-10-27"
+parent = "v1"
+sha256 = "231f553e0e3cf94e95aa6b3a165b9e4681bd750a21611f8579ec9a719fe48193"
+notes = "Hypothèses explicites, ask_user, refus hors périmètre, dates relatives, $persona, $examples, plan de la note (M4)."
