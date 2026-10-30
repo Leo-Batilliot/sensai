@@ -65,7 +65,17 @@ Le contrôle numérique ne dépend d'aucun modèle : ces chiffres sont identique
 
 ## 6. Latence (CORE-18)
 
-*À mesurer* (P1) : p50 / p95 sur la machine de démo, dont le coût d'une compression (M2) et des exemples (A7, tokens du §3).
+Mesurée par le harness sur la machine de démo le 30/10 : RTX 3080 10 Go, `qwen3:8b` (modèle retenu, D-09), `num_ctx` 16384, prompt v1, 25 questions, rapport `eval/reports/2026-10-30_v1.0-qwen3-8b.md`. Le premier token de la réponse n'arrive qu'après la réflexion de qwen3 : c'est presque toute la durée du tour.
+
+| Mesure | p50 | p95 |
+|---|---:|---:|
+| Durée du tour | 19,4 s | 66,8 s |
+| Premier token | 18,3 s | 63,8 s |
+| Juge (après la réponse, non bloquant) | 8,4 s | 15,7 s |
+
+`llama3.1:8b`, sans réflexion, répond en 2,3 s (p50) et 7,5 s (p95), mais avec une EX de 0,37 contre 0,58 (D-09).
+
+Non mesuré : le coût d'une compression (M2) et des exemples dynamiques (A7), absents de ce run (prompt v1, sans `$examples`). Une suite de tests a chargé le CPU pendant environ 1 min 30 de ce run : une ou deux durées peuvent en être un peu allongées.
 
 ## 7. Sécurité
 

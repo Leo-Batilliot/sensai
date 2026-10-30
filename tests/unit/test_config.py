@@ -41,7 +41,7 @@ def test_file_overrides_defaults_key_by_key(tmp_path: Path) -> None:
     path = write(tmp_path / "c.toml", '[ollama]\nmodel = "from-file"\n')
     config = load_config(path, environ={})
     assert config.ollama.model == "from-file"
-    assert config.ollama.num_ctx == 8192  # untouched keys keep their default
+    assert config.ollama.num_ctx == 16384  # untouched keys keep their default
 
 
 def test_env_overrides_file(tmp_path: Path) -> None:

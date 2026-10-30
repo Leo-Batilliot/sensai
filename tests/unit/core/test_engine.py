@@ -51,7 +51,7 @@ async def test_nominal_turn() -> None:
     assert done.content == "Bonjour !"
     assert done.interrupted is False
     assert done.usage == events.ContextUsage(
-        prompt_tokens=12, completion_tokens=3, ctx_used=15, ctx_max=8192
+        prompt_tokens=12, completion_tokens=3, ctx_used=15, ctx_max=16384
     )
     assert all(event.session_id == "s-1" for event in emitted)
 
