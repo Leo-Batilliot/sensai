@@ -374,7 +374,7 @@ Ajoutés en v1.1 (`tests/contract_rules.py`, `tests/unit/contracts/test_turn_rul
 | `OLLAMA_TIMEOUT` | Pas de réponse d'Ollama dans `timeout_s` | true | — |
 | `MODEL_NOT_FOUND` | Modèle absent d'Ollama (le message propose `ollama pull`) | true | oui |
 | `MODEL_NO_TOOLS` | Le modèle ne gère pas les outils (`/api/show`, `capabilities`), ou Ollama refuse les outils d'un tour (HTTP 400, CORE-11) | true | oui |
-| `STREAM_INTERRUPTED` | Flux Ollama coupé ou JSON invalide en cours de réponse (ce n'est pas un `cancel`) | true | — |
+| `STREAM_INTERRUPTED` | Flux Ollama coupé ou JSON invalide en cours de réponse (ce n'est pas un `cancel`), ou plafond `[ollama] num_predict` atteint (`done_reason: "length"`) | true | — |
 | `OLLAMA_ERROR` | Autre erreur signalée par Ollama : statut HTTP d'erreur, ou ligne `error` au milieu du flux | true | oui |
 | `MAX_ITERATIONS` | `max_tool_iterations` atteint sans réponse finale (CORE-06) | true | — |
 | `INTERNAL` | Erreur inattendue du moteur | false | oui |

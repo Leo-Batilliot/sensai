@@ -65,6 +65,7 @@ class OnlineJudge:
             config.ollama.effective_judge_model,
             tolerance=config.eval.numeric_tolerance,
             num_ctx=config.ollama.num_ctx,
+            num_predict=config.ollama.num_predict,
         )
         return cls(judge)
 

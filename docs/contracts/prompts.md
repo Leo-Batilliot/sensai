@@ -50,7 +50,7 @@ notes = "Hypothèses explicites, refus hors périmètre, $persona, $examples, pl
 **Invariants, vérifiés par un test (PROMPT-01)**
 1. **Une version publiée ne change jamais** : `sha256` égale l'empreinte du fichier. Corriger une coquille, c'est publier `v3`.
 2. Chaque `file` existe, chaque `parent` non vide existe dans la même famille.
-3. Les trous `$nom` d'un fichier sont exactement ceux que le moteur sait remplir pour cette version (`core/prompts.py`, règle « chaque trou a une valeur et chaque valeur un trou »). v1 : `$schema`, `$tools_hint`, `$date_rule`, `$memory`. v2 ajoute `$persona`, `$examples` et `$document_outline`.
+3. Les trous `$nom` d'un fichier sont exactement ceux que le moteur sait remplir pour cette version (`core/prompts.py`, règle « chaque trou a une valeur et chaque valeur un trou »). v1 : `$schema`, `$tools_hint`, `$date_rule`, `$memory`. v2 ajoute `$persona`, `$examples` et `$document_outline`. v3 (30/10) a les trous de v2 : elle ne change que la règle d'écriture (aperçu puis outil d'écriture dans le même tour, sans confirmation demandée en texte, puisque l'application ouvre sa propre fenêtre de confirmation). v4 (30/10), mêmes trous : l'outil d'écriture est appelé directement, sans aperçu préalable du modèle, car le moteur calcule lui-même l'aperçu montré dans la fenêtre de confirmation (`Engine._impact`).
 
 ### 1.2 Choisir une version
 

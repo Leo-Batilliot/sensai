@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
-from sensai.eval.numeric_check import NumericCheck, check_numbers, extract_numbers
+from sensai.eval.numeric_check import (
+    NumericCheck,
+    check_numbers,
+    checked_key_figures,
+    extract_numbers,
+)
 
 NNBSP = " "  # narrow no-break space, French thousands separator
 NBSP = " "
@@ -212,3 +217,54 @@ def test_an_answer_without_numbers_is_ok() -> None:
 def test_result_matches_the_judge_report_event(result: NumericCheck) -> None:
     schema = JUDGE_EVENT_SCHEMA["properties"]["numeric_check"]
     Draft202012Validator(schema).validate(result.to_dict())
+
+
+# --- key figures of the judge's report ---------------------------------------------------
+
+COLUMNS = ["client", "marge_brute", "taux_marge_pct", "delai_moyen_jours"]
+ROWS = [["Cabinet Roussel", 1523.34, 40.0, 26.0], ["Couverture Guillou", 255.01, 39.0, 22.0]]
+
+
+def card(value: float, unit: str, column: str | None) -> dict[str, object]:
+    return {"label": "Chiffre", "value": value, "unit": unit, "source_column": column}
+
+
+def test_key_figures_that_lost_the_decimal_comma_are_dropped() -> None:
+    # What qwen3:8b wrote on 30/10: '1 523,34' -> 152334, '40,0 %' -> 400, '22,0' -> 220
+    wrong = [
+        card(152334, "EUR", "marge_brute"),
+        card(400, "%", "taux_marge_pct"),
+        card(220, "jours", "delai_moyen_jours"),
+    ]
+
+    assert checked_key_figures(wrong, COLUMNS, ROWS) == []
+
+
+def test_key_figures_found_in_their_column_are_kept() -> None:
+    right = [
+        card(1523.34, "EUR", "marge_brute"),
+        card(1523, "€", "marge_brute"),  # rounded, within the tolerance
+        card(40, "%", "taux_marge_pct"),
+        card(22, "jours", "delai_moyen_jours"),
+    ]
+
+    assert checked_key_figures(right, COLUMNS, ROWS) == right
+
+
+def test_key_figures_in_thousands_or_as_a_ratio_are_kept() -> None:
+    columns, rows = ["client", "marge", "taux"], [["Cabinet Roussel", 560500.98, 0.376]]
+    right = [card(560.5, "k€", "marge"), card(37.6, "%", "taux")]
+
+    assert checked_key_figures(right, columns, rows) == right
+
+
+def test_a_key_figure_from_another_column_is_dropped() -> None:
+    # 26 is a delay, not a margin
+    assert checked_key_figures([card(26, "EUR", "marge_brute")], COLUMNS, ROWS) == []
+
+
+def test_a_computed_key_figure_is_kept_and_an_unknown_column_dropped() -> None:
+    computed = card(38.2, "%", None)  # no source column: shown as computed
+    unknown = card(1523.34, "EUR", "marge_nette")
+
+    assert checked_key_figures([computed, unknown], COLUMNS, ROWS) == [computed]

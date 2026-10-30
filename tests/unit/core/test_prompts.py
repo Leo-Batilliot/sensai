@@ -230,3 +230,50 @@ def test_the_v2_without_profile_nor_examples_says_so(empty_db: Path) -> None:
 
     assert "# Profil actif\naucun\n" in text  # the harness runs without a profile
     assert "# Exemples proches de la question\naucun\n" in text
+
+
+# --- prompt v3: explicit write rule (30/10) ---
+
+
+def test_the_v3_descends_from_the_v2() -> None:
+    v3 = PromptRegistry.load().get("v3")
+
+    assert (v3.parent, v3.file) == ("v2", "system_sql_v3.md")
+
+
+def test_the_v3_only_changes_the_write_rule_of_the_v2() -> None:
+    # qwen3:8b stopped after the preview and asked in text: the modal never opened (act 4)
+    v2, v3 = load("system_sql_v2.md").splitlines(), load("system_sql_v3.md").splitlines()
+
+    changed = [(old, new) for old, new in zip(v2, v3, strict=True) if old != new]
+    assert len(changed) == 1
+    old, new = changed[0]
+    assert old.startswith("7. Pour modifier des données") and new.startswith(
+        "7. Pour modifier des données"
+    )
+    assert "Ne demande jamais de confirmation dans ta réponse" in new
+    assert "fenêtre de confirmation" in new
+    assert placeholders(load("system_sql_v3.md")) == placeholders(load("system_sql_v2.md"))
+
+
+# --- prompt v4: direct write (30/10) ---
+
+
+def test_the_v4_descends_from_the_v3() -> None:
+    v4 = PromptRegistry.load().get("v4")
+
+    assert (v4.parent, v4.file) == ("v3", "system_sql_v4.md")
+
+
+def test_the_v4_writes_without_its_own_preview() -> None:
+    # With the preview in hand, qwen3:8b still asked in text (live act 4 in v3): the engine
+    # computes the preview of the confirmation itself (Engine._impact), so the model skips it
+    v3, v4 = load("system_sql_v3.md").splitlines(), load("system_sql_v4.md").splitlines()
+
+    changed = [(old, new) for old, new in zip(v3, v4, strict=True) if old != new]
+    assert len(changed) == 1
+    _old, new = changed[0]
+    assert new.startswith("7. Pour modifier des données : appelle directement l'outil d'écriture")
+    assert "sans appeler l'outil d'aperçu avant" in new
+    assert "fenêtre de confirmation" in new
+    assert placeholders(load("system_sql_v4.md")) == placeholders(load("system_sql_v3.md"))

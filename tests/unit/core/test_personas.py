@@ -108,7 +108,9 @@ def test_the_three_profiles_of_the_scenario() -> None:
     assert analyste.label == "Contrôle de gestion (Copilote de Claire, contrôleuse de gestion)"
     # Claire reads, Karim writes in the database, Inès writes files
     assert not analyste.allows(EXECUTE) and not analyste.allows("file_write")
-    assert adv.allows(EXECUTE) and adv.allows("sql_toolbox__preview_write")
+    # Karim writes without the preview tool: the confirmation shows the engine's preview
+    assert adv.allows(EXECUTE) and not adv.allows("sql_toolbox__preview_write")
+    assert "appelle directement execute_write" in adv.instructions
     assert not adv.allows("file_write")
     assert admin.allows("file_write") and not admin.allows(EXECUTE)
     for persona in PERSONAS.values():

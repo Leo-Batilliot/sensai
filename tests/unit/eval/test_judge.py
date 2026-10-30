@@ -164,6 +164,32 @@ async def test_judge_gives_the_expected_badge(case: dict[str, Any]) -> None:
     assert envelope_is_valid(verdict.to_dict())
 
 
+async def test_key_figures_absent_from_their_column_are_dropped() -> None:
+    # qwen3:8b on 30/10: a card read 152 334 € for a margin of 1 523,34 €
+    case = JudgeInput(
+        question="Marge brute de Cabinet Roussel ce trimestre ?",
+        sql="SELECT name, marge_brute FROM marges",
+        columns=["name", "marge_brute"],
+        rows=[["Cabinet Roussel", 1523.34]],
+        answer="La marge brute de Cabinet Roussel est de 1 523,34 €.",
+    )
+    right = {
+        "label": "Marge brute",
+        "value": 1523.34,
+        "unit": "EUR",
+        "source_column": "marge_brute",
+    }
+    wrong = {**right, "value": 152334}
+    stub = {**report("supported"), "key_figures": [wrong, right]}
+
+    verdict = await Judge(FakeChat(stub), MODEL).evaluate(case)
+
+    assert verdict.report is not None
+    assert verdict.report["key_figures"] == [right]
+    assert verdict.badge == "verified"  # the cards never change the badge
+    assert envelope_is_valid(verdict.to_dict())
+
+
 NUMERIC_CASES = [case for case in CASES if "numeric" in case["detected_by"]]
 
 

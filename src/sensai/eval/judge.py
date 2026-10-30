@@ -22,7 +22,12 @@ from typing import Any, Protocol
 
 from sensai.core.errors import SensaiError
 from sensai.core.events import Badge
-from sensai.eval.numeric_check import DEFAULT_TOLERANCE, NumericCheck, check_numbers
+from sensai.eval.numeric_check import (
+    DEFAULT_TOLERANCE,
+    NumericCheck,
+    check_numbers,
+    checked_key_figures,
+)
 from sensai.llm.ollama_client import Chunk, Message
 from sensai.llm.structured import RepairStats, generate_structured
 
@@ -149,6 +154,7 @@ class Judge:
         *,
         tolerance: float = DEFAULT_TOLERANCE,
         num_ctx: int | None = None,
+        num_predict: int | None = None,
         max_rows: int = MAX_ROWS,
     ) -> None:
         self.client = client
@@ -158,6 +164,9 @@ class Judge:
         self.options: dict[str, Any] = {"temperature": 0}
         if num_ctx is not None:
             self.options["num_ctx"] = num_ctx
+        if num_predict is not None:
+            # A judge stuck in a loop would hold the model and block the next turn
+            self.options["num_predict"] = num_predict
         # T5 counters of the judge reports, read by the harness ("JSON valide", EVAL-06)
         self.stats = RepairStats()
         self._schema = load_report_schema()
@@ -174,6 +183,12 @@ class Judge:
             tolerance=self.tolerance,
         )
         report = await self._report(case)
+        if report is not None:
+            # A card shows '✓ colonne' only if its value really is in that column (US-T5-02)
+            figures = checked_key_figures(
+                report["key_figures"], case.columns, case.rows, self.tolerance
+            )
+            report = {**report, "key_figures": figures}
         duration_ms = round((time.monotonic() - started) * 1000)
         return Verdict(compute_badge(report, numeric), numeric, report, duration_ms)
 

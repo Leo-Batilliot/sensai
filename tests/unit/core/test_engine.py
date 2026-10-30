@@ -86,10 +86,27 @@ async def test_chat_options_come_from_the_config() -> None:
 
     await run(engine, "Question")
 
-    assert fake(engine).calls[0][2] == {"temperature": 0.1, "num_ctx": 4096}
+    assert fake(engine).calls[0][2] == {"temperature": 0.1, "num_ctx": 4096, "num_predict": 8192}
 
 
 # --- Errors ---
+
+
+async def test_a_call_that_reaches_num_predict_ends_the_turn_and_is_not_recorded() -> None:
+    # qwen3 thinking in a loop: Ollama stops at num_predict with done_reason "length"
+    looping = [Chunk(thinking="Je vérifie encore. " * 50), Chunk(done=True, done_reason="length")]
+    config = Config(ollama=OllamaConfig(num_predict=4096))
+    engine = make_engine(looping, config=config)
+
+    emitted = await run(engine, "Quels sont nos 5 clients les plus rentables ce trimestre ?")
+
+    check_turn(emitted)
+    assert types(emitted) == ["turn_started", "thinking", "error"]
+    error = emitted[-1]
+    assert isinstance(error, events.Error)
+    assert (error.code, error.recoverable) == ("STREAM_INTERRUPTED", True)
+    assert "plus de 4096 tokens générés sans conclure" in error.message
+    assert len(engine.history) == 0
 
 
 async def test_ollama_down_ends_the_turn_with_a_recoverable_error() -> None:

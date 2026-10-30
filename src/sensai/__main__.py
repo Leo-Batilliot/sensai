@@ -599,7 +599,13 @@ async def _calibrate(args: argparse.Namespace, config: Config, tag: str) -> int:
         async with SeededOllamaClient(
             config.ollama.host, seed=args.seed, timeout_s=config.ollama.timeout_s
         ) as client:
-            judge = Judge(client, model, tolerance=tolerance, num_ctx=config.ollama.num_ctx)
+            judge = Judge(
+                client,
+                model,
+                tolerance=tolerance,
+                num_ctx=config.ollama.num_ctx,
+                num_predict=config.ollama.num_predict,
+            )
             outcomes = await run_calibration(load_cases(CALIBRATION_PATH), judge, tolerance)
     info = {
         "suite": CALIBRATION_PATH.as_posix(),

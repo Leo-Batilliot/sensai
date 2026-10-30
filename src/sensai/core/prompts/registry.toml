@@ -19,3 +19,21 @@ created = "2026-10-27"
 parent = "v1"
 sha256 = "231f553e0e3cf94e95aa6b3a165b9e4681bd750a21611f8579ec9a719fe48193"
 notes = "Hypothèses explicites, ask_user, refus hors périmètre, dates relatives, $persona, $examples, plan de la note (M4)."
+
+[[prompt]]
+name = "system_sql"
+version = "v3"
+file = "system_sql_v3.md"
+created = "2026-10-30"
+parent = "v2"
+sha256 = "703b73ca475bab172f6e1019606ad7dc092f4ba893fa94c61231bd12232d9e49"
+notes = "Règle d'écriture explicite : aperçu puis outil d'écriture dans le même tour, sans confirmation en texte (c'est l'application qui la demande)."
+
+[[prompt]]
+name = "system_sql"
+version = "v4"
+file = "system_sql_v4.md"
+created = "2026-10-30"
+parent = "v3"
+sha256 = "c9f2747a93402834df9556289ac000d6499299061c46d376e6adebee56f782d9"
+notes = "Écriture directe : l'outil d'écriture sans aperçu préalable, l'application calcule l'aperçu de la fenêtre de confirmation (acte 4)."

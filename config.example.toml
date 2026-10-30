@@ -19,6 +19,7 @@ judge_model = ""               # empty = same model as the agent
 timeout_s = 120
 keep_alive = "30m"
 num_ctx = 16384                # 2048 to 32768; below 16384, qwen3:8b never ends act 1
+num_predict = 8192             # tokens one model call may generate, thinking included (256 to 32768)
 
 [agent]
 temperature = 0.1              # 0 to 1

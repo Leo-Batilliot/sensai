@@ -213,3 +213,48 @@ def check_numbers(
     if not unmatched:
         return NumericCheck("ok")
     return NumericCheck("inconclusive" if truncated else "mismatch", tuple(unmatched))
+
+
+# --- key figures of the judge's report (US-T5-02) ----------------------------------------
+
+
+def checked_key_figures(
+    figures: Sequence[dict[str, Any]],
+    columns: Sequence[str],
+    rows: Sequence[Sequence[Any]],
+    tolerance: float = DEFAULT_TOLERANCE,
+) -> list[dict[str, Any]]:
+    """The cards whose value is really in the column they name; the others are dropped.
+
+    The judge model copies the figures into JSON numbers and loses the French decimal
+    comma on the way ('1 523,34' -> 152334, '40,0 %' -> 400): the card would show a wrong
+    value next to '✓ colonne marge_brute'. A figure without a column (computed) is kept:
+    the interface already says it has no source.
+    """
+    positions = {name: index for index, name in enumerate(columns)}
+    kept = []
+    for figure in figures:
+        column = figure["source_column"]
+        if column is None:
+            kept.append(figure)
+            continue
+        if column not in positions:
+            continue  # names a column the result does not have
+        cells = [_as_number(row[positions[column]]) for row in rows]
+        known = [cell for cell in cells if cell is not None]
+        if any(
+            abs(value - cell) <= tolerance * max(abs(value), abs(cell))
+            for value in _figure_values(figure["value"], figure["unit"])
+            for cell in known
+        ):
+            kept.append(figure)
+    return kept
+
+
+def _figure_values(value: float, unit: str) -> tuple[float, ...]:
+    """What a card may stand for in its column: '560 k€' is 560 000, '37,6 %' is 37.6 or
+    the ratio 0.376."""
+    multiplier, percent = _unit_factors(unit)
+    if percent:
+        return value, value / 100
+    return (value * multiplier,)

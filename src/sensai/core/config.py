@@ -75,6 +75,9 @@ class OllamaConfig(_Section):
     # Same bounds as set_config in docs/contracts/websocket.md §4.6. 16384: the prompt and
     # the thinking of qwen3:8b do not fit in 8192 (CORE-12, decisions.md D-09)
     num_ctx: int = Field(default=16384, ge=2048, le=32768)
+    # Tokens one model call may generate, thinking included. Ollama has no limit: past
+    # num_ctx it drops half of the context and goes on, so a thinking loop never ends
+    num_predict: int = Field(default=8192, ge=256, le=32768)
 
     @field_validator("host")
     @classmethod
