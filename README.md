@@ -230,6 +230,13 @@ make seed           # data/business.db, graine 42, date de référence = aujourd
 
 La base est régénérée à l'identique pour une même graine et une même date. Pour figer la date : `.venv/bin/python -m sensai seed --today 2026-10-14`.
 
+Avant chaque passage de la démo, une seule commande remet tout à zéro (CORE-19) : base régénérée, mémoire vide, note du comité neuve, partages, exécutions planifiées, journal des fichiers et `reports/` effacés. Elle vérifie aussi le profil par défaut, le serveur `mcp-server-time` dans le cache de uv, et précharge le modèle. Fermez `sensai web` avant de la lancer.
+
+```bash
+make demo-reset     # ou : python -m sensai demo-reset (sous Windows, venv activé)
+make demo           # remise à zéro, puis l'interface web
+```
+
 ### Chat en terminal
 
 ```bash

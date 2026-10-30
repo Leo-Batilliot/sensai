@@ -3,7 +3,7 @@ PYTHON ?= python3
 PY     := $(VENV)/bin/python
 TAG    ?= dev
 
-.PHONY: help install test test-all lint format ci chat web web-mock web-build seed eval eval-adversarial clean
+.PHONY: help install test test-all lint format ci chat web web-mock web-build seed demo-reset demo eval eval-adversarial clean
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  make %-10s %s\n", $$1, $$2}'
@@ -46,6 +46,12 @@ web-build: ## Rebuild the frontend after a change in web/src, then commit web/di
 
 seed: ## Generate the demo database
 	$(PY) -m sensai seed --seed 42
+
+demo-reset: ## Reset the demo: data, memory, note, shares, runs, reports; preload the model
+	$(PY) -m sensai demo-reset
+
+demo: demo-reset ## Reset the demo, then start the web server
+	$(PY) -m sensai web
 
 eval: ## Run the evaluation harness (make eval TAG=v0.5)
 	$(PY) -m sensai eval --suite eval/golden.jsonl --tag $(TAG)
