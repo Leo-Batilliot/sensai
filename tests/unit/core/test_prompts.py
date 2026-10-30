@@ -230,3 +230,27 @@ def test_the_v2_without_profile_nor_examples_says_so(empty_db: Path) -> None:
 
     assert "# Profil actif\naucun\n" in text  # the harness runs without a profile
     assert "# Exemples proches de la question\naucun\n" in text
+
+
+# --- prompt v3: explicit write rule (30/10) ---
+
+
+def test_the_v3_descends_from_the_v2() -> None:
+    v3 = PromptRegistry.load().get("v3")
+
+    assert (v3.parent, v3.file) == ("v2", "system_sql_v3.md")
+
+
+def test_the_v3_only_changes_the_write_rule_of_the_v2() -> None:
+    # qwen3:8b stopped after the preview and asked in text: the modal never opened (act 4)
+    v2, v3 = load("system_sql_v2.md").splitlines(), load("system_sql_v3.md").splitlines()
+
+    changed = [(old, new) for old, new in zip(v2, v3, strict=True) if old != new]
+    assert len(changed) == 1
+    old, new = changed[0]
+    assert old.startswith("7. Pour modifier des données") and new.startswith(
+        "7. Pour modifier des données"
+    )
+    assert "Ne demande jamais de confirmation dans ta réponse" in new
+    assert "fenêtre de confirmation" in new
+    assert placeholders(load("system_sql_v3.md")) == placeholders(load("system_sql_v2.md"))
