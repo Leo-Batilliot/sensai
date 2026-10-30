@@ -14,11 +14,11 @@
 
 [ollama]
 host = "http://localhost:11434"
-model = "qwen3:8b"            # indicative, chosen by benchmark (CORE-12)
+model = "qwen3:8b"            # chosen by benchmark (CORE-12, docs/decisions.md D-09)
 judge_model = ""               # empty = same model as the agent
 timeout_s = 120
 keep_alive = "30m"
-num_ctx = 8192                 # 2048 to 32768
+num_ctx = 16384                # 2048 to 32768; below 16384, qwen3:8b never ends act 1
 
 [agent]
 temperature = 0.1              # 0 to 1

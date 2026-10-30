@@ -72,8 +72,9 @@ class OllamaConfig(_Section):
     judge_model: str = ""
     timeout_s: float = Field(default=120, gt=0)
     keep_alive: str = "30m"
-    # Same bounds as set_config in docs/contracts/websocket.md §4.6
-    num_ctx: int = Field(default=8192, ge=2048, le=32768)
+    # Same bounds as set_config in docs/contracts/websocket.md §4.6. 16384: the prompt and
+    # the thinking of qwen3:8b do not fit in 8192 (CORE-12, decisions.md D-09)
+    num_ctx: int = Field(default=16384, ge=2048, le=32768)
 
     @field_validator("host")
     @classmethod
