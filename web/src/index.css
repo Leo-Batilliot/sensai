@@ -85,9 +85,32 @@ select {
   color: inherit;
 }
 
+/* Printing (PDF export, X3): always the light theme. The browser drops the dark backgrounds
+   on paper and would keep the light grey text of the dark theme on white. */
+@media print {
+  :root {
+    --paper: #ffffff;
+    --surface: #ffffff;
+    --fill-1: #f0f0f0;
+    --fill-2: #d9d9d9;
+    --line: #d0d0d0;
+    --line-strong: #8a8a8a;
+    --ink: #1c1c1c;
+    --ink-muted: #5e5e5e;
+    --ok: #2f7a3d;
+    --ok-bg: #e8f3ea;
+    --warn: #8a6a00;
+    --warn-bg: #fbf3d9;
+    --bad: #b3261e;
+    --bad-bg: #fbe9e7;
+
+    color-scheme: light;
+  }
+}
+
 /* Projector and large screens (WEB-13): the layout is drawn for about 1280×720; at 1920×1080
    and above, everything is scaled up rather than lost in wide margins */
-@media (min-width: 1700px) and (min-height: 950px) {
+@media screen and (min-width: 1700px) and (min-height: 950px) {
   :root {
     zoom: 1.25;
   }
