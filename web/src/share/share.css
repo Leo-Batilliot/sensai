@@ -114,18 +114,57 @@
   margin: var(--space-6) auto;
 }
 
-/* Printing a shared page gives a clean PDF (US-X3-01): the whole thread, no scroll area */
+/* PDF export (X3, US-X3-01): the browser prints the conversation alone, in the light theme
+   (index.css), from the main screen (Exporter › PDF) or a shared page (Imprimer / PDF).
+   Only the brand stays at the top; panels, menus, the composer and the buttons go. */
 @media print {
+  .app,
   .shared-page {
     display: block;
     height: auto;
   }
 
-  .shared-page .messages {
+  .messages {
+    overflow: visible;
+    padding: var(--space-4) 0 0;
+  }
+
+  .statusbar {
+    border-bottom: 1px solid #000;
+    background: none;
+  }
+
+  .statusbar-items,
+  .sidepanel,
+  .composer,
+  .conversation-toolbar,
+  .banners,
+  .toast,
+  .print-button,
+  .messages .sql-actions,
+  .messages .followups {
+    display: none;
+  }
+
+  /* The folded SQL block shows the whole query on paper, not its first line. `.messages`:
+     sql.css and results.css are loaded after this file. */
+  .messages .sql-preview {
+    overflow: visible;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+  }
+
+  /* Every row of a result on paper, not the 360 px scroll window */
+  .messages .results-scroll {
+    max-height: none;
     overflow: visible;
   }
 
-  .shared-page .statusbar {
-    border-bottom: 1px solid #000;
+  /* No block cut between two pages when it fits on one */
+  .results,
+  .key-figures,
+  .sql-block {
+    break-inside: avoid;
   }
 }

@@ -1,6 +1,6 @@
 import { CopyButton } from '../shared/CopyButton'
 import { useMenu } from '../shared/useMenu'
-import { exportUrl, formatSharedAt } from './share'
+import { exportUrl, formatSharedAt, printPage } from './share'
 import { useShares } from './useShares'
 
 interface Props {
@@ -41,7 +41,20 @@ export function ConversationActions({
               <a className="btn-small" href={exportUrl(sessionId, 'json')} download onClick={exportMenu.close}>
                 JSON (.json)
               </a>
-              <p className="muted small">Les échanges terminés, avec les requêtes SQL et les vérifications.</p>
+              <button
+                type="button"
+                className="btn-small"
+                onClick={() => {
+                  exportMenu.close()
+                  printPage()
+                }}
+              >
+                PDF (impression)
+              </button>
+              <p className="muted small">
+                Les échanges terminés, avec les requêtes SQL et les vérifications. PDF : choisir
+                « Enregistrer au format PDF » dans la fenêtre d'impression.
+              </p>
             </>
           ) : (
             <p className="muted small">Rien à exporter : posez d'abord une question.</p>

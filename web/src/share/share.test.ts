@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest'
 import type { PersonaChanged, ShareCreated, SharedSnapshot } from '../protocol'
 import { chatReducer, initialState } from '../session/reducer'
 import { fixture } from '../test/fixtures'
-import { exportUrl, sharedState, shareToken } from './share'
+import { exportUrl, pdfTitle, sharedState, shareToken } from './share'
 
 const ADV = { id: 'adv', name: 'ADV', role: 'Copilote de Karim' }
 
 describe('export and share (X3, EXPORT-01)', () => {
+  it('names the PDF after the day of the export', () => {
+    expect(pdfTitle(new Date(2026, 9, 31, 14, 5))).toBe('SENSAI - conversation du 2026-10-31')
+  })
+
   it('builds the export link of the session', () => {
     expect(exportUrl('3f2b-1', 'md')).toBe('/api/sessions/3f2b-1/export?format=md')
     expect(exportUrl('3f2b-1', 'json')).toBe('/api/sessions/3f2b-1/export?format=json')

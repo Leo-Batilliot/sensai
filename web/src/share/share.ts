@@ -25,3 +25,18 @@ const when = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: '
 export function formatSharedAt(createdAt: number): string {
   return when.format(new Date(createdAt * 1000))
 }
+
+// Name of the PDF: browsers name the file after the page title, « SENSAI » alone otherwise
+export function pdfTitle(date: Date): string {
+  const day = (n: number) => String(n).padStart(2, '0')
+  return `SENSAI - conversation du ${date.getFullYear()}-${day(date.getMonth() + 1)}-${day(date.getDate())}`
+}
+
+// PDF export: the browser's print window (« Enregistrer au format PDF »), with the print
+// styles of share.css. Called after a menu closes: print at the next frame, menu gone.
+export function printPage(): void {
+  const title = document.title
+  document.title = pdfTitle(new Date())
+  window.addEventListener('afterprint', () => (document.title = title), { once: true })
+  window.requestAnimationFrame(() => window.print())
+}

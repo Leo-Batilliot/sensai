@@ -3,7 +3,7 @@ import { MessageList } from '../chat/MessageList'
 import { NotePanel } from '../note/NotePanel'
 import { isBlank } from '../note/note'
 import type { SharedSnapshot } from '../protocol'
-import { formatSharedAt, sharedState } from './share'
+import { formatSharedAt, printPage, sharedState } from './share'
 
 type Loaded = SharedSnapshot | 'missing' | null
 
@@ -40,6 +40,11 @@ export function SharedPage({ token }: { token: string }) {
           <span className="muted">Nordvent Distribution</span>
         </div>
         <div className="statusbar-items">
+          {snapshot !== null && snapshot !== 'missing' && (
+            <button type="button" className="btn-small print-button" onClick={() => printPage()}>
+              Imprimer / PDF
+            </button>
+          )}
           <span className="chip">Lecture seule</span>
         </div>
       </header>
