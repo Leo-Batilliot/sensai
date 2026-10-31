@@ -248,7 +248,7 @@ def test_a_profile_change_reaches_the_model(web: Callable[..., TestClient]) -> N
         until(ws, of_type("message_done"))
     session_client = script.created[-1]  # the first one serves the REST routes
     messages = session_client.calls[1][1]
-    assert "# Profil actif : Admin" in messages[0]["content"]
+    assert "# Profil actif\nAdmin (" in messages[0]["content"]  # $persona hole of prompt v4
     note = {"role": "system", "content": "Profil actif : Admin (Copilote d'Inès, administratrice)"}
     assert messages[-2:] == [note, {"role": "user", "content": "Et maintenant ?"}]
     tools = [tool["function"]["name"] for tool in session_client.tools_sent[1] or []]

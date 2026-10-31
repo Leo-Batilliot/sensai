@@ -161,7 +161,8 @@ async def test_examples_are_injected_and_announced(index: ExampleIndex) -> None:
     # US-A7-01: examples_injected lists what the prompt got, before any token
     client = FakeClient(answer("Voici."))
     template = SystemPrompt(TEMPLATE, {})
-    engine = Engine(Config(), client, system_prompt=template, examples=index, session_id="s-1")
+    config = Config(fewshot={"enabled": True})  # off by default (D-10)
+    engine = Engine(config, client, system_prompt=template, examples=index, session_id="s-1")
 
     emitted = await run(engine, "Chiffre d'affaires par commercial le mois dernier ?")
 
@@ -179,7 +180,7 @@ async def test_examples_come_after_the_memory_context(index: ExampleIndex) -> No
         store.define_term("commercial", "Celui qui suit le client (clients.sales_rep_id).")
         client = FakeClient(answer("Voici."))
         engine = Engine(
-            Config(),
+            Config(fewshot={"enabled": True}),
             client,
             system_prompt=SystemPrompt(TEMPLATE, {}),
             memory=MemoryContext(store),

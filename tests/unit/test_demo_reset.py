@@ -105,7 +105,7 @@ def test_session_check_names_the_default_profile_and_prompt() -> None:
 
     assert all(step.ok for step in steps)
     assert steps[0].text == "Profil des nouvelles sessions : Contrôle de gestion (analyste)"
-    assert steps[1].text == "Version du prompt système : v1"
+    assert steps[1].text == "Version du prompt système : v4"
 
 
 @pytest.mark.parametrize(

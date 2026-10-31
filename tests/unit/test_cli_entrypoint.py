@@ -46,8 +46,8 @@ def test_prompts_commands(
     monkeypatch.chdir(tmp_path)  # without the config.toml of the machine: the default version
     assert main(["prompts"]) == 0
     listed = capsys.readouterr().out
-    assert "* system_sql v1" in listed  # the configured version is marked
-    assert "0279c84af1d7" in listed  # start of its fingerprint
+    assert "* system_sql v4" in listed  # the configured version is marked
+    assert "c9f2747a9340" in listed  # start of its fingerprint
 
     assert main(["prompts", "show", "v1"]) == 0
     assert "$memory" in capsys.readouterr().out

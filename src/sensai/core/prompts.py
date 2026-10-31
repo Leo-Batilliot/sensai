@@ -34,7 +34,7 @@ else:  # Python 3.10: tomllib is not in the stdlib yet
 
 SYSTEM_SQL = "system_sql_v1.md"
 SYSTEM_SQL_NAME = "system_sql"
-DEFAULT_VERSION = "v1"  # becomes "v2" with CORE-14 (prompts.md, point PR-2)
+DEFAULT_VERSION = "v1"  # a call without a version; the product reads [agent] prompt_version
 REGISTRY_FILE = "registry.toml"
 EMPTY = "aucun"  # value of a placeholder with nothing to show
 
