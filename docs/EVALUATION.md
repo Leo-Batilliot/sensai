@@ -61,7 +61,36 @@ Le contrôle numérique ne dépend d'aucun modèle : ces chiffres sont identique
 
 ## 5. Rétention des faits sur les conversations longues (M2, EVAL-10)
 
-*À mesurer* (P1) : taux de faits conservés après 30 tours, troncature contre compression.
+Mesurée le 31/10 en **version réduite** sur la machine de démo : `qwen3:8b`, `num_ctx` 16384, prompt v4, graine 42, juge actif. Script `scripts/eval_long_conversations.py`, rapport [`eval/reports/2026-10-31_long-conversations.md`](../eval/reports/2026-10-31_long-conversations.md).
+
+**Méthode**
+- **Conversations** : 2 conversations scriptées (`eval/long_conversations.jsonl`), de 12 et 11 tours. Les premiers tours plantent 5 faits : deux chiffres donnés par l'agent, un objectif chiffré et une définition donnés par l'utilisatrice, un périmètre. Viennent ensuite des questions ordinaires, puis une question de contrôle par fait.
+- **Contrôle par le code** : le nombre attendu doit figurer dans la réponse (480 000 €, 17 gros clients, 9 commandes de la Restauration, 209 625,54 €, 260 clients actifs). Un chiffre donné par l'agent ne compte comme retrouvé que si le contrôle n'a pas refait de requête.
+- **Comparaison** : mêmes conversations et mêmes graines, une fois en `truncate`, une fois en `compress`.
+- **Mémoire isolée** : outils mémoire retirés, aucun contexte mémoire. Seul l'historique ou son résumé peut porter un fait.
+- **Échelle réduite** : pour que l'historique déborde en une dizaine de tours au lieu de 30, `budget_ratio` est à 0,29 (limite d'environ 4 750 tokens, dont environ 4 000 pour le prompt système et les outils) et `keep_recent_turns` à 2. La compaction se déclenche aux tours 7 et 8, une fois les faits sortis de la fenêtre des échanges récents.
+
+| Stratégie | Faits retrouvés | Perdus | Interrompus (délai) | Compactions | Durée d'une compaction | Tokens du prompt (moyenne) | Tour p50 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `truncate` | 0 / 5 | 5 | 0 | 4 | 0 s | 4 401 | 33,0 s |
+| `compress` | **2 / 5** | 2 | 1 | 4 | 18,8 s | 4 466 | 38,2 s |
+
+| Fait planté | `truncate` | `compress` |
+|---|---|---|
+| Objectif de 480 000 € (donné par l'utilisatrice) | perdu : « pas disponible dans les données » | **retrouvé** |
+| « Gros client » = plus de 30 000 € de CA, soit 17 clients | perdu : 7, les clients de taille « GE » | **retrouvé** : 17, avec le critère rappelé |
+| CA du trimestre, 209 625,54 € (donné par l'agent au tour 1) | perdu | interrompu : tour coupé par le délai de 120 s, réponse vide |
+| Périmètre Restauration, soit 9 commandes le mois dernier | perdu : 165, sans filtre | perdu : 154, filtre sur le statut et pas sur le secteur |
+| 260 clients actifs (donné par l'agent au tour 1) | perdu | perdu : 260 était dans le résumé, à côté de deux autres « clients actifs » du périmètre (14 et 20) ; le modèle a répondu 20 |
+
+**Ce qu'on en tire**
+- **La troncature oublie tout ce qui sort de la fenêtre.** L'agent le dit (« pas disponible ») ou se rabat sur une autre interprétation (7 « gros clients » au sens de la taille d'entreprise).
+- **Le résumé garde ce que l'utilisatrice a énoncé explicitement**, un chiffre ou une définition : 2 faits sur 2 de ce type.
+- **Il reste fragile sur deux points** : un choix de périmètre n'est pas réappliqué aux questions suivantes, et des chiffres aux libellés proches se confondent dans le résumé.
+- **Son coût** : environ 19 s par compaction (un appel au modèle, réflexion comprise), pour un prompt de taille comparable.
+- **Une limite de conception relevée** : le résumé ne reporte que les 15 derniers chiffres vérifiés par le juge (`MAX_VERIFIED`, `core/context.py`). Dans une séance riche en chiffres, un chiffre vérifié ancien peut donc sortir de cette liste.
+
+**Limites de la mesure** : 5 faits et 2 conversations, en un seul passage, donc un fait vaut 20 points. L'échelle est réduite : ce n'est pas une vraie séance de 30 tours. Un contrôle sur 5 a été coupé par le délai. Enfin, le rapport de ce run ne garde que le début de chaque résumé ; le script enregistre désormais le résumé complet.
 
 ## 6. Latence (CORE-18)
 
@@ -99,4 +128,5 @@ python -m sensai eval --tag v1.0-rc-sans-memoire --no-memory
 python -m sensai eval compare v1.0-rc-prompt-v1 v1.0-rc
 python -m sensai eval calibrate
 python -m sensai eval calibrate --numeric-only
+python scripts/eval_long_conversations.py        # §5, environ 45 min sur la machine de démo
 ```
