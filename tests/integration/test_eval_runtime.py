@@ -132,10 +132,10 @@ async def test_the_report_records_how_the_run_was_made(tmp_path: Path) -> None:
     assert report["metrics"]["ex"] == {"value": 1.0, "n": 1}
     assert report["metrics"]["tool_args_first_try"] == {"value": 1.0, "n": 2}
     assert (report["model"], report["temperature"], report["ollama_seed"]) == ("qwen3:8b", 0.0, 42)
-    assert (report["prompt"]["name"], report["prompt"]["version"]) == ("system_sql", "v1")
+    assert (report["prompt"]["name"], report["prompt"]["version"]) == ("system_sql", "v4")
     assert len(report["prompt"]["sha256"]) == 64
     assert report["persona"] is None
-    assert report["fewshot"] == {"enabled": False, "bank": None}  # the v1 has no $examples
+    assert report["fewshot"] == {"enabled": False, "bank": None}  # off by default (D-10)
     assert report["date_tool"] == "frozen"
     assert report["memory"].endswith("memory_rules.json")
     # EVAL-08: EX per category and the tokens of the scripted model

@@ -170,7 +170,7 @@ def test_version_is_chosen_by_config(empty_db: Path) -> None:
     template = system_prompt_template(empty_db, [], Config().agent.prompt_version)
 
     assert template.version is not None
-    assert (template.version.version, template.version.file) == ("v1", SYSTEM_SQL)
+    assert (template.version.version, template.version.file) == ("v4", "system_sql_v4.md")
 
 
 def test_unknown_version_is_refused(empty_db: Path) -> None:

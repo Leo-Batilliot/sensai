@@ -652,7 +652,8 @@ def test_the_chat_announces_the_profile_at_startup(
 
     out = capsys.readouterr().out
     assert "Profil : Contrôle de gestion (Copilote de Claire" in out
-    assert "# Profil actif : Contrôle de gestion" in client.calls[0][1][0]["content"]
+    # Prompt v4: the profile fills the $persona hole, under its heading
+    assert "# Profil actif\nContrôle de gestion (" in client.calls[0][1][0]["content"]
 
 
 def test_an_invalid_profile_stops_the_chat(

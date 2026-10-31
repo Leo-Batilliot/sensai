@@ -549,6 +549,7 @@ async def test_the_verdict_sees_a_real_write(base: Path) -> None:
     config = make_config(base, {})
     script = [tool_request(EXECUTE, sql=PURGE), answer("Fait.")]
     async with started(config, script) as services:
+        services.documents.outline()  # the note is created on its first read: not by the model
         before = snapshot(base, config)
         engine = services.new_engine(Broker("approve"), session_id="adv")
         try:

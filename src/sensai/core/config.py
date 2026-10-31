@@ -104,8 +104,9 @@ class AgentConfig(_Section):
     # in time the model makes an explicit assumption
     max_questions_per_turn: int = Field(default=1, ge=0)
     question_timeout_s: float = Field(default=120, gt=0)
-    # Version of the system prompt in core/prompts/registry.toml (A4); "v1" is the way back
-    prompt_version: str = Field(default="v1", pattern=r"^v[0-9]+$")
+    # Version of the system prompt in core/prompts/registry.toml (A4), chosen by the harness
+    # (docs/decisions.md D-10); "v1" is the way back
+    prompt_version: str = Field(default="v4", pattern=r"^v[0-9]+$")
     # Agent profile of a new session (A5): personas/<id>.toml, relative to the launch directory
     persona: str = Field(default="analyste", min_length=1)
     personas_dir: Path = Path("personas")
@@ -139,8 +140,9 @@ class EvalConfig(_Section):
 
 
 class FewshotConfig(_Section):
-    # Dynamic examples (A7): the k closest examples of the bank go into the prompt
-    enabled: bool = True
+    # Dynamic examples (A7): the k closest examples of the bank go into the prompt.
+    # Off by default: measured worse with qwen3:8b on the golden set (D-10)
+    enabled: bool = False
     k: int = Field(default=3, ge=0)
     min_score: float = Field(default=0.0, ge=0)  # bm25 score; 0 = always the k best
 
