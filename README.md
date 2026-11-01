@@ -28,13 +28,48 @@ Le scénario de démonstration suit Claire (contrôle de gestion), Karim (ADV) e
 | A7 | Exemples dynamiques | Les exemples validés les plus proches de la question (recherche FTS5) entrent dans le prompt. **Désactivés par défaut** : mesurés sans gain avec `qwen3:8b` (D-10) | `[fewshot] enabled = true`, puis le chip « 3 exemples proches fournis » |
 | M4 | Note du comité | Livrable tenu par l'agent section par section, avec révisions, restauration et contrôle de version | Acte 2 : onglet Note |
 
-## Installation sur un PC Windows vierge (PowerShell)
+## Installation pas à pas
 
-La voie la plus simple pour une machine de démo : tout s'installe avec `winget`, sans WSL ni `make`. Compter environ 30 minutes, dont le téléchargement du modèle (5 Go).
+Ce guide part d'un ordinateur où rien n'est installé. Il ne suppose **aucune connaissance technique** : chaque étape dit quoi faire, ce que vous devez voir, et quoi faire si ce n'est pas le cas.
 
-**Matériel** : une carte graphique qui peut contenir le modèle. `qwen3:8b` avec `num_ctx` 16384 occupe 7,4 Go de VRAM (mesuré sur une RTX 3080 10 Go). Sur le seul processeur, le modèle est trop lent pour une démo.
+- **Sous Windows** : suivez la partie [Windows](#installation-sous-windows-10-ou-11). C'est le cas le plus courant, et celui de la machine de démo.
+- **Sous Linux** (Ubuntu, Debian, Arch) ou WSL2 : suivez la partie [Linux](#installation-sous-linux-ubuntu-debian-arch-ou-wsl2).
 
-### 1. Les outils
+Comptez **environ 45 minutes** la première fois, dont 20 à 30 minutes de téléchargement. Ensuite, relancer SENSAI prend 30 secondes ([Relancer SENSAI un autre jour](#relancer-sensai-un-autre-jour)).
+
+### Ce qu'il vous faut
+
+| | Minimum | Pourquoi |
+|---|---|---|
+| **Ordinateur** | Windows 10 ou 11, ou Linux 64 bits | |
+| **Carte graphique** | Une carte NVIDIA avec **8 Go de mémoire vidéo** ou plus (la démo tourne sur une RTX 3080 10 Go) | Le modèle d'IA tourne sur la carte graphique. Sans elle, il fonctionne, mais une réponse prend plusieurs minutes |
+| **Espace disque** | 15 Go libres | Le modèle pèse 5 Go, les programmes environ 3 Go |
+| **Internet** | Seulement pendant l'installation | Ensuite, **tout fonctionne hors ligne** : aucune donnée ne quitte l'ordinateur |
+| **Accès au projet** | Un compte GitHub qui a accès au dépôt `EpitechPGE3-2026/G-AIA-500-LIL-5-1-sensai-4` | Le dépôt est privé |
+
+### Les mots à connaître
+
+- **Le terminal** est une fenêtre où l'on tape des commandes au lieu de cliquer. Sous Windows, il s'appelle **PowerShell**.
+- **Une commande** est une ligne de texte à copier dans le terminal, puis à valider avec la touche **Entrée**. Dans ce guide, les commandes sont dans des cadres gris : copiez-les **une ligne à la fois**.
+- **Copier-coller dans le terminal** : sélectionnez la ligne dans ce guide, `Ctrl+C`, puis **clic droit** dans la fenêtre PowerShell (ou `Ctrl+V`), puis Entrée.
+- **Ollama** est le programme qui fait tourner le modèle d'intelligence artificielle sur votre ordinateur.
+- **Le modèle** (`qwen3:8b`) est « le cerveau » de l'agent : un gros fichier de 5 Go, téléchargé une seule fois.
+
+---
+
+## Installation sous Windows 10 ou 11
+
+### Étape 1 — Ouvrir PowerShell
+
+1. Appuyez sur la touche **Windows** du clavier (le logo ⊞, en bas à gauche).
+2. Tapez `PowerShell`.
+3. Cliquez sur **Windows PowerShell**. Une fenêtre bleue ou noire s'ouvre, avec une ligne qui finit par `>` : c'est là que vous taperez les commandes.
+
+Gardez cette fenêtre ouverte pendant toute l'installation.
+
+### Étape 2 — Installer les quatre programmes
+
+Copiez ces lignes **une par une** dans PowerShell, en appuyant sur Entrée après chacune. Chaque installation prend une à cinq minutes. Si Windows demande « Voulez-vous autoriser cette application à apporter des modifications ? », cliquez **Oui**.
 
 ```powershell
 winget install --id Git.Git -e
@@ -43,52 +78,128 @@ winget install --id Ollama.Ollama -e
 winget install --id astral-sh.uv -e
 ```
 
-Node.js n'est pas nécessaire : l'interface web est livrée déjà construite (`web/dist`). Il ne sert qu'à modifier le front (`winget install --id OpenJS.NodeJS.LTS -e`).
+À quoi ils servent :
+- **Git** télécharge le projet ;
+- **Python** fait tourner SENSAI ;
+- **Ollama** fait tourner le modèle d'IA ;
+- **uv** fait tourner le petit serveur qui donne la date à l'agent.
 
-**Fermer puis rouvrir PowerShell** pour que les nouvelles commandes soient trouvées, puis :
+**Ce que vous devez voir** après chaque ligne : `Installé correctement` (ou `Successfully installed`). Si le message dit que le programme est **déjà installé**, c'est parfait aussi.
+
+**Si `winget` n'est pas reconnu** (Windows 10 ancien) : installez « App Installer » depuis le Microsoft Store, puis recommencez. Autre solution : installer chaque programme depuis son site, en cliquant sur « Suivant » à chaque écran : [git-scm.com](https://git-scm.com/download/win), [python.org](https://www.python.org/downloads/) (**cochez « Add python.exe to PATH »** au premier écran), [ollama.com](https://ollama.com/download), [docs.astral.sh/uv](https://docs.astral.sh/uv/getting-started/installation/).
+
+### Étape 3 — Fermer et rouvrir PowerShell
+
+C'est indispensable : PowerShell ne « voit » les nouveaux programmes qu'après avoir été rouvert.
+
+1. Fermez la fenêtre PowerShell (la croix en haut à droite).
+2. Rouvrez-la comme à l'étape 1.
+3. Vérifiez que tout est là, une ligne à la fois :
 
 ```powershell
-ollama pull qwen3:8b          # le modèle de l'agent (environ 5 Go)
-uvx mcp-server-time --help    # met en cache le serveur MCP de date (aucun téléchargement en démo)
+git --version
+py -3.12 --version
+ollama --version
+uv --version
 ```
 
-### 2. Le projet
+**Ce que vous devez voir** : quatre numéros de version, par exemple `git version 2.47.0`, `Python 3.12.7`, `ollama version is 0.12.0`, `uv 0.9.0`. Les chiffres exacts n'ont pas d'importance.
+
+**Si une ligne affiche « n'est pas reconnu »** : le programme n'est pas installé, ou PowerShell n'a pas été rouvert. Refaites l'étape 2 pour ce programme, puis l'étape 3.
+
+### Étape 4 — Télécharger le modèle d'IA
+
+Ollama s'est lancé tout seul : une petite icône de lama apparaît en bas à droite de l'écran, près de l'horloge (parfois cachée sous la flèche `^`). Tapez :
 
 ```powershell
+ollama pull qwen3:8b
+```
+
+Une barre de progression avance jusqu'à 100 % : **environ 5 Go**, soit 5 à 30 minutes selon votre connexion. Attendez le mot `success`.
+
+Puis préparez le serveur de date (il se télécharge une fois pour toutes) :
+
+```powershell
+uvx mcp-server-time --help
+```
+
+**Ce que vous devez voir** : un court texte d'aide en anglais qui commence par `usage:`. Il n'y a rien d'autre à faire.
+
+**Si `ollama pull` affiche « could not connect to ollama »** : Ollama n'est pas lancé. Ouvrez le menu Démarrer, tapez `Ollama`, cliquez dessus, attendez 10 secondes, puis recommencez.
+
+### Étape 5 — Télécharger le projet
+
+Ces commandes créent un dossier `sensai` dans votre dossier personnel (`C:\Users\<votre nom>\sensai`) et vous placent dedans :
+
+```powershell
+cd ~
 git clone https://github.com/EpitechPGE3-2026/G-AIA-500-LIL-5-1-sensai-4.git sensai
 cd sensai
-git checkout v1.0.0           # la version livrée (sinon rester sur main)
+git checkout v1.0.0
+```
+
+- À la première commande `git clone`, **une fenêtre de connexion GitHub s'ouvre** : connectez-vous avec le compte qui a accès au dépôt.
+- `git checkout v1.0.0` choisit la version livrée. Le message `You are in 'detached HEAD' state` est **normal** : ce n'est pas une erreur.
+
+**Ce que vous devez voir** : la ligne de PowerShell finit maintenant par `\sensai>`.
+
+### Étape 6 — Installer SENSAI
+
+```powershell
 py -3.12 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements-dev.txt
 ```
 
-Le dépôt est privé : au premier `git clone`, une fenêtre de connexion GitHub s'ouvre.
+- La première ligne crée un dossier `.venv` qui contiendra les bibliothèques de SENSAI, sans rien changer au reste de l'ordinateur. Elle n'affiche rien : c'est normal.
+- La seconde télécharge et installe ces bibliothèques : une à trois minutes, beaucoup de lignes défilent.
 
-### 3. Les données et l'interface web
+**Ce que vous devez voir** à la fin : une ligne qui commence par `Successfully installed`. Un avertissement jaune `A new release of pip is available` peut être ignoré.
 
-```powershell
-.venv\Scripts\python -m sensai seed     # base de démo, date de référence = aujourd'hui
-```
+### Étape 7 — Créer les données de démonstration
 
-L'interface web est déjà construite dans le dépôt (`web/dist`) : rien à faire.
-
-### 4. Vérifier
+SENSAI travaille sur la base d'une entreprise fictive, Nordvent Distribution. Créez-la :
 
 ```powershell
-.venv\Scripts\python -m sensai chat     # puis /tools : sql_toolbox et time « en ligne », /exit pour quitter
-.venv\Scripts\python -m sensai web      # puis ouvrir http://127.0.0.1:8000
+.venv\Scripts\python -m sensai seed
 ```
 
-- Pendant une réponse, `ollama ps` doit indiquer le **GPU**.
-- `.venv\Scripts\python -m pytest -m "not ollama and not external"` lance les tests. Sous Windows, 6 tests échouent, et c'est connu : 4 tests MCP de fin de processus (`test_close_*`, `test_unsupported_version_is_refused`, `test_missing_base_stops_the_server`) et 2 tests d'outils fichiers qui lisent des fins de ligne Windows (`test_list_roots_then_a_folder`, `test_read_marks_the_content_as_data`). Ils passent sous Linux.
+**Ce que vous devez voir** : `Base générée : data\business.db (graine 42, date de référence …)`.
 
-## Installation sous Linux (Ubuntu, Arch) ou WSL2
+### Étape 8 — Lancer SENSAI
 
-Le `Makefile` fonctionne directement. Il faut Python 3.10 ou plus : la CI teste 3.10 et 3.12.
+```powershell
+.venv\Scripts\python -m sensai web
+```
 
-Sous **WSL2** (Ubuntu), suivre les commandes Ubuntu, et cloner le dépôt **dans le système de fichiers de WSL** (`~/…`), pas sous `/mnt/c` : c'est plus rapide et cela évite de mélanger un `.venv` Windows et un `.venv` Linux.
+**Ce que vous devez voir**, après quelques secondes : une ligne `Uvicorn running on http://127.0.0.1:8000`. Ne fermez pas la fenêtre : **tant qu'elle est ouverte, SENSAI fonctionne**.
 
-### 1. Outils système
+Ouvrez votre navigateur (Chrome, Edge, Firefox) et allez à l'adresse **http://127.0.0.1:8000**.
+
+### Étape 9 — Poser une première question
+
+L'écran affiche « Que voulez-vous savoir sur vos données ? ». En haut à droite, la puce verte **Connecté** et « Serveurs MCP : 2/2 ».
+
+Cliquez sur une question proposée, ou tapez par exemple :
+
+> Quels sont nos 5 clients les plus rentables ce trimestre ?
+
+puis appuyez sur Entrée. La **première réponse prend une à deux minutes** : Ollama charge le modèle sur la carte graphique. Les suivantes prennent 15 à 50 secondes : le modèle réfléchit avant d'écrire. Vous voyez les étapes de l'agent dans le panneau de droite (Timeline), puis la réponse, le tableau des résultats et, quelques secondes après, le badge **✅ Vérifiée**.
+
+D'autres questions à essayer : [Exemples de questions](#exemples-de-questions).
+
+### Étape 10 — Arrêter SENSAI
+
+Revenez dans la fenêtre PowerShell et appuyez sur **`Ctrl+C`**. Vous pouvez ensuite fermer la fenêtre. Vos données, la mémoire de l'agent et la note du comité sont conservées.
+
+---
+
+## Installation sous Linux (Ubuntu, Debian, Arch) ou WSL2
+
+Le principe est le même que sous Windows : installer les outils, télécharger le modèle, télécharger le projet, l'installer, le lancer. Ouvrez un **terminal** (`Ctrl+Alt+T` sous Ubuntu) et copiez les commandes une par une. `sudo` demande votre mot de passe : il ne s'affiche pas pendant la frappe, c'est normal.
+
+Sous **WSL2**, suivez les commandes Ubuntu, et placez le projet dans le dossier Linux (`~/…`), **pas** sous `/mnt/c` : c'est plus rapide, et cela évite de mélanger les fichiers Windows et Linux.
+
+### Étape 1 — Les outils du système
 
 Ubuntu, Debian ou WSL2 :
 
@@ -103,90 +214,118 @@ Arch :
 sudo pacman -Syu --needed git make curl python
 ```
 
-Vérifier : `python3 --version` affiche 3.10 ou plus.
+**Vérifiez** : `python3 --version` doit afficher `Python 3.10` ou plus (3.12 recommandé).
 
-### 2. Ollama et le modèle
+### Étape 2 — Ollama et le modèle
 
 Ubuntu, Debian ou WSL2 :
 
 ```bash
-curl -fsSL https://ollama.com/install.sh | sh    # installe aussi le service systemd
+curl -fsSL https://ollama.com/install.sh | sh
 ```
 
-Arch (choisir le paquet selon la carte graphique) :
+Arch (choisissez le paquet selon la carte graphique) :
 
 ```bash
-sudo pacman -S --needed ollama        # ou ollama-cuda (NVIDIA), ollama-rocm (AMD)
+sudo pacman -S --needed ollama-cuda      # NVIDIA ; ollama-rocm pour AMD, ollama sans carte graphique
 sudo systemctl enable --now ollama
 ```
 
-Puis, quelle que soit la distribution :
+Puis, sur toutes les distributions :
 
 ```bash
-ollama pull qwen3:8b           # environ 5 Go : à lancer en avance
-ollama show qwen3:8b           # « Capabilities » doit contenir « tools »
+ollama pull qwen3:8b
+ollama show qwen3:8b
 ```
 
-Sans systemd (certaines installations WSL2), lancer `ollama serve &` avant d'utiliser le projet.
+`ollama pull` télécharge environ 5 Go : attendez `success`. `ollama show` doit lister `tools` dans « Capabilities » : le modèle sait utiliser des outils, ce dont l'agent a besoin.
 
-Le modèle doit **gérer les outils** : sans cela, l'agent ne peut pas interroger la base. Le modèle par défaut est celui de `[ollama] model` dans [`config.example.toml`](config.example.toml).
+**Si `ollama pull` ne peut pas se connecter** (WSL2 sans systemd) : lancez `ollama serve &`, puis recommencez.
 
-### 3. `uv` (pour `uvx` et le serveur MCP de date)
+### Étape 3 — uv (le serveur de date)
 
 Ubuntu, Debian ou WSL2 :
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-source $HOME/.local/bin/env    # ou rouvrir le terminal
+source $HOME/.local/bin/env
 ```
 
-Arch :
+Arch : `sudo pacman -S --needed uv`
+
+Puis préparez le serveur de date : `uvx mcp-server-time --help` (un texte d'aide qui commence par `usage:` doit s'afficher).
+
+### Étape 4 — Télécharger et installer le projet
 
 ```bash
-sudo pacman -S --needed uv
-```
-
-Puis : `uvx mcp-server-time --help`. Le serveur est téléchargé une première fois et mis en cache, pour ne pas attendre au lancement.
-
-### 4. Node.js 22 ou plus (seulement pour modifier le front)
-
-Ubuntu, Debian ou WSL2 :
-
-```bash
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-source ~/.bashrc
-nvm install 22
-```
-
-Arch :
-
-```bash
-sudo pacman -S --needed nodejs npm
-```
-
-Vérifier : `node --version` affiche v22 ou plus. L'interface web est livrée construite (`web/dist`) : `make web` n'a pas besoin de Node. Node ne sert qu'à modifier le front (`make web-build`) et à MCP Inspector ; cette étape peut être sautée sur une machine de démo.
-
-### 5. Le projet
-
-```bash
-git clone https://github.com/EpitechPGE3-2026/G-AIA-500-LIL-5-1-sensai-4.git sensai   # ou git@github.com:… avec une clé SSH
+cd ~
+git clone https://github.com/EpitechPGE3-2026/G-AIA-500-LIL-5-1-sensai-4.git sensai
 cd sensai
-git checkout v1.0.0 # la version livrée (sinon rester sur main)
-make install        # crée .venv et installe les dépendances (dev incluses)
-make seed           # base de démo, date de référence = aujourd'hui
-make test           # tests sans Ollama ni outils externes, comme la CI
-make help           # toutes les commandes
+git checkout v1.0.0
+make install
+make seed
 ```
 
-- Sans `make` : `python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt`.
-- Si la version de Python de la distribution est trop récente pour une dépendance (Arch suit toujours la dernière version), installer une 3.12 avec uv : `uv python install 3.12`, puis `rm -rf .venv && make install PYTHON="$(uv python find 3.12)"`.
+- `git clone` demande votre identifiant GitHub et un *token* (le mot de passe ne suffit plus), ou utilisez l'adresse SSH `git@github.com:EpitechPGE3-2026/G-AIA-500-LIL-5-1-sensai-4.git` si vous avez une clé SSH.
+- `make install` crée `.venv` et installe les bibliothèques (une à trois minutes) ; `make seed` crée la base de démonstration (`Base générée : data/business.db …`).
+- **Sans `make`** : `python3 -m venv .venv`, puis `.venv/bin/python -m pip install -r requirements-dev.txt`, puis `.venv/bin/python -m sensai seed`.
+- **Arch, Python trop récent** pour une bibliothèque : `uv python install 3.12`, puis `rm -rf .venv && make install PYTHON="$(uv python find 3.12)"`.
 
-### 6. Vérifier
+### Étape 5 — Lancer, utiliser, arrêter
 
 ```bash
-make chat           # puis /tools : sql_toolbox et time « en ligne », /exit pour quitter
-make web            # puis ouvrir http://127.0.0.1:8000
+make web
 ```
+
+Ouvrez **http://127.0.0.1:8000** dans le navigateur, et posez une question comme à l'[étape 9 de Windows](#étape-9--poser-une-première-question). Pour arrêter : `Ctrl+C` dans le terminal.
+
+Pour le chat en terminal : `make chat` (puis `/help` ; `/exit` pour quitter).
+
+---
+
+## Relancer SENSAI un autre jour
+
+Ollama se lance tout seul au démarrage de l'ordinateur. Il suffit de :
+
+**Windows** : ouvrir PowerShell (étape 1), puis
+
+```powershell
+cd ~\sensai
+.venv\Scripts\python -m sensai web
+```
+
+**Linux** :
+
+```bash
+cd ~/sensai
+make web
+```
+
+puis ouvrir **http://127.0.0.1:8000**.
+
+**Repartir de zéro** (avant une démonstration) : arrêtez SENSAI (`Ctrl+C`), puis `.venv\Scripts\python -m sensai demo-reset` sous Windows, ou `make demo-reset` sous Linux. La base est recréée, la mémoire et la note du comité sont vidées, les partages et rapports effacés.
+
+### Si quelque chose ne marche pas
+
+| Ce que vous voyez | Ce que cela veut dire | Que faire |
+|---|---|---|
+| `… n'est pas reconnu en tant que nom d'applet de commande` | Le programme n'est pas installé, ou PowerShell n'a pas été rouvert | Étape 2 puis étape 3 |
+| Le navigateur affiche « Ce site est inaccessible » | SENSAI n'est pas lancé, ou la fenêtre PowerShell a été fermée | Étape 8 |
+| Un bandeau rouge « Ollama injoignable… lancez `ollama serve` » | Ollama n'est pas lancé | Menu Démarrer → `Ollama` (Windows), `ollama serve` (Linux), puis reposez la question |
+| « Le modèle « qwen3:8b » n'est pas installé » | Le modèle n'a pas été téléchargé | Étape 4 (`ollama pull qwen3:8b`) |
+| « Base de démonstration absente » | Les données n'ont pas été créées | Étape 7 (`sensai seed`) |
+| « Serveurs MCP : 1/2 », serveur `time` indisponible | uv n'est pas installé, ou pas encore téléchargé | Étape 2 (uv), étape 3, puis `uvx mcp-server-time --help` |
+| Les réponses prennent plusieurs minutes | Le modèle tourne sans carte graphique | Tapez `ollama ps` pendant une réponse : la colonne PROCESSOR doit dire `GPU`. Sinon, mettez à jour le pilote de la carte NVIDIA |
+| `address already in use` ou port 8000 occupé | SENSAI tourne déjà dans une autre fenêtre | Utilisez l'autre fenêtre, ou fermez-la avec `Ctrl+C` |
+| `demo-reset` dit de fermer `sensai web` | Le serveur utilise encore la base | `Ctrl+C` dans la fenêtre du serveur, puis relancez `demo-reset` |
+
+Les autres cas, plus techniques, sont dans [Dépannage](#dépannage).
+
+### Pour les développeurs
+
+- Tests sans Ollama, comme la CI : `.venv\Scripts\python -m pytest -m "not ollama and not external"` (Windows) ou `make test` (Linux). Sous Windows, 6 tests échouent, et c'est connu : 4 tests MCP de fin de processus (`test_close_*`, `test_unsupported_version_is_refused`, `test_missing_base_stops_the_server`) et 2 tests d'outils fichiers qui lisent des fins de ligne Windows (`test_list_roots_then_a_folder`, `test_read_marks_the_content_as_data`). Ils passent sous Linux.
+- **Node.js n'est pas nécessaire** pour utiliser SENSAI : l'interface web est livrée déjà construite (`web/dist`). Il ne sert qu'à modifier le front : `winget install --id OpenJS.NodeJS.LTS -e` sous Windows, Node 22 ou plus sous Linux (`nvm install 22`, ou `sudo pacman -S nodejs npm`), puis voir [`web/README.md`](web/README.md).
+- `make help` liste toutes les commandes du `Makefile`, `python -m sensai --help` celles de SENSAI.
 
 ## Utilisation
 
@@ -343,7 +482,7 @@ command = "uvx"
 args = ["mcp-server-time", "--local-timezone=Europe/Paris"]
 ```
 
-Un outil d'un serveur tiers n'est considéré « lecture seule » que s'il le déclare dans ses annotations ; sinon il passe par la confirmation. Contrôle de conformité de nos serveurs avec MCP Inspector : [`docs/notes/mcp-conformity.md`](docs/notes/mcp-conformity.md).
+Attention : dès que `config.toml` déclare une table `[mcp.servers.*]`, elle remplace toute la liste par défaut ; recopiez `sql_toolbox` et `time`. Pas à pas complet, profils et dépannage : [`docs/guides/brancher-un-serveur-mcp.md`](docs/guides/brancher-un-serveur-mcp.md). Un outil d'un serveur tiers n'est considéré « lecture seule » que s'il le déclare dans ses annotations ; sinon il passe par la confirmation. Contrôle de conformité de nos serveurs avec MCP Inspector : [`docs/notes/mcp-conformity.md`](docs/notes/mcp-conformity.md).
 
 ## Architecture
 
@@ -397,20 +536,20 @@ Le détail est dans [`PROJECT.md`](PROJECT.md) §5. Les choix d'architecture, av
 |---|---|
 | [001](docs/adr/ADR-001-moteur-headless-evenementiel.md) | Moteur headless événementiel, adaptateurs CLI et web |
 | [002](docs/adr/ADR-002-websocket.md) | WebSocket plutôt que SSE + POST |
-| 003 | Client MCP écrit à la main plutôt que le SDK officiel |
-| 004 | Politique de confirmation : classification déterministe, refus par défaut |
-| 005 | Mémoire dans une base dédiée, recherche FTS5 |
-| 006 | Juge non bloquant après la réponse + contrôle numérique |
+| [003](docs/adr/ADR-003-client-mcp-ecrit-a-la-main.md) | Client MCP écrit à la main plutôt que le SDK officiel |
+| [004](docs/adr/ADR-004-politique-hitl-deterministe.md) | Politique de confirmation : classification déterministe, refus par défaut |
+| [005](docs/adr/ADR-005-memoire-base-dediee-fts5.md) | Mémoire dans une base dédiée, recherche FTS5 |
+| [006](docs/adr/ADR-006-juge-non-bloquant-et-controle-numerique.md) | Juge non bloquant après la réponse + contrôle numérique |
 | [007](docs/adr/ADR-007-sql-ecrit-par-l-agent.md) | Le SQL est écrit par l'agent dans l'appel d'outil |
 | [008](docs/adr/ADR-008-compression-par-resume.md) | Compression de l'historique par résumé plutôt que troncature |
 | [009](docs/adr/ADR-009-profil-restreint-seulement.md) | Un profil d'agent ne fait que restreindre, jamais élever |
-| 010 | Outils fichiers natifs derrière nos permissions plutôt que le serveur `filesystem` |
-| 011 | Note du comité par patchs de section, verrou optimiste et révisions |
-| 012 | Exemples dynamiques par FTS5 ; prompts versionnés par registre et empreinte |
+| [010](docs/adr/ADR-010-outils-fichiers-natifs.md) | Outils fichiers natifs derrière nos permissions plutôt que le serveur `filesystem` |
+| [011](docs/adr/ADR-011-note-par-patchs-de-section.md) | Note du comité par patchs de section, verrou optimiste et révisions |
+| [012](docs/adr/ADR-012-exemples-fts5-et-prompts-versionnes.md) | Exemples dynamiques par FTS5 ; prompts versionnés par registre et empreinte |
 
 ## Évaluation
 
-Mesures du 27 au 30/10/2026 sur la machine de démo (RTX 3080 10 Go, `qwen3:8b`, `num_ctx` 16384, graine 42), golden set de 25 questions sur la base de démo. Rapports complets dans [`eval/reports/`](eval/reports/), méthode dans [`docs/EVALUATION.md`](docs/EVALUATION.md).
+Mesures du 27 au 30/10/2026 sur la machine de démo (RTX 3080 10 Go, `qwen3:8b`, `num_ctx` 16384, graine 42), sur les 25 premières questions du golden set (q001 à q025 : le jeu compte 40 questions depuis le 01/11, les 15 dernières ne sont pas encore mesurées). Rapports complets dans [`eval/reports/`](eval/reports/), méthode dans [`docs/EVALUATION.md`](docs/EVALUATION.md).
 
 | Question posée | Résultat | Source |
 |---|---|---|
@@ -428,7 +567,7 @@ EX = exactitude d'exécution : le résultat du SQL de l'agent est comparé à ce
 ## Limites connues
 
 - **Latence** : `qwen3:8b` réfléchit avant de répondre (16 s en médiane, jusqu'à une minute). `llama3.1:8b` répond en 2 s mais se trompe plus souvent ; on a choisi la justesse (D-09).
-- **Petit jeu d'évaluation** : 25 questions, et un juge qui tourne sur le même modèle que l'agent. La précision du juge LLM lui-même n'est pas encore mesurée, seule celle du contrôle numérique l'est.
+- **Petit jeu d'évaluation** : 25 questions mesurées (40 dans le jeu, les 15 dernières pas encore passées au harness), et un juge qui tourne sur le même modèle que l'agent. La précision du juge LLM lui-même n'est pas encore mesurée, seule celle du contrôle numérique l'est.
 - **Écritures** : avec le prompt v1, l'agent demandait souvent confirmation en texte au lieu d'appeler l'outil, et la modale ne s'ouvrait qu'au tour suivant. Le v4 l'ouvre à chaque fois, mais mesuré sur 4 questions seulement. Aucune écriture n'a jamais eu lieu sans confirmation.
 - **Résultats à moitié tenus par le code** : sur le vrai modèle, la moitié des attaques passent le modèle et sont arrêtées par les garde-fous (`soft_break`). La suite a été jouée avec le prompt v1.
 - **Compression (M2)** : mesurée seulement en version réduite (5 faits). Le résumé retrouve ce que l'utilisatrice a énoncé (un chiffre, une définition), mais pas un choix de périmètre, et il peut confondre des chiffres aux libellés proches.
@@ -448,7 +587,7 @@ EX = exactitude d'exécution : le résultat du SQL de l'agent est comparé à ce
 | `uvx: command not found`, ou « Serveur MCP « time » : la commande `uvx` est introuvable » | `uv` n'est pas installé ou pas dans le `PATH` : refaire l'étape 3, puis `source $HOME/.local/bin/env` ou rouvrir le terminal. Vérifier avec `uvx --version`. |
 | Le premier lancement du serveur de date est lent | `uvx` télécharge `mcp-server-time` : le précharger avec `uvx mcp-server-time --help`. |
 | Port 8000 occupé (`address already in use`) | Trouver le processus : `ss -ltnp \| grep :8000`. Ou changer de port : `SENSAI_WEB_PORT=8001 make web`. |
-| « Interface web absente » au lancement du serveur | Le front n'est pas construit : `make web-build`. |
+| « Interface web absente » au lancement du serveur | `web/dist` manque (dossier supprimé, ou clone incomplet) : `git checkout -- web/dist`, ou le reconstruire avec `make web-build` (demande Node 22). |
 | `make demo-reset` : « fermez `sensai web` » | Le serveur web tient la base ouverte : l'arrêter, puis relancer la remise à zéro. |
 | `.venv/bin/python: No such file or directory` | Le `.venv` a été créé sous Windows (`.venv\Scripts`). Supprimer `.venv` puis `make install` dans WSL. |
 | « Base absente : data/business.db » | `make seed`. |
@@ -458,6 +597,7 @@ EX = exactitude d'exécution : le résultat du SQL de l'agent est comparé à ce
 - [`PROJECT.md`](PROJECT.md) : spécification complète (architecture, fonctionnalités, contrats, évaluation) ; [`PLANNING.md`](PLANNING.md) et [`TASKS.md`](TASKS.md) : organisation et tâches
 - [`docs/EVALUATION.md`](docs/EVALUATION.md) : méthode et résultats de l'évaluation ; [`docs/SECURITY.md`](docs/SECURITY.md) : garde-fous et attaques
 - [`docs/adr/`](docs/adr/) : décisions d'architecture ; [`docs/decisions.md`](docs/decisions.md) : journal des décisions de l'équipe
+- [`docs/guides/brancher-un-serveur-mcp.md`](docs/guides/brancher-un-serveur-mcp.md) : brancher un serveur MCP existant, sans code
 - [`docs/contracts/`](docs/contracts/) : contrats entre les briques, et leurs ajouts dans [`v1.1-extensions.md`](docs/contracts/v1.1-extensions.md)
 - [`docs/user-stories/`](docs/user-stories/) : user stories par fonctionnalité, reliées à leurs tests
 - [`docs/keynote/scenario.md`](docs/keynote/scenario.md) : scénario de démonstration

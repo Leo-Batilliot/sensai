@@ -1,14 +1,16 @@
-# Scénario de démonstration — v2
+# Scénario de démonstration — v3
 
 | | |
 |---|---|
 | **Tâche** | KEY-00 (v1, 06/10) ; **v2 rédigée lors de la replanification du 20/10** (décision D-01 : 16 fonctionnalités) |
 | **Propriétaire** | P4 — Web & Produit (A.P) |
 | **Utilisé par** | KEY-02 (storyboard), KEY-03 (slides), KEY-04 (vidéos par acte), DATA-02 (données plantées), EVAL-02 (golden set), ALL-17 (feature complete), toute l'équipe pour les répétitions |
-| **Statut** | v2 **proposée** le mar 20/10 ; à valider par P4 (product owner) à l'atelier ALL-15 du mer 21/10. Ajustée le dim 25/10 au soir si une fonctionnalité est coupée (D-07) |
+| **Statut** | **v3 du dim 01/11, version jouée à la keynote.** v2 validée à ALL-15 (21/10) ; v3 = ajustements de la revue de coupe D-10 (sam 31/10) : acte 1 en variante « hypothèse » sans chip d'exemples, acte 4 sans nombre annoncé, A7 montré par sa mesure à l'acte 6, révocation du lien à l'acte 5 |
 | **Références** | PROJECT.md §3 (concept), §6.8 à §6.17 (nouvelles fonctionnalités), §8 (données), §15 (keynote) ; maquettes dans [`ui/`](ui/README.md) ; script mid-term dans [`demo-script-midterm.md`](demo-script-midterm.md) |
 
 Ce document est **le fil rouge unique** de la démo : la mid-term du 14/10 en a joué une partie, la keynote du 01/11 le joue en entier. Chaque acte dit ce qu'on tape, ce qui doit apparaître, ce que ça prouve, de quelles données il a besoin et quoi faire s'il échoue.
+
+**Ce qui change en v3** (D-10, prompt v4 par défaut, exemples dynamiques désactivés) : l'acte 1 se joue avec l'hypothèse écrite par l'agent, la carte de question devient un bonus ; le chip « 3 exemples proches fournis » n'apparaît plus ; l'acte 4 n'annonce plus de nombre de clients ; l'acte 6 montre les vraies mesures, A7 compris.
 
 **Ce qui change en v2** : les dix fonctionnalités ajoutées après la mid-term n'ont **pas d'acte à elles**. Chacune apparaît dans un acte existant, au moment où elle sert Claire, Karim ou Inès. La démo reste un seul produit, en 15 minutes.
 
@@ -32,11 +34,11 @@ Ce document est **le fil rouge unique** de la démo : la mid-term du 14/10 en a 
 
 | Acte | Persona | En une phrase | Fonctionnalités vues | Mid-term 14/10 | Keynote 01/11 |
 |---|---|---|---|:---:|:---:|
-| 1 | Claire | Question ambiguë → question de précision → SQL → réponse vérifiée | X1, T1, T5, EV1, **A5, X4, A7** | ✅ (sans X4, A5, A7) | ✅ |
+| 1 | Claire | Question ambiguë → hypothèse écrite (ou question de précision) → SQL → réponse vérifiée | X1, T1, T5, EV1, **A5, X4** | ✅ (sans X4, A5) | ✅ |
 | 2 | Claire | L'agent retient une définition, l'applique, et complète la note du comité, partagée par un lien | M3, X1, **M4, X3** | ✅ raccourci | ✅ |
 | 3 | Claire | Le juge attrape un chiffre faux | EV1, T5 | — | ✅ |
 | 4 | Karim | Changement de profil sans perdre la conversation ; purge bloquée jusqu'à confirmation | A3, T1, X1, **A5** | ✅ | ✅ |
-| 5 | Inès | Export de la note sous permissions ; accès refusé ; point du lundi planifié | **T4, X5**, A3, **A5** | — | ✅ |
+| 5 | Inès | Export de la note sous permissions ; accès refusé ; point du lundi planifié ; lien de partage révoqué | **T4, X5, X3**, A3, **A5** | — | ✅ |
 | 6 | Inès | La preuve chiffrée | EV1, **A4, A7, M2, EV4** | Méthode seulement | ✅ (slides) |
 
 **Où voir chacune des 16 fonctionnalités**
@@ -51,14 +53,14 @@ Ce document est **le fil rouge unique** de la démo : la mid-term du 14/10 en a 
 | M3 | Acte 2 | Règle retenue, appliquée après redémarrage |
 | A3 | Actes 4, 5 | Modale de purge ; confirmation de l'export |
 | **A5** | Actes 1, 4, 5 | Badge « Contrôle de gestion » ; passage à ADV ; Admin |
-| **X4** | Acte 1 | Carte « trimestre ou tout l'historique ? » |
-| **A7** | Actes 1, 6 | Chip « 3 exemples proches fournis » ; gain mesuré |
+| **X4** | Acte 1 (si l'agent pose la question), sinon vidéo | Carte « trimestre ou tout l'historique ? » |
+| **A7** | Acte 6 | Mesure avec / sans exemples : pas de gain avec qwen3, d'où la désactivation par défaut (D-10) |
 | **M4** | Acte 2 | Panneau Note : seule la section Rentabilité change |
-| **X3** | Acte 2 | Lien de partage ouvert dans un autre onglet |
+| **X3** | Actes 2, 5 | Lien de partage ouvert dans un autre onglet, puis révoqué ; export PDF |
 | **T4** | Acte 5 | Export accepté, `config.toml` refusé |
 | **X5** | Acte 5 | « Point du lundi » : « Exécuter maintenant », rapport et badge |
-| **M2** | Acte 6 (et en direct si la séance est longue) | Rétention troncature / compression ; marqueur « Historique résumé » |
-| **A4** | Acte 6 | Prompt v1 / v2 mesurés ; retour à v1 par configuration |
+| **M2** | Acte 6 (et en direct si la séance est longue) | Rétention troncature / résumé : 0 / 5 contre 2 / 5 faits retrouvés |
+| **A4** | Acte 6 | Prompts v1 / v3 / v4 mesurés ; retour à v1 par une ligne de configuration |
 | **EV4** | Acte 6 | Taux `held` / `soft_break`, `hard_break` = 0 |
 
 ---
@@ -75,18 +77,19 @@ Les chiffres cités sont **illustratifs**. Les vrais viennent de la base génér
 
 > Quels sont nos 5 clients les plus rentables ce trimestre et quel est leur délai moyen de paiement ?
 
-**À l'écran (web)**
-1. **Carte de question** (X4) : « Le délai moyen de paiement doit-il porter sur ce trimestre ou sur tout l'historique ? » — boutons **Ce trimestre** / **Tout l'historique**, champ libre, compte à rebours. Claire clique **Tout l'historique**.
-2. La timeline se remplit : chip « 3 exemples proches fournis » (A7), `time · get_current_time`, `sql_toolbox · list_tables`, `describe_table`, puis `run_select`.
-3. Le bloc SQL (replié, « lecture seule ») et le tableau de 5 lignes : nom, marge, délai moyen.
-4. La réponse s'écrit au fil de l'eau ; elle rappelle le choix de période fait par Claire.
-5. Quelques secondes après : badge **✅ Vérifiée**, cartes KPI, boutons de relance.
+**À l'écran (web)** — version jouée (v3, variante « hypothèse »)
+1. La timeline se remplit : `time · get_current_time`, `sql_toolbox · list_tables`, `describe_table`, puis `run_select` (un essai raté puis corrigé est possible : il reste visible).
+2. Le bloc SQL (replié, « lecture seule ») et le tableau de 5 lignes : nom, marge, délai moyen.
+3. La réponse s'écrit au fil de l'eau et **écrit son hypothèse** : « délai calculé sur tout l'historique de paiement ».
+4. Quelques secondes après : badge **✅ Vérifiée**, cartes KPI, boutons de relance.
 
-**Ce que ça prouve** : le modèle décide seul d'appeler les outils (T1) et de **demander** quand l'ambiguïté change le résultat (X4) ; un serveur MCP **existant** donne la date ; le prompt est construit à partir d'exemples validés proches (A7) ; les chiffres sont vérifiés après coup, sans bloquer l'affichage (EV1) ; le rapport du juge est du JSON conforme à un schéma (T5) ; le profil limite l'agent à la lecture (A5).
+**Si l'agent pose la question** (X4, bonus) : carte « Le délai moyen de paiement doit-il porter sur ce trimestre ou sur tout l'historique ? », boutons **Ce trimestre** / **Tout l'historique**, champ libre, compte à rebours. Claire clique **Tout l'historique**, la réponse rappelle ce choix. Avec le prompt v4, qwen3 préfère souvent écrire l'hypothèse : la carte est donc montrée par sa vidéo de secours si elle n'apparaît pas.
 
-**Variante de secours** : si l'agent ne pose pas la question, il doit écrire son hypothèse (« délai calculé sur tout l'historique ») ; on continue sans commentaire. Si le modèle s'égare : « Donne-moi le top 5 des clients par marge brute depuis le 1er octobre, avec leur délai moyen de paiement en jours, sur tout l'historique. »
+**Ce que ça prouve** : le modèle décide seul d'appeler les outils (T1) et dit ce qu'il a supposé quand l'ambiguïté change le résultat (X4 : hypothèse ou question) ; un serveur MCP **existant** donne la date ; les chiffres sont vérifiés après coup, sans bloquer l'affichage (EV1) ; le rapport du juge est du JSON conforme à un schéma (T5) ; le profil limite l'agent à la lecture (A5).
 
-**Point d'attention** : l'ambiguïté « délai sur le trimestre ou sur tout l'historique » est **voulue**. En v1, l'agent l'affichait comme hypothèse ; en v2, il la pose comme question.
+**Variante de secours** : si le modèle s'égare : « Donne-moi le top 5 des clients par marge brute depuis le 1er octobre, avec leur délai moyen de paiement en jours, sur tout l'historique. »
+
+**Point d'attention** : l'ambiguïté « délai sur le trimestre ou sur tout l'historique » est **voulue**. Hypothèse écrite ou question posée, le jury doit voir que l'agent ne choisit pas en silence.
 
 ### Acte 2 — Mémoire métier et note du comité
 
@@ -112,7 +115,7 @@ Les chiffres cités sont **illustratifs**. Les vrais viennent de la base génér
 
 > Ajoute ce tableau à la note du comité, dans la section Rentabilité.
 
-**À l'écran** (M4) : timeline `document_read` puis `document_patch` ; l'onglet **Note** s'ouvre, **seule la section « Rentabilité » change** (surbrillance, « révision 3 »), les autres sections sont intactes. Claire clique **Partager** (X3) : un lien `/share/…` s'ouvre dans un autre onglet, en lecture seule, avec l'avertissement « Toute personne qui a ce lien voit cette conversation ».
+**À l'écran** (M4) : timeline `document_read` puis `document_patch` ; l'onglet **Note** s'ouvre, **seule la section « Rentabilité » change** (surbrillance « modifiée », révision 1 après `sensai demo-reset`), les autres sections sont intactes. Claire clique **Partager** (X3) : un lien `/share/…` s'ouvre dans un autre onglet, en lecture seule, avec l'avertissement « Toute personne qui a ce lien voit cette conversation ».
 
 **Ce que ça prouve** : l'agent possède sa propre mémoire structurée (M3) ; il tient un **livrable** distinct de la conversation, qu'il modifie section par section sans jamais le réécrire (M4) ; ce livrable se partage sans installer l'outil (X3).
 
@@ -129,7 +132,7 @@ Les chiffres cités sont **illustratifs**. Les vrais viennent de la base génér
 **Ce que ça prouve** : le juge ne se contente pas de relire, il confronte chaque affirmation aux lignes renvoyées, et un contrôle numérique déterministe double le juge LLM (EV1).
 
 **Décision (S-1) : mode démo, annoncé au jury.** Un modèle qui se trompe à la demande n'existe pas. L'option `[demo] alter_answer` (avec `alter_trigger = "Brasserie Lemaire"`) altère un chiffre de la réponse **avant** le juge, uniquement pour cette question ; la barre d'état affiche « Mode démo actif » et le pilote le dit à voix haute : « pour la démo, on force une erreur ; le juge, lui, n'est pas prévenu ».
-- **À implémenter** : CORE-20 (P1, test avec P3), mer 21/10. Prévu pour le 20/10 en v1, absent de `main` au 20/10.
+- **Fait** : CORE-20 (P1, mergé le 21/10). La section `[demo]` se règle dans le `config.toml` de démo.
 - **Secours** : la vidéo de l'acte 3.
 
 ### Acte 4 — Changement de profil et action destructive
@@ -141,11 +144,13 @@ Les chiffres cités sont **illustratifs**. Les vrais viennent de la base génér
 > Supprime les clients inactifs depuis plus de 18 mois.
 
 **À l'écran**
-1. Timeline : `execute_write` en attente, bloc SQL rouge « écriture · DELETE ».
+1. Timeline : `execute_write` en attente, bloc SQL rouge « écriture · DELETE ». Avec le prompt v4, l'agent appelle directement `execute_write` (plus d'aperçu `preview_write` d'abord) : c'est l'application qui calcule l'aperçu.
 2. **Modale bloquante** : le SQL exact, l'impact par table (clients et contacts supprimés en cascade), 5 clients d'exemple, **les clients protégés** (factures à conserver, comptés par HITL-03), un compte à rebours de 120 s, focus sur **Refuser**.
 3. **Premier essai : Refuser.** Toast « Action refusée, base intacte ». L'agent confirme qu'il n'a rien supprimé.
 4. Vérification : « Combien de clients inactifs avons-nous ? » → le nombre n'a pas bougé.
-5. **Second essai : Confirmer.** Toast « 25 clients supprimés », l'opération est inscrite dans `write_audit`.
+5. **Second essai : Confirmer.** Toast « N clients supprimés », l'opération est inscrite dans `write_audit`.
+
+**Ne pas annoncer de nombre à l'oral** : il dépend de l'état de la base (une répétition a déjà supprimé des clients). On lit celui de la modale. `sensai demo-reset` avant la keynote remet la base au départ.
 
 **Ce que ça prouve** : aucune écriture sans confirmation explicite (A3) ; l'aperçu est **calculé en transaction annulée**, donc exact ; la décision de bloquer vient d'une classification **déterministe** du SQL, pas du modèle ; changer de profil ne lève **jamais** une confirmation (A5).
 
@@ -171,20 +176,23 @@ Les chiffres cités sont **illustratifs**. Les vrais viennent de la base génér
 
 **Enfin** (X5) : onglet **Tâches planifiées**. La tâche « Point du lundi — chaque lundi à 7 h » est listée avec sa prochaine exécution. Inès clique **Exécuter maintenant** : l'exécution apparaît, se termine avec un badge ✅ et un lien vers le rapport `reports/planifie/point-lundi-….md`. « Cette tâche tourne sans humain : elle ne peut rien modifier, toute écriture serait refusée. »
 
-**Ce que ça prouve** : l'agent accède aux fichiers **seulement là où on l'a autorisé**, avec une vérification avant toute opération (T4) ; l'écriture d'un fichier est une action confirmée comme une autre (A3) ; des rapports se préparent seuls, en lecture seule (X5).
+**Pour finir** (X3) : Inès ouvre **Partager**, retrouve le lien créé par Claire à l'acte 2 et clique **Révoquer**. Dans l'autre onglet, un rechargement affiche « Ce lien de partage n'existe pas ou a été révoqué ». En une phrase : « et pour le comité, Exporter › PDF donne la même conversation sur papier ».
+
+**Ce que ça prouve** : l'agent accède aux fichiers **seulement là où on l'a autorisé**, avec une vérification avant toute opération (T4) ; l'écriture d'un fichier est une action confirmée comme une autre (A3) ; des rapports se préparent seuls, en lecture seule (X5) ; un lien partagé se retire à tout moment (X3).
 
 **Variante de secours** : si la tâche planifiée est lente, montrer le rapport de l'exécution faite pendant la répétition (lien dans le panneau) ; sinon, vidéo de l'acte 5.
 
 ### Acte 6 — Preuve chiffrée (slides)
 
-Pas de démo live : les tableaux de `docs/EVALUATION.md` (EVAL-08, EVAL-09, EVAL-10) et de `docs/SECURITY.md` (SEC-02).
-- Exactitude SQL (EX) et taux de SQL valide sur le golden set de 40 questions ; v0.5 (mid-term) / v1.0.
-- **Prompt v1 / v2** (A4) : qualité, latence, tokens ; « on revient à v1 en une ligne de configuration ».
-- **Avec / sans exemples dynamiques** (A7).
-- Avec / sans mémoire sur les questions « glossaire » (M3).
-- **Rétention des faits après 30 tours, troncature / compression** (M2).
-- Calibration du juge : précision et rappel sur des réponses annotées à la main (EV1).
-- **Résistance aux attaques** (EV4) : `held` / `soft_break` par catégorie, `hard_break` = 0.
+Pas de démo live : les tableaux de `docs/EVALUATION.md` et de `docs/SECURITY.md`, avec les vraies mesures du 30 et du 31/10 (25 questions, `qwen3:8b`).
+- **Choix du modèle** (D-09) : llama3.1:8b EX 0,37 en 2,3 s ; qwen3:8b EX 0,58 en 19,4 s (p50).
+- **Prompts v1 / v3 / v4** (A4) : rappel destructif 0,25 → 0,75 ; EX 0,58 → 0,74 ; « on revient à v1 en une ligne de configuration ».
+- **Avec / sans exemples dynamiques** (A7), **montré tel quel** : EX 0,68 avec, 0,74 sans, deux tours coupés au délai avec exemples. Pas de gain avec qwen3 : désactivés par défaut (D-10), mais livrés et activables.
+- **Avec / sans mémoire** (M3) : glossaire 0 / 3 sans, 3 / 3 avec.
+- **Configuration livrée** : EX 0,74, SQL valide 100 %, rappel destructif 1,00, aucun tour en erreur, tour p95 48 s.
+- **Rétention des faits, troncature / résumé** (M2, version réduite) : 0 / 5 contre 2 / 5 faits retrouvés ; ce que le résumé garde et ce qu'il rate.
+- Calibration du contrôle numérique : précision 1,00, rappel 0,64 sur 20 réponses annotées (EV1). Le juge LLM seul n'a pas été calibré.
+- **Résistance aux attaques** (EV4) : 0 `hard_break` sur 37 attaques ; `held` / `soft_break` par catégorie.
 
 ---
 

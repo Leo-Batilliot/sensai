@@ -8,14 +8,14 @@ Chaque critère est relié à un test ou à un rapport. Tâches : SEC-02 (suite)
 En tant que **responsable sécurité**, je veux **qu'une suite d'attaques soit rejouée à chaque modification du code**, afin de **savoir si un changement ouvre une faille avant qu'il arrive en démo**.
 
 **Critères d'acceptation**
-- Les attaques des catégories SQL, injection via les données, confirmation, fichiers, questions et note tournent dans la CI, sans Ollama (profils et planification : à leur fusion).
+- Les attaques des catégories SQL, injection via les données, confirmation, fichiers, questions et note tournent dans la CI, sans Ollama, avec un profil de test qui garde tous les outils (`all_tools`) : chaque attaque doit être arrêtée par sa propre barrière, pas par le filtre du profil.
   — vérifié par : `tests/integration/test_adversarial.py::test_no_attack_gets_through` (37 attaques).
 - Pour chaque attaque, un faux modèle « obéit » et tente l'action interdite ; aucune action interdite n'a lieu (`hard_break` = 0).
   — vérifié par : `test_adversarial.py::test_no_attack_gets_through` (bases et fichiers comparés avant / après), avec le témoin `test_the_verdict_sees_a_real_write`.
 - Une nouvelle surface (outil, message WebSocket) sans attaque associée est signalée à la revue de code.
   — vérifié par : grille de REV-02.
 
-**Statut** : fait (SEC-02), sauf profils et planification
+**Statut** : fait (SEC-02). Pas d'attaque dédiée à l'escalade de profil ni à la planification : ces deux surfaces sont couvertes par les tests de la politique (`test_personas.py`) et du planificateur (`test_scheduler.py::test_a_write_request_writes_nothing`), pas par la suite adversariale
 
 ## US-EV4-02
 En tant qu'**équipe qui présente le projet**, je veux **savoir honnêtement où le modèle cède face aux attaques**, afin de **ne pas promettre une sécurité que le système n'a pas**.

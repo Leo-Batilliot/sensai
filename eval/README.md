@@ -7,7 +7,7 @@ Format vérifié par `tests/unit/eval/test_golden.py`.
 |---|---|---:|
 | v0 | EVAL-02 | 15 |
 | v1 | EVAL-02b | 25 |
-| v2 | EVAL-02c (SQL rédigés par P2, relus par P3) | 40 |
+| v2 | EVAL-02c (01/11, q026 à q040 : SQL vérifiés sur la base de référence, sans fuite vers la banque d'exemples) | 40 |
 
 ## Format
 

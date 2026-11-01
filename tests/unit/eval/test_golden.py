@@ -42,7 +42,7 @@ CATEGORIES = {
 }
 # Categories where no reference SQL makes sense: the expected behaviour is in notes
 NO_SQL_CATEGORIES = {"out_of_scope", "adversarial"}
-MIN_ENTRIES = 25  # golden set v0 (EVAL-02) 15, v1 (EVAL-02b) 25, v2 (EVAL-02c) 40
+MIN_ENTRIES = 40  # golden set v0 (EVAL-02) 15, v1 (EVAL-02b) 25, v2 (EVAL-02c) 40
 
 
 PARAMS = reference_params(REFERENCE_DATE)
@@ -146,8 +146,8 @@ def test_no_tie_at_the_last_rank_of_a_top_n(
     assert numbers(rows[limit - 1]) != numbers(rows[limit])
 
 
-def test_category_mix_heads_for_the_final_set() -> None:
-    """PROJECT §11.1: every category is present, none beyond its final target (40)."""
+def test_category_mix_of_the_final_set() -> None:
+    """PROJECT §11.1: the final set (EVAL-02c, 40 questions) has exactly the planned mix."""
     final_targets = {
         "aggregate": 6,
         "join": 6,
@@ -161,7 +161,7 @@ def test_category_mix_heads_for_the_final_set() -> None:
     counts = {category: 0 for category in final_targets}
     for entry in ENTRIES:
         counts[entry["category"]] += 1
-    assert all(0 < counts[category] <= final_targets[category] for category in final_targets)
+    assert counts == final_targets
 
 
 def test_load_golden_reads_every_entry() -> None:

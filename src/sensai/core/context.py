@@ -233,7 +233,8 @@ def keep_figures(
             continue
         if any(_same(value, given["value"], tolerance) for given in figures):
             continue
-        logger.info("Verified figure missing from the summary, added: %s", figure.get("label"))
+        # DEBUG: the label can name a client or a sales rep (REV-02, no business data at INFO)
+        logger.debug("Verified figure missing from the summary, added: %s", figure.get("label"))
         figures.append(
             {"label": figure["label"], "value": value, "unit": figure.get("unit", ""), "period": ""}
         )

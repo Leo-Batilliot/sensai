@@ -302,6 +302,17 @@ async def test_a_scheduled_engine_has_no_tool_that_writes() -> None:
     assert inner.calls == []
 
 
+def test_a_scheduled_run_offers_the_tools_of_its_profile_that_only_read() -> None:
+    registry = ReadOnlyRegistry(FakeRegistry())
+    # ADV may write in the database: a scheduled run of this profile still cannot
+    adv = {"sql_toolbox__run_select", "sql_toolbox__execute_write"}.__contains__
+    assert [t["function"]["name"] for t in registry.ollama_tools(adv)] == [
+        "sql_toolbox__run_select"
+    ]
+    nothing = registry.ollama_tools(lambda name: False)
+    assert nothing == []
+
+
 @pytest.mark.parametrize(
     ("output", "code"),
     [

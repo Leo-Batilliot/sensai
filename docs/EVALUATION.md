@@ -2,13 +2,13 @@
 
 | | |
 |---|---|
-| **Statut** | Brouillon (DOC-07). Les chiffres marqués *à mesurer* viennent des runs sur la machine de démo (EVAL-08, EVAL-09, EVAL-10, CORE-18) |
+| **Statut** | Final pour `v1.0.0` (DOC-07). Mesures du 30/10 et du 31/10 sur la machine de démo. Seule la calibration du juge LLM (§4) n'a pas été mesurée |
 | **Propriétaire** | P3 (relu par P1) |
 | **Détail technique** | [`eval/README.md`](../eval/README.md) (format des jeux, rapports), [`docs/contracts/judge.md`](contracts/judge.md) (métriques, juge) |
 
 ## 1. Méthode
 
-- **Golden set** : `eval/golden.jsonl`, 25 questions (40 avec EVAL-02c) en 8 catégories : `aggregate`, `join`, `time_filter`, `top_n`, `glossary`, `write`, `out_of_scope`, `adversarial`. Chaque question a son SQL de référence, sauf hors périmètre et attaques.
+- **Golden set** : `eval/golden.jsonl`, 40 questions depuis le 01/11 (EVAL-02c), en 8 catégories : 6 agrégats, 6 jointures, 6 filtres de dates, 5 top-N, 5 glossaire, 5 écritures, 4 hors périmètre ou ambiguës, 3 attaques. **Les mesures de ce document datent du 30/10 et portent sur les 25 premières questions** (q001 à q025) : les 15 nouvelles n'ont pas encore été passées au harness. Catégories : `aggregate`, `join`, `time_filter`, `top_n`, `glossary`, `write`, `out_of_scope`, `adversarial`. Chaque question a son SQL de référence, sauf hors périmètre et attaques.
 - **Entrées figées** : base de démo générée par graine (42) et date de référence (2026-10-20) ; outil de date remplacé par une horloge figée sous le même nom ; température 0 et `options.seed` envoyé à Ollama, juge compris.
 - **Isolation** : un moteur neuf et une mémoire neuve par question ; la mémoire ne contient que les règles de `eval/memory_rules.json`. Le moteur ne confirme rien : la base n'est jamais modifiée.
 - **Traçabilité** : chaque rapport enregistre le modèle, le juge, la version et l'empreinte du prompt (A4), l'état des exemples dynamiques (A7), la mémoire (M3), la graine et la date.
@@ -30,17 +30,34 @@ Définitions exactes : [`judge.md`](contracts/judge.md) §3.
 
 ## 3. Résultats et comparaisons (EVAL-08, EVAL-09)
 
-*À mesurer* sur `v1.0.0-rc1`, avec le modèle final (CORE-12). Chaque ligne est un run du harness, comparé au témoin par `sensai eval compare`.
+Mesurés le 30/10 sur la machine de démo (RTX 3080 10 Go), sur les 25 premières questions du golden set (q001 à q025, le jeu de l'époque), graine 42, `num_ctx` 16384, juge = modèle de l'agent. Un run par configuration. Rapports : `eval/reports/2026-10-30_v1.0-*.md`.
 
-| Comparaison | Témoin | Variante | Ce qui change |
+**La configuration livrée** (D-10) est la ligne en gras : `qwen3:8b`, prompt `v4`, exemples dynamiques désactivés, mémoire active.
+
+| Run | Modèle | Prompt | Exemples (A7) | Mémoire (M3) | EX | SQL valide | Rappel destructif | Glossaire (EX) | Tours en erreur | Tour p50 | Tour p95 |
+|---|---|---|:---:|:---:|---:|---:|---:|---:|---:|---:|---:|
+| `llama3.1-8b` | llama3.1:8b | v1 | non | oui | 0,37 | 0,79 | 1,00 | 0,00 | 0 | 2,3 s | 7,5 s |
+| `qwen3-8b` | qwen3:8b | v1 | non | oui | 0,58 | 1,00 | 0,25 | 0,67 | 0 | 19,4 s | 66,8 s |
+| `qwen3-8b-v3` | qwen3:8b | v3 | oui | oui | 0,74 | 0,89 | 0,75 | 0,33 | 2 | 34,5 s | 182,6 s |
+| `qwen3-8b-v4` | qwen3:8b | v4 | oui | oui | 0,68 | 0,89 | 0,75 | 1,00 | 2 | 25,2 s | 120,7 s |
+| **`qwen3-8b-v4-sans-exemples`** | **qwen3:8b** | **v4** | **non** | **oui** | **0,74** | **1,00** | **1,00** | **1,00** | **0** | **16,4 s** | **47,6 s** |
+| `qwen3-8b-v4-sans-memoire` | qwen3:8b | v4 | oui | non | 0,58 | 0,84 | 0,75 | 0,00 | 3 | 18,0 s | 114,2 s |
+
+EX, SQL valide et glossaire portent sur 19 questions (dont 3 de glossaire), le rappel destructif sur 4. Les « tours en erreur » sont tous des `STREAM_INTERRUPTED` : le tour a dépassé le délai de 120 s. Aucun run n'a demandé de confirmation sans raison (faux positifs HITL : 0,00 partout).
+
+**Ce que chaque comparaison montre**
+
+| Comparaison | Témoin → variante | Résultat | Lecture |
 |---|---|---|---|
-| v0.5 / v1.0 | `v0.5.0` (worktree) | `v1.0-rc` | Tout le produit |
-| Prompt v1 / v2 (A4) | `--prompt-version v1` | `--prompt-version v2` | Prompt système (CORE-14) |
-| Avec / sans exemples (A7) | `--no-fewshot` | défaut | Exemples dynamiques, prompt v2 |
-| Avec / sans mémoire (M3) | `--no-memory` | défaut | Règles du glossaire, questions `glossary` |
-| Juge seul / juge + contrôle numérique | §4 | §4 | Détecteur |
+| Choix du modèle (D-09) | llama3.1:8b → qwen3:8b, prompt v1 | EX 0,37 → 0,58 | qwen3 écrit un SQL bien plus juste, mais 8 fois plus lent (réflexion) |
+| Versions du prompt (A4), à comparaison égale | v1 → v4, tous deux sans exemples | EX 0,58 → 0,74 ; rappel destructif 0,25 → 1,00 ; tours en erreur 0 → 0 | La comparaison la plus propre : seul le prompt change. Avec v1, l'agent demandait souvent la confirmation en texte au lieu d'appeler l'outil ; v4 appelle l'outil, et l'application ouvre la fenêtre de confirmation |
+| Versions du prompt (A4), suite des versions | v1 → v3 → v4, même modèle | EX 0,58 → 0,74 → 0,68 ; rappel destructif 0,25 → 0,75 → 0,75 | v3 et v4 sont avec exemples, v1 sans : l'écart mêle prompt et exemples. Le rappel destructif, lui, vient de la règle d'écriture de v3 : la confirmation s'ouvre enfin sur les suppressions. v4 écrit directement (la modale s'ouvre sans `preview_write`) |
+| Exemples dynamiques (A7) | v4 avec → v4 sans exemples | EX 0,68 → 0,74 ; tours en erreur 2 → 0 ; p95 120,7 s → 47,6 s | **Aucun gain avec qwen3** sur ce jeu. L'écart d'EX est une question sur 19 ; l'écart de latence vient des deux tours coupés au délai, pas des 200 tokens d'exemples. A7 reste livré et activable (`[fewshot] enabled = true`) |
+| Mémoire (M3) | v4 sans → avec mémoire | glossaire 0,00 → 1,00 ; EX 0,58 → 0,68 | Sans les règles mémorisées, aucune question de glossaire n'est juste : c'est la preuve directe de M3 |
+| v0.5 → v1.0 | — | non mesuré | Le run sur `v0.5.0` n'a pas été lancé ; le témoin le plus proche est `qwen3-8b` en prompt v1 |
+| Prompt v2 | — | non mesuré | v2 (hypothèses explicites, `ask_user`, refus hors périmètre, trous `$persona` et `$examples`, plan de la note) est la base de v3 et v4, qui n'ajoutent que la règle d'écriture ; il n'a pas eu de run à lui |
 
-Les écarts sont à lire avec la limite du §8 : sur 25 à 40 questions, une question vaut 2,5 à 4 points d'EX.
+Les écarts sont à lire avec la limite du §8 : sur 19 questions, une question vaut environ 5 points d'EX.
 
 ## 4. Calibration du juge (EVAL-07)
 
@@ -49,10 +66,10 @@ Jeu : `eval/judge_calibration.jsonl`, 20 réponses étiquetées affirmation par 
 | Détecteur | Précision | Rappel | VP | FP | FN | VN |
 |---|---:|---:|---:|---:|---:|---:|
 | Contrôle numérique seul | 1,00 | 0,64 | 7 | 0 | 4 | 9 |
-| Juge seul | *à mesurer* | | | | | |
-| Juge + contrôle numérique | *à mesurer* | | | | | |
+| Juge seul | *non mesuré* | | | | | |
+| Juge + contrôle numérique | *non mesuré* | | | | | |
 
-Le contrôle numérique ne dépend d'aucun modèle : ces chiffres sont identiques sur toute machine (`sensai eval calibrate --numeric-only`, rapport `eval/reports/2026-10-27_calibration-numeric.md`).
+Le contrôle numérique ne dépend d'aucun modèle : ces chiffres sont identiques sur toute machine (`sensai eval calibrate --numeric-only`, rapport `eval/reports/2026-10-27_calibration-numeric.md`). La calibration du juge LLM (`sensai eval calibrate`) n'a pas été lancée avant le rendu : la machine de démo a servi aux runs du §3. Dans les runs du §3, le juge a produit un rapport valide dans 100 % des cas après réparation, et une fidélité de 0,91 à 1,00.
 
 **Ce que le contrôle numérique manque, et pourquoi**
 - **Entités interverties** (c04, c10, c19) : tous les chiffres de la réponse existent dans les lignes, mais rattachés au mauvais client, commercial ou secteur. Seul le juge peut les voir.
@@ -113,7 +130,8 @@ La résistance aux attaques (EV4) est mesurée dans [`docs/SECURITY.md`](SECURIT
 ## 8. Limites
 
 - 25 à 40 questions donnent des intervalles de confiance larges : un écart de quelques points d'EX n'est pas significatif.
-- Même à température 0 et graine fixée, la génération sur GPU peut varier d'un run à l'autre : chaque mesure est lancée deux fois et l'écart noté.
+- Même à température 0 et graine fixée, la génération sur GPU peut varier d'un run à l'autre. Faute de temps, **chaque configuration n'a été lancée qu'une fois** : un écart d'une ou deux questions peut venir de ce bruit.
+- Les tours coupés au délai de 120 s (`STREAM_INTERRUPTED`) comptent comme faux : ils pèsent sur l'EX des runs les plus lents.
 - Les 20 cas de calibration ont été étiquetés par une seule personne ; une double annotation d'une partie des cas reste à faire.
 - La banque d'exemples (A7) est séparée du golden set et vérifiée par un test anti-fuite, mais ses requêtes ressemblent par construction à celles du jeu : le gain mesuré vaut pour cette base.
 
