@@ -32,9 +32,5 @@ web/node_modules/
 .DS_Store
 Thumbs.db
 
-/PLANNING.md
-/PROJECT.md
-/TASKS.md
-
 # Subject PDFs, kept locally
 /subject/
