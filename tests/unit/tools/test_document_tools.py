@@ -120,6 +120,29 @@ async def test_a_write_by_the_interface_is_recorded_as_the_user(note: DocumentSt
     assert note.revisions()[0]["actor"] == "user"
 
 
+async def test_line_breaks_escaped_twice_by_the_model_are_restored(note: DocumentStore) -> None:
+    # Acceptance test of 01/11: the table of act 2 reached the note on one line
+    table = "| Client | Marge |\\n|---|---|\\n| Boutique Marie | 37,7 % |"
+    model = {tool.name: tool for tool in make_tools(note, "s-1")}
+    user = {tool.name: tool for tool in make_tools(note, "s-1", actor="user")}
+
+    await call(model, "document_patch", section_id="rentabilite", op="replace", content=table, base_revision=0)  # fmt: skip
+    await call(user, "document_patch", section_id="synthese", op="replace", content=table, base_revision=1)  # fmt: skip
+
+    rentabilite = note.read("rentabilite")["content"]
+    assert rentabilite == "| Client | Marge |\n|---|---|\n| Boutique Marie | 37,7 % |"
+    assert note.read("synthese")["content"] == table  # typed by the user: kept as is
+
+
+async def test_real_line_breaks_keep_their_backslashes(tools: dict[str, Tool]) -> None:
+    content = "Export dans C:\\new\\rapports\nà relire."
+
+    await call(tools, "document_patch", section_id="synthese", op="replace", content=content, base_revision=0)  # fmt: skip
+
+    section = await call(tools, "document_read", section_id="synthese")
+    assert section.data is not None and section.data["content"] == content
+
+
 @pytest.mark.parametrize(
     ("arguments", "code"),
     [

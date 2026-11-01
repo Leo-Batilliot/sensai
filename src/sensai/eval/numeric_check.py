@@ -244,17 +244,18 @@ def checked_key_figures(
         known = [cell for cell in cells if cell is not None]
         if any(
             abs(value - cell) <= tolerance * max(abs(value), abs(cell))
-            for value in _figure_values(figure["value"], figure["unit"])
             for cell in known
+            for value in _figure_values(figure["value"], figure["unit"], cell)
         ):
             kept.append(figure)
     return kept
 
 
-def _figure_values(value: float, unit: str) -> tuple[float, ...]:
-    """What a card may stand for in its column: '560 k€' is 560 000, '37,6 %' is 37.6 or
-    the ratio 0.376."""
+def _figure_values(value: float, unit: str, cell: float) -> tuple[float, ...]:
+    """What a card may stand for in a cell of its column: '560 k€' is 560 000, '37,6 %' is
+    37.6, or the ratio 0.376 when the cell is a ratio (between -1 and 1). Read as a ratio
+    against any cell, '37,70 %' copied as 3770 would match a column of percents (37.7)."""
     multiplier, percent = _unit_factors(unit)
     if percent:
-        return value, value / 100
+        return (value, value / 100) if abs(cell) <= 1 else (value,)
     return (value * multiplier,)

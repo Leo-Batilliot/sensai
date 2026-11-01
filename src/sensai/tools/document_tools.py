@@ -54,14 +54,27 @@ def _read(store: DocumentStore, args: dict[str, Any], ctx: AuditContext) -> dict
 
 
 def _patch(store: DocumentStore, args: dict[str, Any], ctx: AuditContext) -> DocumentWrite:
+    content = args["content"]
     return store.patch(
         args["section_id"],
         args["op"],
-        args["content"],
+        _real_line_breaks(content) if ctx.actor == "agent" else content,
         args["base_revision"],
         args.get("title"),
         ctx,
     )
+
+
+def _real_line_breaks(content: str) -> str:
+    """The model's content with real line breaks when it escaped them twice.
+
+    qwen3:8b sometimes sends a Markdown table as '| a |\\n| b |': the JSON then holds a
+    backslash and an n, and the note shows the table on one line. Only a content without
+    any real line break is rewritten: one that has some meant its backslashes. What the
+    user types in the interface is never touched."""
+    if "\n" in content or "\\n" not in content:
+        return content
+    return content.replace("\\r\\n", "\n").replace("\\n", "\n")
 
 
 def _delete(store: DocumentStore, args: dict[str, Any], ctx: AuditContext) -> DocumentWrite:

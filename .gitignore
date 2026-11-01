@@ -34,3 +34,8 @@ Thumbs.db
 
 # Subject PDFs, kept locally
 /subject/
+
+# Team planning documents, kept locally (D-14)
+/PROJECT.md
+/PLANNING.md
+/TASKS.md
