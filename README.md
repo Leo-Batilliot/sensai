@@ -135,11 +135,11 @@ Ces commandes créent un dossier `sensai` dans votre dossier personnel (`C:\User
 cd ~
 git clone https://github.com/EpitechPGE3-2026/G-AIA-500-LIL-5-1-sensai-4.git sensai
 cd sensai
-git checkout v1.0.0
+git checkout v1.0.1
 ```
 
 - À la première commande `git clone`, **une fenêtre de connexion GitHub s'ouvre** : connectez-vous avec le compte qui a accès au dépôt.
-- `git checkout v1.0.0` choisit la version livrée. Le message `You are in 'detached HEAD' state` est **normal** : ce n'est pas une erreur.
+- `git checkout v1.0.1` choisit la version livrée. Le message `You are in 'detached HEAD' state` est **normal** : ce n'est pas une erreur.
 
 **Ce que vous devez voir** : la ligne de PowerShell finit maintenant par `\sensai>`.
 
@@ -261,7 +261,7 @@ Puis préparez le serveur de date : `uvx mcp-server-time --help` (un texte d'aid
 cd ~
 git clone https://github.com/EpitechPGE3-2026/G-AIA-500-LIL-5-1-sensai-4.git sensai
 cd sensai
-git checkout v1.0.0
+git checkout v1.0.1
 make install
 make seed
 ```
