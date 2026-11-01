@@ -112,15 +112,16 @@ def test_a_task_id_is_a_simple_name() -> None:
         Config.model_validate({"schedules": {"../x": {"at": "MON 07:00", "question": "q"}}})
 
 
-def test_the_example_task_is_valid_and_disabled() -> None:
-    # Commented out in config.example.toml (no task by default): uncommented, it must load
+def test_the_example_task_is_valid_and_enabled() -> None:
+    # Commented out in config.example.toml (no task by default): uncommented, it must load,
+    # and enabled, since "Exécuter maintenant" refuses a disabled task (D-13)
     example = (Path(__file__).parents[3] / "config.example.toml").read_text(encoding="utf-8")
     start = example.index("# [schedules.point-lundi]")
     block = example[start:].split("\n\n")[0]
     table = tomllib.loads("\n".join(line.removeprefix("# ") for line in block.splitlines()))
     config = Config.model_validate(table)
     task = config.schedules["point-lundi"]
-    assert (task.at, task.enabled, task.persona) == ("MON 07:00", False, "analyste")
+    assert (task.at, task.enabled, task.persona) == ("MON 07:00", True, "analyste")
 
 
 # --- run_schedule -------------------------------------------------------------------------
