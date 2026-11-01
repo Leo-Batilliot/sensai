@@ -1,3 +1,3 @@
 """SENSAI: local BI copilot built on Ollama."""
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"

@@ -240,6 +240,15 @@ def test_key_figures_that_lost_the_decimal_comma_are_dropped() -> None:
     assert checked_key_figures(wrong, COLUMNS, ROWS) == []
 
 
+def test_a_percent_that_lost_two_decimals_is_not_read_as_a_ratio() -> None:
+    # Acceptance test of 01/11: '37,70 %' -> 3770, and 3770 / 100 is the 37.7 of the column
+    columns = ["client", "marge_brute"]
+    rows = [["Boutique Marie", 37.7], ["Restaurant Riou", 40.75]]
+
+    assert checked_key_figures([card(3770, "%", "marge_brute")], columns, rows) == []
+    assert checked_key_figures([card(37.7, "%", "marge_brute")], columns, rows) != []
+
+
 def test_key_figures_found_in_their_column_are_kept() -> None:
     right = [
         card(1523.34, "EUR", "marge_brute"),

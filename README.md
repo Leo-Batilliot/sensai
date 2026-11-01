@@ -135,11 +135,11 @@ Ces commandes créent un dossier `sensai` dans votre dossier personnel (`C:\User
 cd ~
 git clone https://github.com/EpitechPGE3-2026/G-AIA-500-LIL-5-1-sensai-4.git sensai
 cd sensai
-git checkout v1.0.2
+git checkout v1.0.3
 ```
 
 - À la première commande `git clone`, **une fenêtre de connexion GitHub s'ouvre** : connectez-vous avec le compte qui a accès au dépôt.
-- `git checkout v1.0.2` choisit la version livrée. Le message `You are in 'detached HEAD' state` est **normal** : ce n'est pas une erreur.
+- `git checkout v1.0.3` choisit la version livrée. Le message `You are in 'detached HEAD' state` est **normal** : ce n'est pas une erreur.
 
 **Ce que vous devez voir** : la ligne de PowerShell finit maintenant par `\sensai>`.
 
@@ -261,7 +261,7 @@ Puis préparez le serveur de date : `uvx mcp-server-time --help` (un texte d'aid
 cd ~
 git clone https://github.com/EpitechPGE3-2026/G-AIA-500-LIL-5-1-sensai-4.git sensai
 cd sensai
-git checkout v1.0.2
+git checkout v1.0.3
 make install
 make seed
 ```
@@ -323,7 +323,7 @@ Les autres cas, plus techniques, sont dans [Dépannage](#dépannage).
 
 ### Pour les développeurs
 
-- Tests sans Ollama, comme la CI : `.venv\Scripts\python -m pytest -m "not ollama and not external"` (Windows) ou `make test` (Linux). Sous Windows, 6 tests échouent, et c'est connu : 4 tests MCP de fin de processus (`test_close_*`, `test_unsupported_version_is_refused`, `test_missing_base_stops_the_server`) et 2 tests d'outils fichiers qui lisent des fins de ligne Windows (`test_list_roots_then_a_folder`, `test_read_marks_the_content_as_data`). Ils passent sous Linux.
+- Tests sans Ollama, comme la CI : `.venv\Scripts\python -m pytest -m "not ollama and not external"` (Windows) ou `make test` (Linux). Sous Windows, 6 tests échouent, et c'est connu : 4 tests MCP de fin de processus (`test_close_*`, `test_unsupported_version_is_refused`, `test_missing_base_stops_the_server`) et 2 tests d'outils fichiers qui lisent des fins de ligne Windows (`test_list_roots_then_a_folder`, `test_read_marks_the_content_as_data`). Ils passent sous Linux. Un 7e, `test_failures_become_tool_results`, échoue parfois sur un environnement neuf : son délai de 0,3 s couvre aussi le démarrage du serveur MCP de test.
 - **Node.js n'est pas nécessaire** pour utiliser SENSAI : l'interface web est livrée déjà construite (`web/dist`). Il ne sert qu'à modifier le front : `winget install --id OpenJS.NodeJS.LTS -e` sous Windows, Node 22 ou plus sous Linux (`nvm install 22`, ou `sudo pacman -S nodejs npm`), puis voir [`web/README.md`](web/README.md).
 - `make help` liste toutes les commandes du `Makefile`, `python -m sensai --help` celles de SENSAI.
 
@@ -530,7 +530,7 @@ flowchart LR
 | `src/sensai/web/`, `web/` | Serveur FastAPI (WebSocket, partages, planificateur) et front React + Vite |
 | `docs/contracts/` | Contrats entre les briques : événements, outils, WebSocket, mémoire, juge, prompts |
 
-Le détail est dans [`PROJECT.md`](PROJECT.md) §5. Les choix d'architecture, avec les options écartées, sont dans [`docs/adr/`](docs/adr/) :
+Les choix d'architecture, avec les options écartées, sont dans [`docs/adr/`](docs/adr/) :
 
 | ADR | Décision |
 |---|---|
@@ -595,7 +595,6 @@ EX = exactitude d'exécution : le résultat du SQL de l'agent est comparé à ce
 
 ## Documentation
 
-- [`PROJECT.md`](PROJECT.md) : spécification complète (architecture, fonctionnalités, contrats, évaluation) ; [`PLANNING.md`](PLANNING.md) et [`TASKS.md`](TASKS.md) : organisation et tâches
 - [`docs/EVALUATION.md`](docs/EVALUATION.md) : méthode et résultats de l'évaluation ; [`docs/SECURITY.md`](docs/SECURITY.md) : garde-fous et attaques
 - [`docs/adr/`](docs/adr/) : décisions d'architecture ; [`docs/decisions.md`](docs/decisions.md) : journal des décisions de l'équipe
 - [`docs/guides/brancher-un-serveur-mcp.md`](docs/guides/brancher-un-serveur-mcp.md) : brancher un serveur MCP existant, sans code
