@@ -1,5 +1,7 @@
 # SENSAI — Copilote BI local
 
+![Demo](docs/demo.gif)
+
 Un collaborateur pose une question métier en français ; l'agent interroge la base de l'entreprise par des outils MCP, demande une précision quand la question est ambiguë, répond avec des chiffres **vérifiés contre les données**, retient le vocabulaire de l'entreprise, tient à jour la note du comité de direction, et **ne modifie jamais les données ni les fichiers sans confirmation explicite**. Tout tourne en local avec [Ollama](https://ollama.com) : aucune donnée ne quitte la machine.
 
 Le scénario de démonstration suit Claire (contrôle de gestion), Karim (ADV) et Inès (administration) chez Nordvent Distribution, un grossiste B2B fictif : [`docs/keynote/scenario.md`](docs/keynote/scenario.md).
